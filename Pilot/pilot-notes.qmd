@@ -1,0 +1,87 @@
+---
+title: "Pilot Notes: Environmental Data Automation"
+author: "Alexis Athens"
+format: html
+editor: visual
+---
+
+## 1. Pilot Scope
+
+- **Indicator:** 
+- **Source:** 
+- **Objective:** Test end-to-end automation of data pipeline for this indicator.
+- **Expected Output:** Cleaned dataset ready for CEPALSTAT upload or further harmonization.
+
+## 2. Source Overview
+
+| Field | Description |
+|-------|-------------|
+| Source Name |  |
+| URL or API Endpoint |  |
+| Access Type | (API, UI download, scrape) |
+| Indicator Name or Code |  |
+| Data Format | (CSV, JSON, XML, Excel) |
+| Temporal Coverage |  |
+| Geographical Coverage |  |
+| Update Frequency |  |
+| Licensing or Restrictions |  |
+
+## 3. Pipeline Summary
+
+### 3.1 Download
+
+- Method: `httr`, `jsonlite`, `readr`, or other
+- Authentication required? (Y/N)
+- Parameters used in API call or download logic
+
+### 3.2 Clean
+
+- Preprocessing steps (e.g., remove NAs, rename columns, reformat dates)
+- Unit conversions
+- Handling missing or inconsistent values
+
+### 3.3 Harmonize
+
+- Code mappings (e.g., country codes to ISO3, reclassifications)
+- Aggregations or transformations applied
+- Metadata tagging or additional enrichment
+
+### 3.4 Export
+
+- Output format (e.g., CSV, Parquet, JSON)
+- Filename and structure
+- Location saved to (relative path)
+
+## 4. Challenges and Decisions
+
+- Issues encountered
+- Workarounds or decisions made
+- Manual steps still required
+
+## 5. Reusability
+
+- What parts of this pipeline are generalizable?
+- Which steps are source/indicator-specific?
+- Functions or scripts created for reuse?
+
+## 6. Next Steps
+
+- Improvements for this pipeline
+- Possible automation or optimization
+- Next indicator or source to apply this to
+
+## 7. Metadata Snapshot
+
+```{r}
+# Example metadata tibble
+tibble::tibble(
+  Source = "FAOSTAT",
+  Indicator = "CO₂ emissions",
+  Time_Coverage = "1990–2023",
+  Geo_Coverage = "Global",
+  Access_Method = "API",
+  Harmonized = TRUE,
+  Last_Downloaded = Sys.Date(),
+  Notes = "Some missing values for SIDS"
+)
+
