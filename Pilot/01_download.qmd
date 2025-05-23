@@ -1,0 +1,66 @@
+---
+title: "01_download"
+format: html
+editor: visual
+---
+
+
+## Set up Playwright session
+```{python}
+from playwright.sync_api import sync_playwright
+p = sync_playwright().start()
+browser = p.chromium.launch(headless=False)
+context = browser.new_context(accept_downloads=True)
+page = context.new_page()
+```
+
+## Navigate to OLADE website for data download
+```{python}
+page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
+```
+
+## Interact with dropdowns / filters
+Select Files > Actividad
+```{python}
+# Click the "Filas" dropdown (the custom input)
+page.click("#cbFila_I")
+
+# Wait for dropdown to open (brief pause)
+page.wait_for_timeout(500)
+
+# Type "Actividad" (or the exact label in Spanish)
+page.fill("#cbFila_I", "Actividad")
+
+# Wait for the selection to register
+page.wait_for_timeout(500)
+
+# Press Enter to confirm selection
+page.keyboard.press("Enter")
+```
+
+```{python}
+# Columnas: Select "Unidad de Información"
+page.click("#cbColumna_I")
+page.wait_for_timeout(500)
+page.fill("#cbColumna_I", "Unidad de Información")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
+# Unidad de medida: Select "TEP"
+page.click("#cbUnidad_I")
+page.wait_for_timeout(500)
+page.fill("#cbUnidad_I", "tep")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
+# Wait for the export button to be enabled and clickable
+#page.wait_for_selector("input[value='Exportar Excel']:not([disabled])", timeout=60000)
+#print("Page has finished loading and Export to Excel is now enabled.")
+```
+Stopping here and returning on Monday. Still searching for a reliable way to determine when OLADE is done loading the data/buffering after these three steps.
+
+## Download Excel file
+
+## Close browser
+
+## Load data in R
