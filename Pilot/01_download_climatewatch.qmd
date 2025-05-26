@@ -1,0 +1,89 @@
+---
+title: "01_download_climatewatch"
+format: html
+editor: visual
+---
+
+```{r}
+library(tidyverse)
+library(reticulate)
+
+# Setup chunk for Quarto / R Markdown
+knitr::opts_knit$set(root.dir = "C:/Users/aathens/OneDrive - United Nations/Documentos/CEPALSTAT Data Process/cepalstat-data-upload")
+
+# Force use of known working path
+use_python("C:/Users/aathens/AppData/Local/anaconda3/python.exe", required = TRUE)
+
+# Double check config
+py_config()
+```
+
+## Set up for data download
+```{python}
+DOWNLOAD_PATH = os.path.join(os.getcwd(), "data/raw")
+os.makedirs(DOWNLOAD_PATH, exist_ok=True)
+```
+
+## Set up Playwright session
+```{python}
+from playwright.sync_api import sync_playwright
+p = sync_playwright().start()
+browser = p.chromium.launch(headless=False)
+context = browser.new_context(accept_downloads=True)
+page = context.new_page()
+```
+
+## Navigate to Climate Watch website for data download
+```{python}
+page.goto("https://www.climatewatchdata.org/ghg-emissions?breakBy=regions&gases=&sectors=")
+```
+
+Stopped here bc there were too many issues with the data download and it was taking too long, including: finding a way to reliably close dropdowns, closing out of alerts that pop up at the beginning, doing the actual download... (These are all things that can be fixed, but it's not the best use of time right now.)
+
+## Make data selections
+```{python}
+
+# ---- Data Source: Climate Watch
+page.locator("div.react-selectize-control").nth(0).click()
+page.locator("div.simple-option span", has_text="Climate Watch").click()
+
+
+# ---- Location: Latin America & Caribbean
+# Open the Location dropdown
+page.locator("#downshift-1-toggle-button").click()
+
+# Locate the text and click its associated checkbox
+label = page.locator("text=Latin America and Caribbean")
+checkbox = label.locator("..").locator("div.ghg-multiselect-dropdown-styles__checkbox__2Wxef")
+checkbox.click()
+
+# Deselect World (this doesn't work at the country-level breakout)
+world_option = page.locator("div.ghg-multiselect-dropdown-styles__menuOption__2jAMZ", has_text="World")
+world_option.scroll_into_view_if_needed()
+world_option.click()
+
+
+# ---- Sectors/Subsectors: Total excluding LUCF
+page.locator("div.cw__multi-level-dropdown-styles_selector").click()
+page.locator("text=Total excluding LUCF").click()
+
+
+# ---- Gases: All GHG
+page.locator("div.react-selectize-search-field-and-selected-values").nth(1).click()
+page.locator("text=All GHG").click()
+
+
+# ---- Calculation: per Capita
+page.locator("div.react-selectize-search-field-and-selected-values").nth(2).click()
+page.locator("text=Per Capita").click()
+
+
+# ---- Show data by: Countries
+page.locator("div.react-selectize-search-field-and-selected-values").nth(3).click()
+page.locator("div.simple-option span", has_text="Countries").click()
+```
+
+
+
+
+
