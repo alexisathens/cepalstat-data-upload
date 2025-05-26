@@ -4,6 +4,22 @@ format: html
 editor: visual
 ---
 
+This script works with the OLADE website.
+
+```{r}
+library(tidyverse)
+library(reticulate)
+
+# Setup chunk for Quarto / R Markdown
+knitr::opts_knit$set(root.dir = "C:/Users/aathens/OneDrive - United Nations/Documentos/CEPALSTAT Data Process/cepalstat-data-upload")
+
+# Force use of known working path
+use_python("C:/Users/aathens/AppData/Local/anaconda3/python.exe", required = TRUE)
+
+# Double check config
+py_config()
+```
+
 
 ## Set up Playwright session
 ```{python}
@@ -58,9 +74,24 @@ page.keyboard.press("Enter")
 #print("Page has finished loading and Export to Excel is now enabled.")
 ```
 Stopping here and returning on Monday. Still searching for a reliable way to determine when OLADE is done loading the data/buffering after these three steps.
+NEXT STEPS: before going any further on refining filters, test that playwright works with downloading the excel file properly. (this has been a sticking point for RSelenium/Macs in the past...)
 
 ## Download Excel file
 
+```{python}
+with page.expect_download() as download_info: # Tells playwright to watch for a download and catch download_info when it begins
+    page.click("text=Descargar excel")  # Clicks element with visible text that's exactly "Descargar excel"
+download = download_info.value # Retrieves download object
+download.save_as("Pilot/Data/Raw/olade_data.xlsx") # Saves downloaded file with new name
+#print("Download complete.")
+```
+
 ## Close browser
+
+```{python}
+browser.close()
+p.stop()
+```
+
 
 ## Load data in R
