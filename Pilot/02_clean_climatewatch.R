@@ -165,7 +165,7 @@ data %<>%
 data %<>%
   mutate(
     record_id = sprintf(
-      "r_%0*d",                 # Format string with dynamic width
+      "r%0*d",                 # Format string with dynamic width
       nchar(nrow(.)),           # Width = number of digits in row count
       row_number()              # Values to format
   ))
@@ -216,3 +216,10 @@ data %<>%
 dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
 write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
+
+
+### overwrite with new cloned indicator id
+# indicator_id <- 5578
+# data$indicator_id <- indicator_id
+# dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+# write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
