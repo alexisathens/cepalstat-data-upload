@@ -143,8 +143,9 @@ stopifnot(
 )
 # data %>% filter(if_any(ends_with("_id"), is.na)) %>% View()
 
+# ---- Format for Wasabi upload ----
 
-### Final format:
+## Final format:
 # record_id: identificador único de cada fila (String)
 # indicator_id: id del indicador (Integer)
 # source_id: id de la fuente (Integer)
@@ -152,11 +153,28 @@ stopifnot(
 # members_id: lista de ids de dimensiones separadas por coma (String)
 # value: valor numérico (Float)
 
+# Merge members_id field
+data %<>%
+  mutate(
+    members_id = data %>%
+      select(ends_with("_id")) %>%
+      pmap_chr(~ paste(c(...), collapse = ","))
+  ) %>% select(-ends_with("_id"), members_id)
+  
+# Create record_id field
+data %<>%
+  mutate(
+    record_id = sprintf(
+      "r_%0*d",                 # Format string with dynamic width
+      nchar(nrow(.)),           # Width = number of digits in row count
+      row_number()              # Values to format
+  ))
 
+# Create indicator_id field
+data %<>% 
+  mutate(indicator_id = indicator_id) # Inherit from manually defined vector
 
-
-
-# ---- Get sources
+## Get source_id from CEPALSTAT
 url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
 
 # Send request and parse JSON
@@ -169,10 +187,11 @@ sources_tbl <- result %>%
   pluck("body", "sources") %>%
   as_tibble()
 
-sources_id <- sources_tbl %>% pull(id)
+# Create source_id field
+data %<>% 
+  mutate(source_id = sources_tbl %>% pull(id))
 
-
-# ---- Get footnotes
+## Get footnotes_id from CEPALSTAT
 url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang=en&format=json")
 
 # Send request and parse JSON
@@ -185,10 +204,15 @@ footnotes_tbl <- result %>%
   pluck("body", "footnotes") %>%
   as_tibble()
 
-if(!is_empty(footnotes_tbl)){
-  footnotes_id <- footnotes_tbl %>% pull(id)
-} else {
-  footnotes_id <- ''
-}
+# Create footnotes_id field
+data %<>% 
+  mutate(footnotes_id = ifelse(!is_empty(footnotes_tbl), footnotes_tbl %>% pull(id), ''))
 
+# Select final columns
+data %<>% 
+  select(record_id, indicator_id, source_id, footnotes_id, members_id, value)
 
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
