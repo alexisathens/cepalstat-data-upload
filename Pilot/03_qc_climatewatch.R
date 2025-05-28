@@ -28,3 +28,23 @@ latest_file <- tibble(file = file_list) %>%
 # Read in csv
 data <- read_csv(latest_file)
 # will need to clean this further, but pause on it for now until the final format (compared to CEPALSTAT UI) is understood
+
+# ---- Download current public version of indicator ----
+
+# Build URL
+url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/data?lang=en&format=json")
+
+# Perform the request and parse JSON
+result <- request(url) %>%
+  req_perform() %>%
+  resp_body_json(simplifyDataFrame = TRUE)
+
+# Extract and flatten the data portion
+pub <- result$body$data %>%
+  as_tibble()
+
+pub
+
+
+# ---- Compare with internal data file ----
+# Perhaps create a separate script for this process
