@@ -5,6 +5,7 @@ library(httr2)
 library(jsonlite)
 library(glue)
 
+# Manually define
 indicator_id <- 4461
 iso_join_field <- "iso" # ex: name, iso, iso2
 
@@ -37,7 +38,7 @@ long %<>%
 # ---- Join CEPALSTAT dimensions ----
 
 ## Retrieve dimensions for specific indicator from CEPALSTAT json
-# Build URL
+# Build indicator URL
 url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=en&format=json&in=1&path=0")
 
 # Send request and parse JSON
@@ -46,10 +47,34 @@ result <- request(url) %>%
   resp_body_string() %>%
   fromJSON(flatten = TRUE)
 
-# Extract and process dimension info
-dims_tbl <- result %>%
+# Extract dimension IDs for the indicator
+indicator_dims <- result %>%
   pluck("body", "dimensions") %>%
-  as_tibble()
+  as_tibble() %>% 
+  select(name, id)
+
+# Initialize table storing full dimension info
+dims_tbl <- NULL
+
+# Gather all relevant dimension members
+for(dimension_id in indicator_dims$id) {
+  # Build dimension URL
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/dimensions/{dimension_id}")
+  
+  # Send request and parse JSON
+  result <- request(url) %>%
+    req_perform() %>%
+    resp_body_string() %>%
+    fromJSON(flatten = TRUE)
+  
+  # Extract and process dimension info
+  this_dims_tbl <- result %>%
+    pluck("body", "dimensions") %>%
+    as_tibble()
+  
+  # Bind to full table
+  dims_tbl %<>% bind_rows(this_dims_tbl)
+}
 
 ## Integrate iso codes into country dimension
 # Isolate country dimension
@@ -112,8 +137,11 @@ for(dim_name in names(dim_lookup_list)) {
   }
 }
 
-# Check there's no missing fields
-
+# Check all columns that end in "_id" for missing values
+stopifnot(
+  all(!is.na(data %>% select(ends_with("_id"))))
+)
+# data %>% filter(if_any(ends_with("_id"), is.na)) %>% View()
 
 
 ### Final format:
