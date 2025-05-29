@@ -93,6 +93,60 @@ if(nrow(dim_map) != ncol(data %>% select(starts_with("dim_")))) {
 data %<>%
   rename(!!!setNames(dim_map$dim_col.match, dim_map$dim_col))
 
+
+# ---- Get dimension member names ----
+
+# Initialize table storing full dimension info
+dims_tbl <- NULL
+
+# Gather all relevant dimension members
+for(dimension_id in str_remove(dim_map$dim_col, "dim_")) {
+  # Build dimension URL
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/dimensions/{dimension_id}")
+  
+  # Send request and parse JSON
+  result <- request(url) %>%
+    req_perform() %>%
+    resp_body_string() %>%
+    fromJSON(flatten = TRUE)
+  
+  # Extract and process dimension info
+  this_dims_tbl <- result %>%
+    pluck("body", "dimensions") %>%
+    as_tibble()
+  
+  # Bind to full table
+  dims_tbl %<>% bind_rows(this_dims_tbl)
+}
+
+# Loop through each dimension and join its labels
+for(i in 1:nrow(dims_tbl)) {
+  dim_id     <- dims_tbl$id[i]
+  dim_name   <- dims_tbl$name[i]
+  dim_members <- dims_tbl$members[[i]]  # the data frame of id–label mappings
+  dim_members$id <- as.character(dim_members$id)
+  
+  # The column name in `data` that holds this dim's values
+  col_id <- paste0("dim_", dim_id)
+  col_label <- paste0(col_id, "_label")
+  
+  if(col_id %in% names(data)) {
+    data %<>%
+      left_join(
+        dim_members %>%
+          select(id, name) %>%
+          rename(!!col_id := id, !!col_label := name),
+        by = col_id
+      )
+  }
+}
+
+rm(dim_id, dim_name, dim_members, col_id, col_label, dims_tbl, this_dims_tbl)
+
+data %<>% 
+  select(record_id, starts_with("dim_"), value)
+
+
 # ---- Create comparison data frame ----
 
 # Create a comparison df
