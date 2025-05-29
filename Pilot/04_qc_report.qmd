@@ -1,0 +1,124 @@
+---
+title: "QC Report for Indicator X"
+format: html
+params:
+  indicator_id: 4461
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+library(tidyverse)
+library(magrittr)
+library(readxl)
+library(glue)
+library(knitr)
+library(gt)
+library(reactable)
+
+indicator_id <- 4461
+comp <- read_csv(glue("Data/Checks/comp_id{indicator_id}.csv"))
+```
+
+Define public data, add time stamp?
+
+#### Check for missing values
+**Values in public data but not in current data:** this likely indicates an issue with the new data, as it's missing data points that were once available.
+
+```{r}
+comp %>% 
+  filter(flag_missing_entry == TRUE) %>% 
+  select(record_id, ends_with("label"), starts_with("value")) %>% 
+  gt() %>% 
+  tab_header(title = "Missing Values")
+```
+
+
+#### Check for new values
+**Values in current data but not in public data:** this informs what new dimension values have been added in the most recent data file. This could be a new year of data, or a new country's data has become available. This is likely not an issue, it's just informative.
+
+```{r}
+# Identify dimension and label columns dynamically
+dim_cols <- names(comp)[grepl("^dim_\\d+$", names(comp))]
+label_cols <- names(comp)[grepl("^dim_\\d+_label$", names(comp))]
+
+# Combine dimension IDs and labels
+all_dim_cols <- union(dim_cols, label_cols)
+
+# Get new entries
+new_entries <- comp %>% filter(flag_new_entry == TRUE)
+
+# Summarize new values by each dimension column
+new_dim_summary <- map_dfr(all_dim_cols, function(col_name) {
+  new_vals <- new_entries %>% distinct(.data[[col_name]]) # get new values just for single dimension
+  old_vals <- comp %>% filter(flag_new_entry == FALSE) %>% distinct(.data[[col_name]])
+
+  truly_new_vals <- anti_join(new_vals, old_vals, by = col_name)
+
+  tibble(
+    dimension = col_name,
+    new_values = paste(truly_new_vals[[col_name]], collapse = ", ")
+  )
+})
+
+# Clean up new dimension table
+new_dim_summary %<>%
+  mutate(base_dim = str_extract(dimension, "\\d+"),
+         type = if_else(str_detect(dimension, "_label$"), "label", "id")) %>%
+  select(base_dim, type, new_values) %>%
+  pivot_wider(names_from = type, values_from = new_values) %>%
+  rename(dimension_id = base_dim)
+
+# Format table
+new_dim_summary %>% 
+  arrange(desc(dimension_id)) %>% 
+  gt() %>%
+  tab_header(title = "New Dimension Values")
+```
+
+The full table of new entries:
+```{r}
+reactable(
+  comp %>%
+    filter(flag_new_entry == TRUE) %>%
+    select(record_id, ends_with("label"), value_data),
+  defaultPageSize = 10,
+  searchable = TRUE,
+  highlight = TRUE,
+  bordered = TRUE,
+  theme = reactableTheme(
+    style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
+  )
+)
+```
+
+
+#### Compare values
+**Values that are different in current and public data:** 
+
+```{r}
+comp %>%
+  summarise(
+    total = n(),
+    mean_diff = mean(abs_diff, na.rm = TRUE),
+    max_diff = max(abs_diff, na.rm = TRUE)
+  )
+```
+
+```{r}
+# Plot scatterplot of expected vs observed
+ggplot(comp, aes(x = value_pub, y = value_data)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Public Data", y = "Internal Data", title = "Value Comparison")
+```
+
+```{r}
+# Plot histogram of differences
+ggplot(comp, aes(x = abs_diff)) +
+  geom_histogram(bins = 30, fill = "steelblue") +
+  labs(title = "Absolute Differences", x = "Difference", y = "Count")
+```
+
