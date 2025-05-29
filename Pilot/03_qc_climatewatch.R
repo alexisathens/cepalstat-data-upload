@@ -95,13 +95,40 @@ data %<>%
 
 # ---- Create comparison data frame ----
 
-data %>% 
-  full_join(pub, by = dim_map$dim_col)
+# Create a comparison df
+comp <- data %>% 
+  full_join(pub, by = dim_map$dim_col, suffix = c("_data", "_pub"))
 
-dim_map$dim_col
+comp %<>% 
+  select(record_id, starts_with("dim_"), value_data, value_pub) %>% 
+  mutate(across(starts_with("value_"), as.numeric))
 
-data
-pub
+# Calculate absolute and relative differences
+comp %<>% 
+  mutate(abs_diff = abs(value_data - value_pub),
+         perc_diff = round((abs_diff / value_pub) * 100, 2))
+
+# Flag issues
+comp %<>%
+  mutate(
+    flag_large_diff = abs_diff > 0.1,  # adjust threshold as needed
+    flag_missing_data = is.na(value_data) | is.na(value_pub),
+    flag_new_entry = is.na(value_pub),     # entry exists in data but not in pub
+    flag_missing_entry = is.na(value_data) # exists in pub but not in data
+  )
+
+# Plot scatterplot of expected vs observed
+ggplot(comp, aes(x = value_pub, y = value_data)) +
+  geom_point(alpha = 0.6) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
+  labs(x = "Public Data", y = "Internal Data", title = "Value Comparison")
+
+# Plot histogram of differences
+ggplot(comp, aes(x = abs_diff)) +
+  geom_histogram(bins = 30, fill = "steelblue") +
+  labs(title = "Absolute Differences", x = "Difference", y = "Count")
+
+
 
 
 # ---- Compare with internal data file ----
