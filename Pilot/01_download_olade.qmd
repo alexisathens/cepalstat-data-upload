@@ -20,6 +20,26 @@ use_python("C:/Users/aathens/AppData/Local/anaconda3/python.exe", required = TRU
 py_config()
 ```
 
+## Define functions
+```{python}
+def wait_for_olade_data_ready(page):
+    """
+    Waits for OLADE report data to finish loading by monitoring known loading messages.
+    
+    Parameters:
+    - page: Playwright page object
+    """
+
+    # Wait for "Espere por favor..." to appear and disappear
+    espere_locator = page.locator("text=Espere por favor...")
+    espere_locator.wait_for(state="visible", timeout=10000)
+    espere_locator.wait_for(state="hidden", timeout=60000)
+    
+    # Then wait for "Cargando..." to disappear (don't wait to appear since it's typically fast)
+    cargando_locator = page.locator("text=Cargando...")
+    cargando_locator.wait_for(state="hidden", timeout=30000)
+```
+
 
 ## Set up Playwright session
 ```{python}
@@ -69,12 +89,9 @@ page.fill("#cbUnidad_I", "tep")
 page.wait_for_timeout(500)
 page.keyboard.press("Enter")
 
-# Wait for the export button to be enabled and clickable
-#page.wait_for_selector("input[value='Exportar Excel']:not([disabled])", timeout=60000)
-#print("Page has finished loading and Export to Excel is now enabled.")
+wait_for_olade_data_ready(page)
 ```
-Stopping here and returning on Monday. Still searching for a reliable way to determine when OLADE is done loading the data/buffering after these three steps.
-NEXT STEPS: before going any further on refining filters, test that playwright works with downloading the excel file properly. (this has been a sticking point for RSelenium/Macs in the past...)
+
 
 ## Download Excel file
 
