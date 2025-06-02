@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-This script works with the OLADE website.
+This script downloads data from the OLADE website and saves the raw files at Pilot/Data/Raw/olade.
 
 ```{r}
 library(tidyverse)
