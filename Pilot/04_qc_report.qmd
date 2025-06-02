@@ -27,6 +27,56 @@ date_stamp <- Sys.Date()
 glue("This report compares internal and public CEPALSTAT data for indicator {indicator_id} as of {date_stamp}.")
 ```
 
+
+## Check for new and missing values
+
+Compare country/year data available in internal data set versus public CEPALSTAT data.
+
+```{r}
+all_combinations <- expand_grid(
+  country = countries$name[which(countries$ECLAC == TRUE)],
+  year = min(comp$dim_29117_label):max(comp$dim_29117_label)
+)
+
+coverage_check <- all_combinations %>%
+  left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
+  mutate(
+    status = case_when(
+      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+      is.na(value_data) ~ "Old Only",
+      is.na(value_pub) ~ "New Only",
+      TRUE ~ "Present in Both"
+    )
+  )
+
+```
+
+```{r}
+p <- coverage_check %>% 
+  mutate(country = factor(country, levels = sort(unique(country), decreasing = TRUE))) %>% 
+  ggplot(aes(x = year, y = country, fill = status,
+             text = paste("Country:", country, "<br>Year:", year, "<br>Status:", status))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c(
+    "Missing in Both" = "white",
+    "Old Only" = "red",
+    "New Only" = "blue",
+    "Present in Both" = "gray60"
+  )) +
+  labs(
+    title = "Coverage Status by Country and Year",
+    x = NULL, y = NULL, fill = "Data Coverage"
+  ) +
+  theme_minimal() +
+  theme(
+    #legend.position = "bottom"
+  )
+
+ggplotly(p, tooltip = "text")
+```
+
+
+
 #### Check for missing values
 **Values in public data but not in current data:** this likely indicates an issue with the new data, as it's missing data points that were once available.
 
@@ -98,7 +148,7 @@ reactable(
 ```
 
 
-#### Compare values
+## Compare values
 **These are values that are different in current and public data.** Small revisions to the series are to be expected, but larger backwards revisions should be inspected more closely.
 
 Some summary statistics (Note threshold is defined as a change of more than 20% in the data):
@@ -197,57 +247,28 @@ tests %>%
 
 (To be refined further with more examples.)
 
-Look at data present, missing, and added by country:
-
-```{r}
-all_combinations <- expand_grid(
-  country = countries$name[which(countries$ECLAC == TRUE)],
-  year = min(comp$dim_29117_label):max(comp$dim_29117_label)
-)
-
-coverage_check <- all_combinations %>%
-  left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
-  mutate(
-    status = case_when(
-      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
-      is.na(value_data) ~ "Old Only",
-      is.na(value_pub) ~ "New Only",
-      TRUE ~ "Present in Both"
-    )
-  )
-
-```
-
-
-```{r}
-p <- coverage_check %>% 
-  mutate(country = factor(country, levels = sort(unique(country), decreasing = TRUE))) %>% 
-  ggplot(aes(x = year, y = country, fill = status,
-             text = paste("Country:", country, "<br>Year:", year, "<br>Status:", status))) +
-  geom_tile(color = "white") +
-  scale_fill_manual(values = c(
-    "Missing in Both" = "white",
-    "Old Only" = "red",
-    "New Only" = "blue",
-    "Present in Both" = "gray60"
-  )) +
-  labs(
-    title = "Coverage Status by Country and Year",
-    x = NULL, y = NULL, fill = "Data Coverage"
-  ) +
-  theme_minimal() +
-  theme(
-    #legend.position = "bottom"
-  )
-
-ggplotly(p, tooltip = "text")
-```
-
-
-
 Country time series:
 
 ```{r}
+p <- ggplot(comp, aes(
+  x = as.numeric(dim_29117_label),
+  y = value_data,
+  group = dim_208_label,
+  color = dim_208_label,  # for visual separation
+  text = paste("Country:", dim_208_label,
+               "<br>Year:", dim_29117_label,
+               "<br>Value:", round(value_data, 2))
+)) +
+  geom_line(alpha = 0.7) +
+  scale_color_viridis_d(option = "D") +
+  labs(
+    title = "Country Time Series – Internal Data",
+    x = "Year", y = "Value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")  # hide legend
 
+# Convert to interactive plot
+ggplotly(p, tooltip = "text")
 ```
 
