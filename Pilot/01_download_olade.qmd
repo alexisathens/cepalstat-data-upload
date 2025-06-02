@@ -1,5 +1,5 @@
 ---
-title: "01_download"
+title: "01_download_olade"
 format: html
 editor: visual
 ---
@@ -40,6 +40,42 @@ def wait_for_olade_data_ready(page):
     cargando_locator.wait_for(state="hidden", timeout=30000)
 ```
 
+```{python}
+def select_report_fields(page, fila, columna, unidad):
+    """
+    Applies the three core filters: Fila, Columna, Unidad de medida.
+    - fila_value: e.g. "Unidad de Información"
+    - columna_value: e.g. "Energético"
+    - unidad_value: e.g. "Unidad de origen"
+    """
+    # Fila
+    page.click("#cbFila_I")
+    page.wait_for_timeout(500)
+    page.fill("#cbFila_I", fila)
+    page.wait_for_timeout(500)
+    page.keyboard.press("Enter")
+
+    # Columna
+    page.click("#cbColumna_I")
+    page.wait_for_timeout(500)
+    page.fill("#cbColumna_I", columna)
+    page.wait_for_timeout(500)
+    page.keyboard.press("Enter")
+
+    # Unidad de medida
+    page.click("#cbUnidad_I")
+    page.wait_for_timeout(500)
+    page.locator(f"text='{unidad}'").nth(0).click()
+    page.wait_for_timeout(500)
+    page.keyboard.press("Enter")
+
+```
+
+```{python}
+import os
+DOWNLOAD_DIR = "Data/Raw/olade"
+```
+
 
 ## Set up Playwright session
 ```{python}
@@ -52,125 +88,127 @@ page = context.new_page()
 
 ## Navigate to OLADE website for data download
 ```{python}
-page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
+url = "https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1"
+page.goto(url)
 ```
 
-## Choose Reporte selectors
-
-File 1:
+Test:
 ```{python}
-# Files: Select Unidad de Información
-page.click("#cbFila_I")
-page.wait_for_timeout(500)
-page.fill("#cbFila_I", "Unidad de Información")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
-
-# Columnas: Select Energético
-page.click("#cbColumna_I")
-page.wait_for_timeout(500)
-page.fill("#cbColumna_I", "Energético")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
-
-# Unidad de medida: Select "TEP"
-page.click("#cbUnidad_I")
-page.wait_for_timeout(500)
-page.locator("text='tep'").nth(0).click()
-page.wait_for_timeout(500)
+# # Files: Select Unidad de Información
+# page.click("#cbFila_I")
+# page.wait_for_timeout(500)
+# page.fill("#cbFila_I", "Unidad de Información")
+# page.wait_for_timeout(500)
 # page.keyboard.press("Enter")
-```
-
-
-File 2:
-```{python}
-page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
-
-# Files: Select Actividad
-page.click("#cbFila_I")
-page.wait_for_timeout(500)
-page.fill("#cbFila_I", "Actividad")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
-
-# Columnas: Select "Unidad de Información"
-page.click("#cbColumna_I")
-page.wait_for_timeout(500)
-page.fill("#cbColumna_I", "Unidad de Información")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
-
-# Unidad de medida: Select "10^3 bep"
-page.click("#cbUnidad_I")
-page.wait_for_timeout(500)
-page.locator("text='10³ bep'").nth(0).click()
-page.wait_for_timeout(500)
+# 
+# # Columnas: Select Energético
+# page.click("#cbColumna_I")
+# page.wait_for_timeout(500)
+# page.fill("#cbColumna_I", "Energético")
+# page.wait_for_timeout(500)
 # page.keyboard.press("Enter")
+# 
+# # Unidad de medida: Select "TEP"
+# page.click("#cbUnidad_I")
+# page.wait_for_timeout(500)
+# page.locator("text='tep'").nth(0).click()
+# page.wait_for_timeout(500)
+# # page.keyboard.press("Enter")
+
+
 ```
 
-File 3:
 
-
-File 4:
+## Select Filters & Download
 ```{python}
-page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
+page.goto(url)
 
-# Files: Select Unidad de Información
-page.click("#cbFila_I")
-page.wait_for_timeout(500)
-page.fill("#cbFila_I", "Unidad de Información")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
+select_report_fields(
+    page,
+    fila="Unidad de Información",
+    columna="Energético",
+    unidad="10³ bep"
+)
 
-# Columnas: Select Tiempo
-page.click("#cbColumna_I")
-page.wait_for_timeout(500)
-page.fill("#cbColumna_I", "Tiempo")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
+wait_for_olade_data_ready(page)
 
-# Unidad de medida: Select "Unidad de origen"
-page.click("#cbUnidad_I")
-page.wait_for_timeout(500)
-page.locator("text='Unidad de origen'").nth(0).click()
-page.wait_for_timeout(500)
-# page.keyboard.press("Enter")
-```
-
-File 5:
-```{python}
-page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
-
-# Files: Select Unidad de Información
-page.click("#cbFila_I")
-page.wait_for_timeout(500)
-page.fill("#cbFila_I", "Unidad de Información")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
-
-# Columnas: Select Energético
-page.click("#cbColumna_I")
-page.wait_for_timeout(500)
-page.fill("#cbColumna_I", "Energético")
-page.wait_for_timeout(500)
-page.keyboard.press("Enter")
-
-# Unidad de medida: Select "Unidad de origen"
-page.click("#cbUnidad_I")
-page.wait_for_timeout(500)
-page.locator("text='Unidad de origen'").nth(0).click()
-page.wait_for_timeout(500)
-# page.keyboard.press("Enter")
-```
-
-## Download Excel file
-
-```{python}
 with page.expect_download() as download_info: # Tells playwright to watch for a download and catch download_info when it begins
     page.click("text=Descargar excel")  # Clicks element with visible text that's exactly "Descargar excel"
 download = download_info.value # Retrieves download object
-download.save_as("Pilot/Data/Raw/olade_data.xlsx") # Saves downloaded file with new name
-#print("Download complete.")
+download.save_as(os.path.join(DOWNLOAD_DIR, "01_unidad_energetico_bep.xlsx")) # Saves downloaded file with new name
+```
+
+```{python}
+page.goto(url)
+
+select_report_fields(
+    page,
+    fila="Unidad de Información",
+    columna="Tiempo",
+    unidad="Unidad de origen"
+)
+
+wait_for_olade_data_ready(page)
+
+with page.expect_download() as download_info: # Tells playwright to watch for a download and catch download_info when it begins
+    page.click("text=Descargar excel")  # Clicks element with visible text that's exactly "Descargar excel"
+download = download_info.value # Retrieves download object
+download.save_as(os.path.join(DOWNLOAD_DIR, "02_unidad_tiempo_origen.xlsx")) # Saves downloaded file with new name
+```
+
+```{python}
+page.goto(url)
+
+select_report_fields(
+    page,
+    fila="Actividad",
+    columna="Unidad de Información",
+    unidad="tep"
+)
+
+wait_for_olade_data_ready(page)
+
+with page.expect_download() as download_info: # Tells playwright to watch for a download and catch download_info when it begins
+    page.click("text=Descargar excel")  # Clicks element with visible text that's exactly "Descargar excel"
+download = download_info.value # Retrieves download object
+download.save_as(os.path.join(DOWNLOAD_DIR, "03_actividad_unidad_tep.xlsx")) # Saves downloaded file with new name
+```
+
+```{python}
+page.goto(url)
+
+select_report_fields(
+    page,
+    fila="Unidad de Información",
+    columna="Energético",
+    unidad="Unidad de origen"
+)
+
+wait_for_olade_data_ready(page)
+
+with page.expect_download() as download_info: # Tells playwright to watch for a download and catch download_info when it begins
+    page.click("text=Descargar excel")  # Clicks element with visible text that's exactly "Descargar excel"
+download = download_info.value # Retrieves download object
+download.save_as(os.path.join(DOWNLOAD_DIR, "04_unidad_energetico_origen.xlsx")) # Saves downloaded file with new name
+```
+
+Ask Alberto what the filters for 4150 are supposed to be -
+```{python}
+# page.goto(url)
+# 
+# select_report_fields(
+#     page,
+#     fila="Unidad de Información",
+#     columna="Energético",
+#     unidad="Unidad de origen"
+# )
+# 
+# wait_for_olade_data_ready(page)
+# 
+# with page.expect_download() as download_info: # Tells playwright to watch for a download and catch download_info when it begins
+#     page.click("text=Descargar excel")  # Clicks element with visible text that's exactly "Descargar excel"
+# download = download_info.value # Retrieves download object
+# download.save_as(os.path.join(DOWNLOAD_DIR, "05_unidad_energetico_origen.xlsx")) # Saves downloaded file with new name
 ```
 
 ## Close browser
@@ -179,6 +217,3 @@ download.save_as("Pilot/Data/Raw/olade_data.xlsx") # Saves downloaded file with 
 browser.close()
 p.stop()
 ```
-
-
-## Load data in R
