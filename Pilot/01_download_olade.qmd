@@ -55,26 +55,44 @@ page = context.new_page()
 page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
 ```
 
-## Interact with dropdowns / filters
-Select Files > Actividad
+## Choose Reporte selectors
+
+File 1:
 ```{python}
-# Click the "Filas" dropdown (the custom input)
+# Files: Select Unidad de Información
 page.click("#cbFila_I")
-
-# Wait for dropdown to open (brief pause)
 page.wait_for_timeout(500)
-
-# Type "Actividad" (or the exact label in Spanish)
-page.fill("#cbFila_I", "Actividad")
-
-# Wait for the selection to register
+page.fill("#cbFila_I", "Unidad de Información")
 page.wait_for_timeout(500)
-
-# Press Enter to confirm selection
 page.keyboard.press("Enter")
+
+# Columnas: Select Energético
+page.click("#cbColumna_I")
+page.wait_for_timeout(500)
+page.fill("#cbColumna_I", "Energético")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
+# Unidad de medida: Select "TEP"
+page.click("#cbUnidad_I")
+page.wait_for_timeout(500)
+page.locator("text='tep'").nth(0).click()
+page.wait_for_timeout(500)
+# page.keyboard.press("Enter")
 ```
 
+
+File 2:
 ```{python}
+page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
+
+# Files: Select Actividad
+page.click("#cbFila_I")
+page.wait_for_timeout(500)
+page.fill("#cbFila_I", "Actividad")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
 # Columnas: Select "Unidad de Información"
 page.click("#cbColumna_I")
 page.wait_for_timeout(500)
@@ -82,16 +100,68 @@ page.fill("#cbColumna_I", "Unidad de Información")
 page.wait_for_timeout(500)
 page.keyboard.press("Enter")
 
-# Unidad de medida: Select "TEP"
+# Unidad de medida: Select "10^3 bep"
 page.click("#cbUnidad_I")
 page.wait_for_timeout(500)
-page.fill("#cbUnidad_I", "tep")
+page.locator("text='10³ bep'").nth(0).click()
+page.wait_for_timeout(500)
+# page.keyboard.press("Enter")
+```
+
+File 3:
+
+
+File 4:
+```{python}
+page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
+
+# Files: Select Unidad de Información
+page.click("#cbFila_I")
+page.wait_for_timeout(500)
+page.fill("#cbFila_I", "Unidad de Información")
 page.wait_for_timeout(500)
 page.keyboard.press("Enter")
 
-wait_for_olade_data_ready(page)
+# Columnas: Select Tiempo
+page.click("#cbColumna_I")
+page.wait_for_timeout(500)
+page.fill("#cbColumna_I", "Tiempo")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
+# Unidad de medida: Select "Unidad de origen"
+page.click("#cbUnidad_I")
+page.wait_for_timeout(500)
+page.locator("text='Unidad de origen'").nth(0).click()
+page.wait_for_timeout(500)
+# page.keyboard.press("Enter")
 ```
 
+File 5:
+```{python}
+page.goto("https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1")
+
+# Files: Select Unidad de Información
+page.click("#cbFila_I")
+page.wait_for_timeout(500)
+page.fill("#cbFila_I", "Unidad de Información")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
+# Columnas: Select Energético
+page.click("#cbColumna_I")
+page.wait_for_timeout(500)
+page.fill("#cbColumna_I", "Energético")
+page.wait_for_timeout(500)
+page.keyboard.press("Enter")
+
+# Unidad de medida: Select "Unidad de origen"
+page.click("#cbUnidad_I")
+page.wait_for_timeout(500)
+page.locator("text='Unidad de origen'").nth(0).click()
+page.wait_for_timeout(500)
+# page.keyboard.press("Enter")
+```
 
 ## Download Excel file
 
