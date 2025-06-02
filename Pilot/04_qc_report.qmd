@@ -17,12 +17,15 @@ library(glue)
 library(knitr)
 library(gt)
 library(reactable)
+library(plotly)
 
 indicator_id <- 4461
 comp <- read_csv(glue("Data/Checks/comp_id{indicator_id}.csv"))
-```
+countries <- read_csv("../Data/iso_codes.csv")
 
-Define public data, add time stamp?
+date_stamp <- Sys.Date()
+glue("This report compares internal and public CEPALSTAT data for indicator {indicator_id} as of {date_stamp}.")
+```
 
 #### Check for missing values
 **Values in public data but not in current data:** this likely indicates an issue with the new data, as it's missing data points that were once available.
@@ -84,7 +87,7 @@ reactable(
   comp %>%
     filter(flag_new_entry == TRUE) %>%
     select(record_id, ends_with("label"), value_data),
-  defaultPageSize = 10,
+  defaultPageSize = 5,
   searchable = TRUE,
   highlight = TRUE,
   bordered = TRUE,
@@ -96,29 +99,155 @@ reactable(
 
 
 #### Compare values
-**Values that are different in current and public data:** 
+**These are values that are different in current and public data.** Small revisions to the series are to be expected, but larger backwards revisions should be inspected more closely.
 
+Some summary statistics (Note threshold is defined as a change of more than 20% in the data):
 ```{r}
 comp %>%
   summarise(
-    total = n(),
-    mean_diff = mean(abs_diff, na.rm = TRUE),
-    max_diff = max(abs_diff, na.rm = TRUE)
+    total_rows = n(),
+    percent_missing = round(mean(flag_missing_entry) * 100, 1),
+    percent_new = round(mean(flag_new_entry) * 100, 1),
+    mean_abs_diff = round(mean(abs_diff, na.rm = TRUE), 1),
+    mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1),
+    perc_diff_above_threshold = round(mean(flag_large_diff, na.rm = T) * 100, 1)
+  ) %>% 
+  gt() %>% 
+  tab_header(title = "Summary Statistics")
+```
+
+
+This graph compares relative (percent difference) changes in data points between the current internal data set and the public data set:
+
+```{r}
+(ggplot(comp %>% filter(flag_some_na == FALSE), aes(
+  x = as.numeric(dim_29117_label),
+  y = perc_diff,
+  text = paste("Record ID:", record_id,
+               "<br>Country:", dim_208_label,
+               "<br>Year:", dim_29117_label,
+               "<br>% Diff:", perc_diff)
+)) +
+  annotate("rect", xmin = -Inf, xmax = Inf, ymin = -0.2, ymax = 0.2, alpha = 0.1, fill = "blue") +
+  geom_hline(yintercept = c(-20, 20), color = "gray60", linetype = "dashed") +
+  geom_point(aes(color = abs(perc_diff) > 20), alpha = 0.7) +
+  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red"), guide = "none") +
+  labs(title = "Percent Difference by Year",
+       subtitle = "Red points are outside of the ±20% tolerance threshold",
+       x = "Year",
+       y = "Percent Difference") +
+  theme_minimal() +
+  theme(legend.position = "none")
+) %>%
+  ggplotly(tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Percent Difference (%) by Year",
+        '<br><sup>Red points are outside of the ±20% tolerance threshold</sup>'
+      )
+    )
   )
 ```
 
+
+
+This graph compares the values between the current internal data set and the public data set:
 ```{r}
-# Plot scatterplot of expected vs observed
-ggplot(comp, aes(x = value_pub, y = value_data)) +
+# Create static ggplot
+p <- ggplot(comp, aes(x = value_pub, y = value_data,
+                      text = paste("Record ID:", record_id,
+                                   "<br>Country:", dim_208_label,
+                                   "<br>Year:", dim_29117_label,
+                                   "<br>Public:", value_pub,
+                                   "<br>Internal:", value_data))) +
   geom_point(alpha = 0.6) +
   geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "red") +
   labs(x = "Public Data", y = "Internal Data", title = "Value Comparison")
+
+# Convert to interactive plot with tooltips
+ggplotly(p, tooltip = "text")
 ```
 
+
+#### Detect outliers
+
+(To be refined further with more examples.)
+- Could look at absolute values in addition to relative values
+
 ```{r}
-# Plot histogram of differences
-ggplot(comp, aes(x = abs_diff)) +
-  geom_histogram(bins = 30, fill = "steelblue") +
-  labs(title = "Absolute Differences", x = "Difference", y = "Count")
+## Run z-score tests
+
+# Calculate z score based on percent difference between current and public
+tests <- comp %>% 
+  filter(flag_some_na == FALSE) %>% 
+  mutate(z_perc = scale(perc_diff),
+         outlier_perc = ifelse(abs(z_perc) > 3, TRUE, FALSE))
+
+# Table of flagged outliers
+tests %>%
+  filter(outlier_perc == TRUE) %>%
+  select(record_id, dim_208_label, dim_29117_label, value_data, value_pub, perc_diff, z_perc) %>%
+  arrange(desc(abs(z_perc))) %>%
+  gt() %>%
+  tab_header(title = "Z-Score Outliers (|z| > 3)")
+```
+
+#### Country-level analysis
+
+(To be refined further with more examples.)
+
+Look at data present, missing, and added by country:
+
+```{r}
+all_combinations <- expand_grid(
+  country = countries$name[which(countries$ECLAC == TRUE)],
+  year = min(comp$dim_29117_label):max(comp$dim_29117_label)
+)
+
+coverage_check <- all_combinations %>%
+  left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
+  mutate(
+    status = case_when(
+      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+      is.na(value_data) ~ "Old Only",
+      is.na(value_pub) ~ "New Only",
+      TRUE ~ "Present in Both"
+    )
+  )
+
+```
+
+
+```{r}
+p <- coverage_check %>% 
+  mutate(country = factor(country, levels = sort(unique(country), decreasing = TRUE))) %>% 
+  ggplot(aes(x = year, y = country, fill = status,
+             text = paste("Country:", country, "<br>Year:", year, "<br>Status:", status))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = c(
+    "Missing in Both" = "white",
+    "Old Only" = "red",
+    "New Only" = "blue",
+    "Present in Both" = "gray60"
+  )) +
+  labs(
+    title = "Coverage Status by Country and Year",
+    x = NULL, y = NULL, fill = "Data Coverage"
+  ) +
+  theme_minimal() +
+  theme(
+    #legend.position = "bottom"
+  )
+
+ggplotly(p, tooltip = "text")
+```
+
+
+
+Country time series:
+
+```{r}
+
 ```
 
