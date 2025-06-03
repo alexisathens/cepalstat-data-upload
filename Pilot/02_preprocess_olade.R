@@ -69,6 +69,30 @@ grupo1 %<>%
   pivot_longer(cols = -c(Country, Years),
                names_to = "Type")
 
+# Store types for reference
+energy_types <- unique(grupo1$Type)
+
 
 # ---- 2487: primary & secondary energy supply ----
 
+i2487 <- grupo1
+
+get_indicator_dimensions(2487)
+#d2487 <- get_dimension_table(44966)
+d2487 <- get_published_dimension_table(2487, 44966, lang = "es")
+
+
+### CONTINUE TOMORROW: 
+# - Alberto thinks wind and solar may have been added into "other primary", double check if these totals to verify
+# - Decisions on whether to keep more types and integrate into CEPALSTAT
+# - Check whether totals were calculated by retained types or using the OLADE fields
+
+i2487 %>% 
+  filter(!Type %in% d2487$name) %>% 
+  distinct(Type)
+
+# Remove total rows
+i2487 %>% 
+  filter(!Type %in% c("Total primarias", "Total secundarias", "Total"))
+
+# Remove total rows
