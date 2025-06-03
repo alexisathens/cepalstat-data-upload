@@ -41,7 +41,33 @@ grupo1 %<>%
   filter(Country != "Series de oferta y demanda")
 
 # Filter countries
+iso <- read_csv("../Data/iso_codes.csv")
 
+iso %<>% 
+  filter(!is.na(spanish_short)) %>% 
+  select(name, spanish_short)
+
+# Check what countries don't match over that should
+grupo1 %>% 
+  filter(!Country %in% iso$spanish_short) %>% 
+  distinct(Country)
+
+# Force OLADE names to match CEPALSTAT names
+grupo1 %<>% 
+  mutate(Country = case_when(
+    Country == "Grenada" ~ "Granada",
+    Country == "Trinidad & Tobago" ~ "Trinidad y Tabago",
+    TRUE ~ Country
+  ))
+
+# Filter on CEPALSTAT countries only
+grupo1 %<>% 
+  filter(Country %in% iso$spanish_short)
+
+# Make data long
+grupo1 %<>% 
+  pivot_longer(cols = -c(Country, Years),
+               names_to = "Type")
 
 
 # ---- 2487: primary & secondary energy supply ----
