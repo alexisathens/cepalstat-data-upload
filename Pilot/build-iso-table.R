@@ -18,23 +18,26 @@ iso %<>%
 my_iso <- read_excel("C:/Users/aathens/OneDrive - United Nations/Documentos/LAC_countries.xlsx")
 
 my_iso %<>% 
-  select(iso3, spanish)
+  select(iso3, english:spanish_short)
 
 iso %<>% 
   left_join(my_iso, by = "iso3") %>% 
-  mutate(ECLAC = ifelse(!is.na(spanish), TRUE, FALSE)) %>% 
-  select(-spanish)
+  mutate(ECLAC = ifelse(!is.na(spanish), TRUE, FALSE))
 
 # create entry for world
-world <- tibble(name = "World", iso2 = NA_character_, iso3 = "WLD", numeric = NA_real_, ECLAC = FALSE)
+world <- tibble(name = "World", iso2 = NA_character_, iso3 = "WLD", numeric = NA_real_, 
+                english = "World", english_short = "World", spanish = "Mundo", spanish_short = "Mundo",
+                ECLAC = FALSE)
 
 iso %<>% bind_rows(world)
 
 # Create another iso with full WORLD spelled out (also common)
 iso %<>% 
-  mutate(iso = ifelse(name == "World", "WORLD", iso3)) %>% 
-  select(name, iso2, iso3, iso, numeric, ECLAC)
+  mutate(iso = ifelse(name == "World", "WORLD", iso3)) 
 
+# Organize rows
+iso %<>% 
+  select(name, iso2, iso3, iso, numeric, ECLAC, everything())
 
 
 # Export spreadsheet
