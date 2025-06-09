@@ -1,110 +1,51 @@
 
 ind <- 1754
-lang <- "es"
+data <- i1754
 
 ### function:
 
-# ---- Join CEPALSTAT dimensions ----
+library(writexl)
 
-# Retrieve dimensions for indicator
-indicator_dims <- get_indicator_dimensions(ind, lang)
+# ---- Get CEPALSTAT dimensions ----
 
-# ## Retrieve dimensions for specific indicator from CEPALSTAT json
-# # Build indicator URL
-# url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=en&format=json&in=1&path=0")
-# 
-# # Send request and parse JSON
-# result <- request(url) %>%
-#   req_perform() %>%
-#   resp_body_string() %>%
-#   fromJSON(flatten = TRUE)
-# 
-# # Extract dimension IDs for the indicator
-# indicator_dims <- result %>%
-#   pluck("body", "dimensions") %>%
-#   as_tibble() %>% 
-#   select(name, id)
+# Retrieve dimension list for indicator
+dims_list <- get_indicator_dimensions(ind)
 
 # Initialize table storing full dimension info
 dims_tbl <- NULL
 
 # Gather all relevant dimension members
-for(dimension_id in indicator_dims$id) {
+for(this_dim_id in dims_list$id) {
   
-  this_dims_tbl <- get_dimension_table(dimension_id, lang)
-  
-  # # Build dimension URL
-  # url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/dimensions/{dimension_id}")
-  # 
-  # # Send request and parse JSON
-  # result <- request(url) %>%
-  #   req_perform() %>%
-  #   resp_body_string() %>%
-  #   fromJSON(flatten = TRUE)
-  # 
-  # # Extract and process dimension info
-  # this_dims_tbl <- result %>%
-  #   pluck("body", "dimensions") %>%
-  #   as_tibble()
+  this_dims_tbl <- get_dimension_table(this_dim_id)
   
   # Bind to full table
   dims_tbl %<>% bind_rows(this_dims_tbl)
 }
 
-# ## Integrate iso codes into country dimension
-# # Isolate country dimension
-# dim_country <- dims_tbl %>% 
-#   filter(dim_id == 208) # filter on country dimension code
-# 
-# # Get iso map
-# iso_map <- read_csv("../Data/iso_codes.csv")
-# 
-# # Join iso info to country dim
-# dim_country %<>% 
-#   left_join(iso_map)
-# 
-# # Replace country dimension with df including iso codes
-# dims_tbl <- dims_tbl %>%
-#   mutate(
-#     members = if_else(
-#       name == "Country__ESTANDAR",
-#       list(dim_country),  # updated with ISO codes
-#       members)
-#   )
-# 
-# rm(iso_map, dim_country)
+dims_tbl
 
-## Join dimensions to long data
-# Get a named list of dimension tables
-dim_lookup_list <- dims_tbl %>%
-  mutate(name = make.names(name)) %>%  # Make names safe for list indexing
-  select(name, members) %>%
-  deframe()  # creates a named list
-
-# Initialize the main data frame that you'll add columns to
-data <- long
+# ---- Join CEPALSTAT dimensions ----
 
 # Loop through each dimension and join its ID column to the main data
-for(dim_name in names(dim_lookup_list)) {
+for(this_dim_name in unique(dims_tbl$dim_name)) {
   
-  # Get the lookup table for this dimension
-  dim_df <- dim_lookup_list[[dim_name]]
-  
-  # Define dim join key
-  dim_join_key <- ifelse(dim_name == "Country__ESTANDAR", iso_join_field, "name")
-  
-  # Define data join key
-  data_join_key <- str_remove(dim_name, "__.*")
+  # Get the table for this dimension
+  this_dim_df <- dims_tbl %>% filter(dim_name == this_dim_name)
+
+  # Get data join key from dimension name
+  this_join_key <- str_remove(this_dim_name, "__.*")
   
   # Join only if the main data includes this field
-  if(data_join_key %in% names(data)) {
+  if(this_join_key %in% names(data)) {
     
-    data %<>%
+    data %<>% 
       left_join(
-        dim_df %>% select(!!sym(dim_join_key), id), # get key and id from dimension df
-        by = setNames(dim_join_key, data_join_key)   # joins like by = c("Years" = "name")
-      ) %>%
-      rename(!!paste0(data_join_key, "_id") := id)
+        this_dim_df %>% select(name, id), 
+        by = setNames("name", this_join_key)
+      ) %>% 
+      rename(!!paste0(this_join_key, "_id") := id)
+    
   } else { 
     stop(glue("Column '{data_join_key}' not found in main data.")) # throw an error if key isn't found
   }
@@ -188,4 +129,6 @@ data %<>%
 # Create a date/time stamp for export version control
 dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
-write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
+# write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
+
+write_xlsx(data, glue("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx"))

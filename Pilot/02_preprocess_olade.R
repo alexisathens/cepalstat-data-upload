@@ -149,14 +149,28 @@ grupo4 %<>%
     TRUE ~ Country
   ))
 
-# Filter on CEPALSTAT countries only
+# Join English names
 grupo4 %<>% 
-  filter(Country %in% iso$spanish_short)
+  left_join(iso, by = c("Country" = "spanish_short"))
+
+# Double check non-matches
+grupo4 %>% 
+  filter(is.na(name)) %>% 
+  distinct(Country)
+
+# Filter on iso matches only
+grupo4 %<>% 
+  filter(!is.na(name)) %>% 
+  select(-Country) %>% 
+  select(Country = name, everything())
 
 
 ### grupo-specific cleaning:
 
 grupo4 %<>% rename(value = Electricidad)
+
+# Format value as numeric
+grupo4 %<>% mutate(value = as.numeric(value))
 
 
 
