@@ -45,6 +45,29 @@ get_indicator_dimensions <- function(indicator_id, lang = "en") {
     as_tibble() %>% 
     select(name, id)
   
+  # Change dimension labels to English if in Spanish
+  if(lang == "es") {
+    # Build indicator URL
+    url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=en&format=json&in=1&path=0")
+    
+    # Send request and parse JSON
+    result <- request(url) %>%
+      req_perform() %>%
+      resp_body_string() %>%
+      fromJSON(flatten = TRUE)
+    
+    # Extract dimension IDs for the indicator
+    indicator_info_en <- result %>%
+      pluck("body", "dimensions") %>%
+      as_tibble() %>% 
+      select(name, id)
+    
+    # Overwrite name to be in English for joining purposes
+    indicator_info %<>% 
+      full_join(indicator_info_en, by = "id", suffix = c(".es", "")) %>% 
+      select(name, id)
+  }
+  
   return(indicator_info)
 }
 
