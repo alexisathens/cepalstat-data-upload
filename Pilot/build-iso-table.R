@@ -22,12 +22,15 @@ my_iso %<>%
 
 iso %<>% 
   left_join(my_iso, by = "iso3") %>% 
-  mutate(ECLAC = ifelse(!is.na(spanish), TRUE, FALSE))
+  mutate(ECLAC = ifelse(!is.na(spanish), "Y", ""))
+
+iso %<>% 
+  mutate(region = ifelse(is.na(numeric), "Y", ""))
 
 # create entry for world
 world <- tibble(name = "World", iso2 = NA_character_, iso3 = "WLD", numeric = NA_real_, 
                 english = "World", english_short = "World", spanish = "Mundo", spanish_short = "Mundo",
-                ECLAC = FALSE)
+                ECLAC = "", region = "Y")
 
 iso %<>% bind_rows(world)
 
@@ -37,7 +40,7 @@ iso %<>%
 
 # Organize rows
 iso %<>% 
-  select(name, iso2, iso3, iso, numeric, ECLAC, everything())
+  select(name, iso2, iso3, iso, numeric, ECLAC, region, everything())
 
 
 # Export spreadsheet
