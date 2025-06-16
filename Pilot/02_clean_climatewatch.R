@@ -12,8 +12,8 @@ iso_join_field <- "iso" # ex: name, iso, iso2
 # ---- Transform raw data to long format ----
 
 ## Download country and regional data
-c <- read_csv("pilot/data/raw/ghg-emissions_country.csv")
-r <- read_csv("pilot/data/raw/ghg-emissions_region.csv")
+c <- read_csv("Data/Raw/ghg-emissions_country.csv")
+r <- read_csv("Data/Raw/ghg-emissions_region.csv")
 
 c %<>% filter(iso != "Data source")
 r %<>% filter(iso != "Data source")
@@ -84,7 +84,7 @@ dim_country <- dims_tbl %>%
   .[[1]]
 
 # Get iso map
-iso_map <- read_csv("Data/iso_codes.csv")
+iso_map <- read_csv("../Data/iso_codes.csv")
 
 # Join iso info to country dim
 dim_country %<>% 
@@ -215,8 +215,11 @@ data %<>%
 # Create a date/time stamp for export version control
 dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
-write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
+write_csv(data, glue("Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
 
+library(writexl)
+
+write_xlsx(data, glue("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx"))
 
 ### overwrite with new cloned indicator id
 # indicator_id <- 5578
