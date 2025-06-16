@@ -19,7 +19,7 @@ library(gt)
 library(reactable)
 library(plotly)
 
-indicator_id <- 4461
+indicator_id <- 1754
 comp <- read_csv(glue("Data/Checks/comp_id{indicator_id}.csv"))
 countries <- read_csv("../Data/iso_codes.csv")
 
@@ -34,7 +34,7 @@ Compare country/year data available in internal data set versus public CEPALSTAT
 
 ```{r}
 all_combinations <- expand_grid(
-  country = countries$name[which(countries$ECLAC == TRUE)],
+  country = countries$name[which(countries$ECLAC == "Y")],
   year = min(comp$dim_29117_label):max(comp$dim_29117_label)
 )
 
