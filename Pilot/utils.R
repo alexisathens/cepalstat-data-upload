@@ -15,6 +15,27 @@ get_dimension_table <- function(dimension_id, lang = "en") {
     pluck("body", "dimensions") %>%
     as_tibble()
   
+  if(lang == "es") { ## make a mini-function out of this...
+    # Build dimension URL
+    url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/dimensions/{dimension_id}?lang=en")
+    
+    # Send request and parse JSON
+    result <- request(url) %>%
+      req_perform() %>%
+      resp_body_string() %>%
+      fromJSON(flatten = TRUE)
+    
+    # Extract and process dimension info
+    dim_info_en <- result %>%
+      pluck("body", "dimensions") %>%
+      as_tibble()
+    
+    # Overwrite names to be in English for joining purposes
+    dim_info %<>% 
+      full_join(dim_info_en, by = c("id"), suffix = c(".es", "")) %>% 
+      select(!ends_with(".es"))
+  }
+  
   # Extract members info
   dim_members <- dim_info$members[[1]] %>% 
     as_tibble()
@@ -25,6 +46,7 @@ get_dimension_table <- function(dimension_id, lang = "en") {
            dim_name = dim_info$name[1])
   
   return(dim_members)
+  
 }
 
 get_indicator_dimensions <- function(indicator_id, lang = "en") {
