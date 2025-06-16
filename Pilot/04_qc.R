@@ -101,8 +101,12 @@ data %<>%
 comp <- data %>% 
   full_join(pub, by = dim_map$dim_col, suffix = c("_data", "_pub"))
 
+# Give any new entries that exist in public but not in internal a record id
 comp %<>% 
-  select(value_data, value_pub, starts_with("dim_")) %>% 
+  mutate(record_id = ifelse(is.na(record_id), paste0("p", str_pad(row_number(), 4, pad = "0")), record_id))
+
+comp %<>% 
+  select(record_id, value_data, value_pub, starts_with("dim_")) %>% 
   mutate(across(starts_with("value_"), as.numeric))
 
 
@@ -142,8 +146,8 @@ for(i in 1:nrow(dims_tbl)) {
   col_id <- paste0("dim_", dim_id)
   col_label <- paste0(col_id, "_label")
   
-  if(col_id %in% names(data)) {
-    data %<>%
+  if(col_id %in% names(comp)) {
+    comp %<>%
       left_join(
         dim_members %>%
           select(id, name) %>%
@@ -155,19 +159,11 @@ for(i in 1:nrow(dims_tbl)) {
 
 rm(dim_id, dim_name, dim_members, col_id, col_label, dims_tbl, this_dims_tbl)
 
-data %<>% 
-  select(record_id, starts_with("dim_"), value)
-
-
-# ---- Create comparison data frame ----
-
-# Create a comparison df
-comp <- data %>% 
-  full_join(pub, by = dim_map$dim_col, suffix = c("_data", "_pub"))
-
 comp %<>% 
-  select(record_id, starts_with("dim_"), value_data, value_pub) %>% 
-  mutate(across(starts_with("value_"), as.numeric))
+  select(record_id, starts_with("dim_"), starts_with("value"))
+
+
+# ---- Build comparison indicators ----
 
 # Calculate absolute and relative differences
 comp %<>% 
