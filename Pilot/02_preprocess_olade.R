@@ -167,11 +167,15 @@ grupo4 %<>%
 
 ### grupo-specific cleaning:
 
+# How to identify value field generally?
+
 grupo4 %<>% rename(value = Electricidad)
 
 # Format value as numeric
 grupo4 %<>% mutate(value = as.numeric(value))
 
+# Filter NAs of countries missing older values
+grupo4 %<>% filter(!is.na(value))
 
 
 # ---- 1754: consumption of electric power ----
