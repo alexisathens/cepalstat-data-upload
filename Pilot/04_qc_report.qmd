@@ -1,13 +1,27 @@
 ---
-title: "QC Report for Indicator X"
-format: html
+title: "Quality Check Report: `r params$indicator_name`"
+format: 
+  html:
+    toc: true
+    toc_float: true
+    code_folding: show
+    theme: cosmo
 params:
-  indicator_id: 4461
+  indicator_id: 1754
+  indicator_name: "Indicator Name"
+  data_source: "Data Source"
+  comp_data_path: "Data/Checks/comp_id1754.csv"
 execute:
   echo: false
   warning: false
   message: false
 ---
+
+<!--
+This report summarizes the quality checks performed to validate updated internal data for environmental indicators.
+It compares internal data with the publicly available CEPALSTAT dataset to assess completeness, consistency, and statistical plausibility.
+Non-technical readers are encouraged to read the section summaries for guidance on how to interpret results.
+-->
 
 ```{r setup}
 library(tidyverse)
@@ -18,19 +32,73 @@ library(knitr)
 library(gt)
 library(reactable)
 library(plotly)
+library(scales)
+library(lubridate)
+library(DT)
+library(scales)
 
-indicator_id <- 1754
-comp <- read_csv(glue("Data/Checks/comp_id{indicator_id}.csv"))
+# Load data
+indicator_id <- params$indicator_id
+comp <- read_csv(params$comp_data_path)
 countries <- read_csv("../Data/iso_codes.csv")
 
+# Metadata
 date_stamp <- Sys.Date()
-glue("This report compares internal and public CEPALSTAT data for indicator {indicator_id} as of {date_stamp}.")
+indicator_name <- params$indicator_name
+data_source <- params$data_source
+
+# Create summary info
+summary_info <- list(
+  "Report Date" = format(date_stamp, "%d %B %Y"),
+  "Indicator ID" = indicator_id,
+  "Indicator Name" = indicator_name,
+  "Data Source" = data_source,
+  "Time Coverage" = paste(min(comp$dim_29117_label), "-", max(comp$dim_29117_label)),
+  "Number of Countries" = n_distinct(comp$dim_208_label),
+  "Total Records" = nrow(comp)
+)
 ```
 
+## Executive Summary
 
-## Check for new and missing values
+This section summarizes key metadata about the indicator and dataset under review.
+It helps contextualize the scope of the data quality checks.
 
-Compare country/year data available in internal data set versus public CEPALSTAT data.
+```{r}
+# Create summary table
+summary_df <- tibble(
+  Metric = names(summary_info),
+  Value = unlist(summary_info)
+)
+
+summary_df %>%
+  gt() %>%
+  tab_header(
+    title = "QC Report Information",
+    subtitle = glue("Generated on {format(date_stamp, '%d %B %Y')}")
+  ) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "#f7f7f7"),
+      cell_text(weight = "bold")
+    ),
+    locations = cells_column_labels()
+  )
+```
+
+## Completeness Check
+
+### Data Completeness by Country and Year
+
+This section verifies whether the internal dataset covers the same country-year combinations as the public CEPALSTAT version. 
+It flags:
+- "Missing in Both" (no data in either source)
+- "Old Only" (data was removed or lost in the new version)
+- "New Only" (new values added that were not in the original public version)
+- "Present in Both" (overlap between datasets)
+
+The visual below shows data coverage by country and year. Gaps or additions should be reviewed for justification.
+
 
 ```{r}
 all_combinations <- expand_grid(
@@ -39,135 +107,118 @@ all_combinations <- expand_grid(
 )
 
 coverage_check <- all_combinations %>%
-  left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
-  mutate(
-    status = case_when(
-      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
-      is.na(value_data) ~ "Old Only",
-      is.na(value_pub) ~ "New Only",
-      TRUE ~ "Present in Both"
-    )
-  )
+  left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>% 
+  mutate(status = ifelse(is.na(status), "Missing in Both", status))
+
+# Remove sub-regions if not in data set
+regional_status <- coverage_check$status[which(coverage_check$country %in% c("Latin America", "Caribbean", "South America", "Central America"))]
+
+if(all(regional_status == "Missing in Both")) {
+  coverage_check %<>%
+    filter(!country %in% c("Latin America", "Caribbean", "South America", "Central America"))
+}
 
 ```
 
 ```{r}
 p <- coverage_check %>% 
-  mutate(country = factor(country, levels = sort(unique(country), decreasing = TRUE))) %>% 
+  mutate(
+    country = factor(country, levels = sort(unique(country), decreasing = TRUE)),
+    status = factor(status, 
+                   levels = c("Present in Both", "New Only", "Old Only", "Missing in Both"),
+                   labels = c("Present in Both", "New Only", "Old Only", "Missing in Both"))
+  ) %>% 
   ggplot(aes(x = year, y = country, fill = status,
-             text = paste("Country:", country, "<br>Year:", year, "<br>Status:", status))) +
+             text = paste("Country:", country, 
+                         "<br>Year:", year, 
+                         "<br>Status:", status))) +
   geom_tile(color = "white") +
   scale_fill_manual(values = c(
     "Missing in Both" = "white",
-    "Old Only" = "red",
-    "New Only" = "blue",
-    "Present in Both" = "gray60"
+    "Old Only" = "#ff9999",
+    "New Only" = "#99ccff",
+    "Present in Both" = "#e6e6e6"
   )) +
   labs(
-    title = "Coverage Status by Country and Year",
-    x = NULL, y = NULL, fill = "Data Coverage"
+    title = "Data Availability by Country and Year",
+    subtitle = "Shows data availability in both internal and public datasets",
+    x = NULL, 
+    y = NULL, 
+    fill = "Data Coverage"
   ) +
   theme_minimal() +
   theme(
-    #legend.position = "bottom"
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
   )
 
-ggplotly(p, tooltip = "text")
-```
-
-
-
-#### Check for missing values
-**Values in public data but not in current data:** this likely indicates an issue with the new data, as it's missing data points that were once available.
-
-```{r}
-comp %>% 
-  filter(flag_missing_entry == TRUE) %>% 
-  select(record_id, ends_with("label"), starts_with("value")) %>% 
-  gt() %>% 
-  tab_header(title = "Missing Values")
-```
-
-
-#### Check for new values
-**Values in current data but not in public data:** this informs what new dimension values have been added in the most recent data file. This could be a new year of data, or a new country's data has become available. This is likely not an issue, it's just informative.
-
-```{r}
-# Identify dimension and label columns dynamically
-dim_cols <- names(comp)[grepl("^dim_\\d+$", names(comp))]
-label_cols <- names(comp)[grepl("^dim_\\d+_label$", names(comp))]
-
-# Combine dimension IDs and labels
-all_dim_cols <- union(dim_cols, label_cols)
-
-# Get new entries
-new_entries <- comp %>% filter(flag_new_entry == TRUE)
-
-# Summarize new values by each dimension column
-new_dim_summary <- map_dfr(all_dim_cols, function(col_name) {
-  new_vals <- new_entries %>% distinct(.data[[col_name]]) # get new values just for single dimension
-  old_vals <- comp %>% filter(flag_new_entry == FALSE) %>% distinct(.data[[col_name]])
-
-  truly_new_vals <- anti_join(new_vals, old_vals, by = col_name)
-
-  tibble(
-    dimension = col_name,
-    new_values = paste(truly_new_vals[[col_name]], collapse = ", ")
+ggplotly(p, tooltip = "text") %>%
+  layout(
+    legend = list(orientation = "h", y = -0.2)
   )
-})
-
-# Clean up new dimension table
-new_dim_summary %<>%
-  mutate(base_dim = str_extract(dimension, "\\d+"),
-         type = if_else(str_detect(dimension, "_label$"), "label", "id")) %>%
-  select(base_dim, type, new_values) %>%
-  pivot_wider(names_from = type, values_from = new_values) %>%
-  rename(dimension_id = base_dim)
-
-# Format table
-new_dim_summary %>% 
-  arrange(desc(dimension_id)) %>% 
-  gt() %>%
-  tab_header(title = "New Dimension Values")
-```
-
-The full table of new entries:
-```{r}
-reactable(
-  comp %>%
-    filter(flag_new_entry == TRUE) %>%
-    select(record_id, ends_with("label"), value_data),
-  defaultPageSize = 5,
-  searchable = TRUE,
-  highlight = TRUE,
-  bordered = TRUE,
-  theme = reactableTheme(
-    style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
-  )
-)
 ```
 
 
-## Compare values
-**These are values that are different in current and public data.** Small revisions to the series are to be expected, but larger backwards revisions should be inspected more closely.
+**Add check for missing records when there are additional dimensions
 
-Some summary statistics (Note threshold is defined as a change of more than 20% in the data):
+Insert line plots with old data in black and new data points in blue?
+
+## Change Detection
+
+This section analyzes changes between values that are available in both the public and internal data sets.
+Key statistics include mean and absolute differences, and the share of values with changes greater than ±20%.
+Red dots in the plots identify values that exceed this threshold.
+This helps identify outliers, input errors, or significant data revisions that may need explanation.
+
+### Summary Statistics
+
 ```{r}
-comp %>%
+summary_info <- comp %>%
+  filter(status == "Present in Both") %>%
   summarise(
-    total_rows = n(),
-    percent_missing = round(mean(flag_missing_entry) * 100, 1),
-    percent_new = round(mean(flag_new_entry) * 100, 1),
-    mean_abs_diff = round(mean(abs_diff, na.rm = TRUE), 1),
-    mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1),
-    perc_diff_above_threshold = round(mean(flag_large_diff, na.rm = T) * 100, 1)
-  ) %>% 
-  gt() %>% 
-  tab_header(title = "Summary Statistics")
+    "Mean % difference" = round(mean(perc_diff, na.rm = TRUE), 1),
+    "% of values with large differences (<20%)" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
+    "Mean absolute difference" = round(mean(abs_diff, na.rm = TRUE), 1),
+    "Median reported value" = round(median(value_data, na.rm = TRUE), 1),
+    "Minimum reported value" = round(min(value_data, na.rm = TRUE), 1),
+    "Maximum reported value" = round(max(value_data, na.rm = TRUE), 1)
+  )
+
+# Convert to long format
+summary_df <- tibble(
+  Metric = names(summary_info),
+  Value = unlist(summary_info)
+)
+
+# Format with % where applicable
+summary_df <- summary_df %>%
+  mutate(
+    Value = case_when(
+      grepl("%", Metric) ~ percent(as.numeric(Value) / 100, accuracy = 0.1),
+      TRUE ~ as.character(Value)
+    )
+  )
+
+# Render with gt
+summary_df %>%
+  gt() %>%
+  tab_header(
+    title = "Change Detection Summary",
+    subtitle = "Key metrics comparing values present in both internal and public datasets"
+  ) %>%
+  tab_style(
+    style = list(
+      cell_fill(color = "#f7f7f7"),
+      cell_text(weight = "bold")
+    ),
+    locations = cells_column_labels()
+  )
 ```
 
 
-This graph compares relative (percent difference) changes in data points between the current internal data set and the public data set:
+### Relative Difference Comparison
 
 ```{r}
 (ggplot(comp %>% filter(flag_some_na == FALSE), aes(
@@ -200,9 +251,8 @@ This graph compares relative (percent difference) changes in data points between
   )
 ```
 
+### Absolute Difference Comparison
 
-
-This graph compares the values between the current internal data set and the public data set:
 ```{r}
 # Create static ggplot
 p <- ggplot(comp, aes(x = value_pub, y = value_data,
@@ -220,10 +270,32 @@ ggplotly(p, tooltip = "text")
 ```
 
 
-#### Detect outliers
 
-(To be refined further with more examples.)
-- Could look at absolute values in addition to relative values
+### Above Threshold Table
+
+This is a list of records with more than a 20% difference between the updated internal and public CEPALSTAT data.
+
+```{r}
+reactable(
+  comp %>%
+    filter(flag_large_diff == TRUE) %>%
+    select(record_id, ends_with("label"), value_data, value_pub, perc_diff) %>% 
+    mutate(value_data = round(value_data, 1), value_pub = round(value_pub, 1)),
+  defaultPageSize = 5,
+  searchable = TRUE,
+  highlight = TRUE,
+  bordered = TRUE,
+  theme = reactableTheme(
+    style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
+  )
+)
+```
+
+## Outlier Detection
+
+This section provides statistical outlier detection based on z-scores.
+It flags any records where the percent difference is more than 3 standard deviations from the mean. 
+These could indicate outliers or extreme changes in the data.
 
 ```{r}
 ## Run z-score tests
@@ -235,13 +307,24 @@ tests <- comp %>%
          outlier_perc = ifelse(abs(z_perc) > 3, TRUE, FALSE))
 
 # Table of flagged outliers
-tests %>%
+comp %>% 
+  filter(flag_some_na == FALSE) %>% 
+  mutate(z_perc = round(scale(perc_diff), 1),
+         outlier_perc = ifelse(abs(z_perc) > 3, TRUE, FALSE),
+         value_data = round(value_data, 1), value_pub = round(value_pub, 1)) %>%
   filter(outlier_perc == TRUE) %>%
   select(record_id, dim_208_label, dim_29117_label, value_data, value_pub, perc_diff, z_perc) %>%
   arrange(desc(abs(z_perc))) %>%
-  gt() %>%
-  tab_header(title = "Z-Score Outliers (|z| > 3)")
+  reactable(
+    defaultPageSize = 10,
+    bordered = TRUE,
+    highlight = TRUE,
+    theme = reactableTheme(
+      style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
+    )
+  )
 ```
+
 
 #### Country-level analysis
 
@@ -272,3 +355,159 @@ p <- ggplot(comp, aes(
 ggplotly(p, tooltip = "text")
 ```
 
+```{r}
+library(ggplot2)
+library(plotly)
+
+# Base ggplot
+p <- ggplot(comp, aes(
+  x = as.numeric(dim_29117_label),  # Year
+  y = value_data,
+  group = dim_208_label,            # Country
+  color = flag_new_entry,
+  text = paste(
+    "Country:", dim_208_label,
+    "<br>Year:", dim_29117_label,
+    "<br>Value:", round(value_data, 1),
+    "<br>New entry:", flag_new_entry
+  )
+)) +
+  geom_line(aes(group = dim_208_label), alpha = 0.5, color = "gray50") +
+  geom_point(size = 1, alpha = 0.7) +
+  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
+  labs(
+    title = "Time Series by Country",
+    subtitle = "Red points indicate new entries not present in public dataset",
+    x = "Year",
+    y = "Value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Convert to interactive plot
+ggplotly(p, tooltip = "text")
+
+```
+
+
+```{r}
+library(ggplot2)
+library(plotly)
+
+p2 <- ggplot(comp, aes(
+  x = as.numeric(dim_29117_label),  # Year
+  y = value_data,
+  group = dim_208_label,            # Country
+  color = flag_large_diff,
+  text = paste(
+    "Country:", dim_208_label,
+    "<br>Year:", dim_29117_label,
+    "<br>Value:", round(value_data, 1),
+    "<br>% Difference:", round(perc_diff, 1),
+    "<br>Above Threshold:", flag_large_diff
+  )
+)) +
+  geom_line(aes(group = dim_208_label), alpha = 0.5, color = "gray50") +
+  geom_point(size = 2, alpha = 0.9) +
+  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
+  labs(
+    title = "Time Series by Country",
+    subtitle = "Red points indicate values with >20% difference from public data",
+    x = "Year",
+    y = "Internal Value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggplotly(p2, tooltip = "text")
+
+```
+
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(plotly)
+
+# Step 1: Identify countries with at least one large difference
+countries_with_flags <- comp %>%
+  filter(flag_large_diff == TRUE) %>%
+  distinct(dim_208_label) %>%
+  pull()
+
+# Step 2: Filter full dataset to only include those countries
+comp_flagged <- comp %>%
+  filter(dim_208_label %in% countries_with_flags)
+
+# Step 3: Create the plot
+p3 <- ggplot(comp_flagged, aes(
+  x = as.numeric(dim_29117_label),  # Year
+  y = value_data,
+  group = dim_208_label,
+  color = flag_large_diff,
+  text = paste(
+    "Country:", dim_208_label,
+    "<br>Year:", dim_29117_label,
+    "<br>Value:", round(value_data, 1),
+    "<br>% Difference:", round(perc_diff, 1),
+    "<br>Above Threshold:", flag_large_diff
+  )
+)) +
+  geom_line(aes(group = dim_208_label), alpha = 0.5, color = "gray50") +
+  geom_point(size = 2, alpha = 0.9) +
+  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
+  labs(
+    title = "Countries with at Least One Large Difference",
+    subtitle = "Only countries with at least one value >20% difference are shown",
+    x = "Year",
+    y = "Internal Value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+ggplotly(p3, tooltip = "text")
+
+```
+
+
+
+## Appendix
+
+### Data Dictionary
+
+```{r}
+# Create data dictionary
+data_dict <- tibble(
+  Field = names(comp),
+  Description = c(
+    "Unique record identifier",
+    "Country code",
+    "Country name",
+    "Year code",
+    "Year name",
+    "Value in internal dataset",
+    "Value in public dataset",
+    "Absolute difference between values",
+    "Percent difference between values",
+    "Flag for missing entries",
+    "Flag for new entries",
+    "Flag for large differences",
+    "Flag for NA values",
+    "Comparison status"
+  )
+)
+
+data_dict %>%
+  gt() %>%
+  tab_header(
+    title = "Data Dictionary",
+    subtitle = "Description of fields in the comparison dataset"
+  )
+```
+
+### Technical Details
+
+```{r}
+# Session information
+sessionInfo()
+```
