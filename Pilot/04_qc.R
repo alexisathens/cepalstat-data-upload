@@ -179,6 +179,15 @@ comp %<>%
     flag_some_na = is.na(value_data) | is.na(value_pub) # either new or missing entry
   )
 
+# Label data availability status
+comp %<>% 
+  mutate(status = case_when(
+    is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+    is.na(value_data) ~ "Old Only",
+    is.na(value_pub) ~ "New Only",
+    TRUE ~ "Present in Both"
+  ))
+
 # Export comp file for now
 write_csv(comp, glue("Data/Checks/comp_id{indicator_id}.csv"))
 
