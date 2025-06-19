@@ -6,6 +6,7 @@ format:
     toc_float: true
     code_folding: show
     theme: cosmo
+    math: "mathjax"
 params:
   indicator_id: 1754
   indicator_name: "Indicator Name"
@@ -59,7 +60,7 @@ summary_info <- list(
 )
 ```
 
-## Executive Summary
+## Summary Info
 
 This section summarizes key metadata about the indicator and dataset under review.
 It helps contextualize the scope of the data quality checks.
@@ -90,7 +91,7 @@ summary_df %>%
 
 ### Data Completeness by Country and Year
 
-This section verifies whether the internal dataset covers the same country-year combinations as the public CEPALSTAT version. 
+*This section verifies whether the internal dataset covers the same country-year combinations as the public CEPALSTAT version.* 
 It flags:
 
 - "Missing in Both" (no data in either source)
@@ -169,9 +170,9 @@ ggplotly(p, tooltip = "text") %>%
 
 Insert line plots with old data in black and new data points in blue?
 
-## Value Comparisons
+## Value Comparisons (Between Data Sets)
 
-This section analyzes changes between values that are available in both the public and internal data sets.
+*This section analyzes changes between values that are available in both the public and internal data sets.*
 Key statistics include mean and absolute differences, and the share of values with changes greater than ±20%.
 Red dots in the plots identify values that exceed this threshold.
 
@@ -328,14 +329,31 @@ ggplotly(p, tooltip = "text") %>%
 
 ### Above Threshold Table
 
-This is a list of records with more than a 20% difference between the updated internal and public CEPALSTAT data.
+This table displays records where the updated internal values differ from the public CEPALSTAT data by more than 20%, corresponding to the red points in the plots above.
+
+Rows with a z-score (`z_perc_diff`) greater than 3 are statistically significant outliers, indicating values that deviate strongly from the overall distribution and may require further review or explanation.
 
 ```{r}
 reactable(
   comp %>%
+    mutate(
+      z_perc_diff = as.numeric(scale(perc_diff)),  # force numeric vector
+      value_data = round(value_data, 1),
+      value_pub = round(value_pub, 1),
+      perc_diff = round(perc_diff, 1),
+      z_perc_diff = round(z_perc_diff, 1)
+    ) %>%
     filter(flag_large_diff == TRUE) %>%
-    select(record_id, ends_with("label"), value_data, value_pub, perc_diff) %>% 
-    mutate(value_data = round(value_data, 1), value_pub = round(value_pub, 1)),
+    arrange(desc(z_perc_diff)) %>%
+    select(
+      record_id,
+      dim_208_label,
+      dim_29117_label,
+      value_data,
+      value_pub,
+      perc_diff,
+      z_perc_diff
+    ),
   defaultPageSize = 5,
   searchable = TRUE,
   highlight = TRUE,
@@ -344,13 +362,89 @@ reactable(
     style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
   )
 )
+
 ```
 
-## Outlier Detection
+## Outlier Detection (Within Internal Data Set)
 
-This section provides statistical outlier detection based on z-scores.
-It flags any records where the percent difference is more than 3 standard deviations from the mean. 
-These could indicate outliers or extreme changes in the data.
+*This section evaluates the quality of the internal data independently by providing statistical outlier detection based on z-scores.* It flags any records where the percent difference is more than 3 standard deviations from the mean, which could indicate outliers or extreme changes in the data.
+
+A z-score measures how far a value is from the average, in terms of standard deviations. It’s calculated as: 
+
+<div style="text-align:center">
+
+**z = (x − μ) / σ**
+
+</div>
+
+where: x is the value of interest, μ is the mean of the group, and σ is the standard deviation.
+
+Typical interpretations:
+
+- A z-score of 0 means the value is at the mean
+
+- A z-score of ±1 is within the typical range (68% of data is within 1 s.d.)
+
+- A z-score of ±2 is unusual (95% of data is within 2 s.d.)
+
+- A z-score of ±3 or more is considered an outlier (99.7% of data is within 3 s.d.)
+
+
+### Global Quality Checks
+
+Calculate global z-score, highlight any other structural issues (implausible values?)
+
+<!--
+Future additions:
+- Could create checks to highlight any other potential structural issues such as implausible or negative values, or duplicates, or NAs
+-->
+
+```{r}
+
+```
+
+
+
+
+### Country-Level Quality Checks
+
+Calculate country-level z scores
+
+<!--
+Future additions:
+- Could create checks to highlight any sharp year-over-year changes by looking at % change from lag(year)
+- Could create checks for any flat values with 0 standard deviation over time
+-->
+
+
+```{r}
+comp %>%
+  filter(flag_some_na == FALSE) %>%
+  group_by(dim_208_label) %>%  # per country
+  mutate(
+    z_value = scale(value_data),
+    outlier_value = abs(z_value) > 2
+  ) %>%
+  ungroup() %>%
+  filter(outlier_value == TRUE) %>%
+  select(record_id, dim_208_label, dim_29117_label, value_data, z_value) %>%
+  arrange(desc(abs(z_value)))
+
+
+comp %>%
+  filter(flag_some_na == FALSE) %>%
+  group_by(dim_208_label) %>%  # per country
+  mutate(
+    z_value = scale(value_pub),
+    outlier_value = abs(z_value) > 2
+  ) %>%
+  ungroup() %>%
+  filter(outlier_value == TRUE) %>%
+  select(record_id, dim_208_label, dim_29117_label, value_pub, z_value) %>%
+  arrange(desc(abs(z_value)))
+
+```
+
 
 ```{r}
 ## Run z-score tests
