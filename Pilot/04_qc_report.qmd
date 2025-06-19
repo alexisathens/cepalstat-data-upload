@@ -535,7 +535,8 @@ p3 <- comp %>%
     text = paste(
       "Country:", dim_208_label,
       "<br>Year:", dim_29117_label,
-      "<br>Value:", round(value_data, 1),
+      "<br>Internal Value:", round(value_data, 1),
+      "<br>Public Value:", round(value_pub, 1),
       "<br>Public % Difference:", round(perc_diff, 1),
       "<br>Country Z-Score:", round(z_within_country, 1),
       "<br>Above % Threshold:", flag_large_diff
