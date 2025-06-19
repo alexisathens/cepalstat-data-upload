@@ -165,10 +165,68 @@ ggplotly(p, tooltip = "text") %>%
   )
 ```
 
+<!--
+Need to add check for missing records when there are additional dimensions, or aggregate records
+-->
 
-**Add check for missing records when there are additional dimensions**
 
-Insert line plots with old data in black and new data points in blue?
+### New Values Time Series
+
+This section visualizes the values of the new data points. Whether any of the new data points for the new year are anomalous can be explored in the Country-Level Analysis section.
+
+
+```{r}
+library(ggplot2)
+library(plotly)
+
+p <- ggplot(comp, aes(
+  x = as.numeric(dim_29117_label),  # Year
+  y = value_data,
+  group = dim_208_label,            # Country
+  color = flag_new_entry,
+  text = paste(
+    "Country:", dim_208_label,
+    "<br>Year:", dim_29117_label,
+    "<br>Value:", round(value_data, 1),
+    "<br>New Entry:", flag_new_entry
+  )
+)) +
+  # Base lines by country
+  geom_line(alpha = 0.4, color = "#e6e6e6") +
+  
+  # Highlight new entries
+  geom_point(size = 1.3, alpha = 0.8) +
+  
+  # Color scheme for new entries
+  scale_color_manual(values = c("FALSE" = "gray80", "TRUE" = "#99ccff")) +
+  
+  # Labels and theme
+  labs(
+    title = "Time Series by Country",
+    subtitle = "Red points indicate new entries not present in public dataset",
+    x = "Year",
+    y = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "none"
+  )
+
+# Interactive conversion
+ggplotly(p, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Time Series by Country",
+        '<br><sup>Blue points indicate new entries not present in public dataset</sup>'
+      )
+    )
+  )
+
+```
+
 
 ## Value Comparisons (Between Data Sets)
 
@@ -272,7 +330,7 @@ ggplotly(p, tooltip = "text")
 
 ### Relative Difference Comparison
 
-This section compares relative differences between the public and internal data. A percent change is calculated between the public data and internal data, and the data is displayed in country/year pairs. The ±20% tolerance threshold band is colored a light green. Large relative changes above the 20% changes are colored red.
+This section compares relative differences between the public and internal data. A percent change is calculated between the public data and internal data, and the data is displayed in country/year pairs. The ±20% tolerance threshold band is colored a light green. Large relative changes above 20% are colored red.
 
 ```{r}
 year_min <- min(as.numeric(comp$dim_29117_label), na.rm = TRUE)
@@ -327,7 +385,7 @@ ggplotly(p, tooltip = "text") %>%
 
 
 
-### Above Threshold Table
+### Percent Difference Threshold Table
 
 This table displays records where the updated internal values differ from the public CEPALSTAT data by more than 20%, corresponding to the red points in the plots above.
 
@@ -365,7 +423,7 @@ reactable(
 
 ```
 
-## Outlier Detection (Within Internal Data Set)
+## Outlier Detection (Within Data Set)
 
 *This section evaluates the quality of the internal data independently by providing statistical outlier detection based on z-scores.* It flags any records where the percent difference is more than 3 standard deviations from the mean, which could indicate outliers or extreme changes in the data.
 
@@ -389,26 +447,17 @@ Typical interpretations:
 
 - A z-score of ±3 or more is considered an outlier (99.7% of data is within 3 s.d.)
 
-
-### Global Quality Checks
-
-Calculate global z-score, highlight any other structural issues (implausible values?)
-
 <!--
 Future additions:
+Could add GLOBAL outlier detection that:
+- Calculates global z-scores, though summary rows like LAC would have to be removed
 - Could create checks to highlight any other potential structural issues such as implausible or negative values, or duplicates, or NAs
 -->
 
-```{r}
 
-```
+### Country-Level Analysis
 
-
-
-
-### Country-Level Quality Checks
-
-Calculate country-level z scores
+The following checks analyze the internal data within each country set. This helps differentiate any significant country-level anomalies that may be less apparent than at the global scale.
 
 <!--
 Future additions:
@@ -416,205 +465,114 @@ Future additions:
 - Could create checks for any flat values with 0 standard deviation over time
 -->
 
+#### Z-Score Threshold Table
+
+This calculates z-scores within each country series to flag major deviations in the individual country series. This displays all entries with a z-score greater than 3. If no entries are shown, then all of the values within each country seem reasonable.
 
 ```{r}
-comp %>%
-  filter(flag_some_na == FALSE) %>%
-  group_by(dim_208_label) %>%  # per country
-  mutate(
-    z_value = scale(value_data),
-    outlier_value = abs(z_value) > 2
-  ) %>%
-  ungroup() %>%
-  filter(outlier_value == TRUE) %>%
-  select(record_id, dim_208_label, dim_29117_label, value_data, z_value) %>%
-  arrange(desc(abs(z_value)))
+# Calculate and store country z-scores
+comp %<>%
+    group_by(dim_208_label) %>%
+    mutate(
+      z_within_country = round(as.numeric(scale(value_data)), 1),
+      outlier_within_country = abs(z_within_country) > 3
+    ) %>%
+    ungroup()
 
-
-comp %>%
-  filter(flag_some_na == FALSE) %>%
-  group_by(dim_208_label) %>%  # per country
-  mutate(
-    z_value = scale(value_pub),
-    outlier_value = abs(z_value) > 2
-  ) %>%
-  ungroup() %>%
-  filter(outlier_value == TRUE) %>%
-  select(record_id, dim_208_label, dim_29117_label, value_pub, z_value) %>%
-  arrange(desc(abs(z_value)))
-
+# Create a flag for whether percent diff or z score alerts to a significant value diff
+comp %<>% 
+  mutate(flag_some_value = ifelse(outlier_within_country == TRUE | flag_large_diff == TRUE, TRUE, FALSE))
 ```
 
 
 ```{r}
-## Run z-score tests
-
-# Calculate z score based on percent difference between current and public
-tests <- comp %>% 
-  filter(flag_some_na == FALSE) %>% 
-  mutate(z_perc = scale(perc_diff),
-         outlier_perc = ifelse(abs(z_perc) > 3, TRUE, FALSE))
-
-# Table of flagged outliers
-comp %>% 
-  filter(flag_some_na == FALSE) %>% 
-  mutate(z_perc = round(scale(perc_diff), 1),
-         outlier_perc = ifelse(abs(z_perc) > 3, TRUE, FALSE),
-         value_data = round(value_data, 1), value_pub = round(value_pub, 1)) %>%
-  filter(outlier_perc == TRUE) %>%
-  select(record_id, dim_208_label, dim_29117_label, value_data, value_pub, perc_diff, z_perc) %>%
-  arrange(desc(abs(z_perc))) %>%
-  reactable(
-    defaultPageSize = 10,
-    bordered = TRUE,
-    highlight = TRUE,
-    theme = reactableTheme(
-      style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
-    )
+reactable(
+  comp %>%
+    filter(flag_some_na == FALSE) %>%
+    filter(outlier_within_country == TRUE) %>%
+    mutate(
+      value_data = round(value_data, 1),
+      z_within_country = round(z_within_country, 1)
+    ) %>%
+    arrange(desc(abs(z_within_country))) %>%
+    select(
+      record_id,
+      dim_208_label,
+      dim_29117_label,
+      value_data,
+      z_within_country
+    ),
+  defaultPageSize = 5,
+  highlight = TRUE,
+  bordered = TRUE,
+  theme = reactableTheme(
+    style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
   )
-```
-
-
-#### Country-level analysis
-
-(To be refined further with more examples.)
-
-Country time series:
-
-```{r}
-p <- ggplot(comp, aes(
-  x = as.numeric(dim_29117_label),
-  y = value_data,
-  group = dim_208_label,
-  color = dim_208_label,  # for visual separation
-  text = paste("Country:", dim_208_label,
-               "<br>Year:", dim_29117_label,
-               "<br>Value:", round(value_data, 2))
-)) +
-  geom_line(alpha = 0.7) +
-  scale_color_viridis_d(option = "D") +
-  labs(
-    title = "Country Time Series – Internal Data",
-    x = "Year", y = "Value"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")  # hide legend
-
-# Convert to interactive plot
-ggplotly(p, tooltip = "text")
-```
-
-```{r}
-library(ggplot2)
-library(plotly)
-
-# Base ggplot
-p <- ggplot(comp, aes(
-  x = as.numeric(dim_29117_label),  # Year
-  y = value_data,
-  group = dim_208_label,            # Country
-  color = flag_new_entry,
-  text = paste(
-    "Country:", dim_208_label,
-    "<br>Year:", dim_29117_label,
-    "<br>Value:", round(value_data, 1),
-    "<br>New entry:", flag_new_entry
-  )
-)) +
-  geom_line(aes(group = dim_208_label), alpha = 0.5, color = "gray50") +
-  geom_point(size = 1, alpha = 0.7) +
-  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
-  labs(
-    title = "Time Series by Country",
-    subtitle = "Red points indicate new entries not present in public dataset",
-    x = "Year",
-    y = "Value"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-# Convert to interactive plot
-ggplotly(p, tooltip = "text")
+)
 
 ```
 
 
-```{r}
-library(ggplot2)
-library(plotly)
+#### Outlier Country Plots
 
-p2 <- ggplot(comp, aes(
-  x = as.numeric(dim_29117_label),  # Year
-  y = value_data,
-  group = dim_208_label,            # Country
-  color = flag_large_diff,
-  text = paste(
-    "Country:", dim_208_label,
-    "<br>Year:", dim_29117_label,
-    "<br>Value:", round(value_data, 1),
-    "<br>% Difference:", round(perc_diff, 1),
-    "<br>Above Threshold:", flag_large_diff
-  )
-)) +
-  geom_line(aes(group = dim_208_label), alpha = 0.5, color = "gray50") +
-  geom_point(size = 2, alpha = 0.9) +
-  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
-  labs(
-    title = "Time Series by Country",
-    subtitle = "Red points indicate values with >20% difference from public data",
-    x = "Year",
-    y = "Internal Value"
-  ) +
-  theme_minimal() +
-  theme(legend.position = "none")
-
-ggplotly(p2, tooltip = "text")
-
-```
-
+This section isolates country time series that have raised any flags: either with percent changes exceeding 20% or z-scores exceeding 3. This can be used to visually identify whether these data points are within-country outliers.
 
 ```{r}
-library(dplyr)
-library(ggplot2)
-library(plotly)
-
-# Step 1: Identify countries with at least one large difference
-countries_with_flags <- comp %>%
-  filter(flag_large_diff == TRUE) %>%
-  distinct(dim_208_label) %>%
+# Step 1: Identify countries with any large difference or outlier
+countries_with_flags <- comp %>% 
+  filter(flag_some_na == FALSE & flag_some_value == TRUE) %>%
+  distinct(dim_208_label) %>% 
   pull()
 
-# Step 2: Filter full dataset to only include those countries
-comp_flagged <- comp %>%
-  filter(dim_208_label %in% countries_with_flags)
+# Step 2: Styled interactive plot
+p3 <- comp %>% 
+  filter(dim_208_label %in% countries_with_flags) %>% 
+  ggplot(aes(
+    x = as.numeric(dim_29117_label),  # Year
+    y = value_data,
+    group = dim_208_label,
+    color = flag_large_diff,
+    text = paste(
+      "Country:", dim_208_label,
+      "<br>Year:", dim_29117_label,
+      "<br>Value:", round(value_data, 1),
+      "<br>Public % Difference:", round(perc_diff, 1),
+      "<br>Country Z-Score:", round(z_within_country, 1),
+      "<br>Above % Threshold:", flag_large_diff
+    )
+  )) +
+  # Subtle base lines for each country
+  geom_line(alpha = 0.4, color = "gray70") +
 
-# Step 3: Create the plot
-p3 <- ggplot(comp_flagged, aes(
-  x = as.numeric(dim_29117_label),  # Year
-  y = value_data,
-  group = dim_208_label,
-  color = flag_large_diff,
-  text = paste(
-    "Country:", dim_208_label,
-    "<br>Year:", dim_29117_label,
-    "<br>Value:", round(value_data, 1),
-    "<br>% Difference:", round(perc_diff, 1),
-    "<br>Above Threshold:", flag_large_diff
-  )
-)) +
-  geom_line(aes(group = dim_208_label), alpha = 0.5, color = "gray50") +
-  geom_point(size = 2, alpha = 0.9) +
-  scale_color_manual(values = c("FALSE" = "black", "TRUE" = "red")) +
+  # Highlight flagged values
+  geom_point(size = 1.2, alpha = 0.85) +
+
+  # Color: red = flagged, blue = normal
+  scale_color_manual(values = c("FALSE" = "#99ccff", "TRUE" = "#cc6666")) +
+
   labs(
-    title = "Countries with at Least One Large Difference",
-    subtitle = "Only countries with at least one value >20% difference are shown",
+    title = "Country Time Series with Flagged Values",
+    subtitle = "Includes values flagged by percent difference or within-country z-score",
     x = "Year",
     y = "Internal Value"
   ) +
   theme_minimal() +
-  theme(legend.position = "none")
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "none"
+  )
 
-ggplotly(p3, tooltip = "text")
+# Convert to interactive plot
+ggplotly(p3, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Country Time Series with Flagged Values",
+        '<br><sup>Red points indicate values flagged by percent difference or z-score</sup>'
+      )
+    )
+  )
 
 ```
 
@@ -642,7 +600,10 @@ data_dict <- tibble(
     "Flag for new entries",
     "Flag for large differences",
     "Flag for NA values",
-    "Comparison status"
+    "Comparison status",
+    "Z score within country",
+    "Z score outlier within country",
+    "Flag for some value"
   )
 )
 
@@ -655,6 +616,10 @@ data_dict %>%
 ```
 
 ### Technical Details
+
+<!--
+Add code to spit out the name of the data being referenced. comp_idXXX currently doesn't store this. consider writing a second tab for the corresponding clean data file (since the comp files don't have time stamps)
+-->
 
 ```{r}
 # Session information
