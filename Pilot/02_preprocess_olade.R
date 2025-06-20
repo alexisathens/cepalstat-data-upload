@@ -7,7 +7,7 @@ library(glue)
 
 # This script transforms the raw files at Pilot/Data/Raw/olade into flat data files for each indicator.
 
-input_path <- "Data/Raw/olade/"
+input_path <- "Pilot/Data/Raw/olade/"
 
 #### GRUPO 01: unidad - energetico - 103 bep - oferta total ####
 
@@ -41,7 +41,7 @@ grupo1 %<>%
   filter(Country != "Series de oferta y demanda")
 
 # Filter countries
-iso <- read_csv("../Data/iso_codes.csv")
+iso <- read_csv("Data/iso_codes.csv")
 
 iso %<>% 
   filter(!is.na(spanish_short)) %>% 
@@ -76,8 +76,27 @@ grupo1 %<>%
 energy_types <- unique(grupo1$Type)
 
 
+# ---- 2486: primary energy supply from renewable and non-renewable energy sources (by energy resource) ----
+
+id <- 2486
+i2486 <- grupo1
+
+get_indicator_dimensions(2486)
+# 44959 - renewable and non-renewable primary energy type
+
+## compare dimensions associated with id, versus full dimensions, versus dimensions in data
+get_full_dimension_table(44959)
+
+get_ind_dimension_table(2486, 44959)
+
+
+
+d2486
+
+
 # ---- 2487: primary & secondary energy supply ----
 
+id <- 2487
 i2487 <- grupo1
 
 get_indicator_dimensions(2487)
@@ -130,7 +149,7 @@ grupo4 %<>%
   filter(Country != "Series de oferta y demanda")
 
 # Filter countries
-iso <- read_csv("../Data/iso_codes.csv")
+iso <- read_csv("Data/iso_codes.csv")
 
 iso %<>% 
   filter(!is.na(spanish_short)) %>% 
