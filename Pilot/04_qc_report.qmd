@@ -2,6 +2,7 @@
 title: "Quality Check Report: `r params$indicator_name`"
 format: 
   html:
+    self-contained: true
     toc: true
     toc_float: true
     code_folding: show
