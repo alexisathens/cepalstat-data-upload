@@ -9,10 +9,10 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 1754
+  indicator_id: 2486
   indicator_name: "Indicator Name"
   data_source: "Data Source"
-  comp_data_path: "Data/Checks/comp_id1754.csv"
+  comp_data_path: "Data/Checks/comp_id2486.csv"
 execute:
   echo: false
   warning: false
@@ -60,6 +60,49 @@ summary_info <- list(
   "Total Records" = nrow(comp)
 )
 ```
+
+<!--
+Create comparison dfs at two different levels of detail:
+- comp is summarized to the country/year level and drops the record_id field
+- comp_detailed is left in the original data format: includes record_id, dim_XXXX, dim_XXXX_label for any extra dims
+-->
+
+```{r}
+ind_dims <- comp %>% select(ends_with("_label")) %>% names()
+base_dims <- c("dim_29117_label", "dim_208_label") # year, country
+extra_dims <- setdiff(ind_dims, base_dims)
+
+# Keep `comp` df at country/year level. Create comp_detailed for IF there are additional dimensions.
+comp_detailed <- comp
+
+## Summarize comp to country/year level
+comp %<>%
+  group_by(dim_208, dim_29117, dim_208_label, dim_29117_label) %>%
+  summarize(
+    value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+    value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+    .groups = "drop"
+  )
+
+comp %<>% 
+   mutate(abs_diff = abs(value_data - value_pub),
+         perc_diff = round((abs_diff / value_pub) * 100, 2)) %>% 
+  mutate(
+    flag_large_diff = perc_diff > 20,  # adjust threshold as needed
+    flag_missing_entry = is.na(value_data), # exists in pub but not in data
+    flag_new_entry = is.na(value_pub),     # entry exists in data but not in pub
+    flag_some_na = is.na(value_data) | is.na(value_pub) # either new or missing entry
+  ) %>% 
+  mutate(status = case_when(
+    is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+    is.na(value_data) ~ "Old Only",
+    is.na(value_pub) ~ "New Only",
+    TRUE ~ "Present in Both"
+  ))
+
+#setdiff(names(comp_detailed), names(comp))
+```
+
 
 ## Summary Info
 
@@ -169,6 +212,33 @@ ggplotly(p, tooltip = "text") %>%
 <!--
 Need to add check for missing records when there are additional dimensions, or aggregate records
 -->
+
+```{r}
+for(dim in extra_dims) {
+  
+  cat(glue::glue("### QC Breakdown by {dim}\n\n"))
+
+  by_extra <- comp_detailed %>%
+    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE),
+              value_pub = sum(value_pub, na.rm = TRUE),
+              .groups = "drop") %>% ungroup()
+
+  ## restart here!
+  
+  # Plot: breakdown within country by extra dimension
+  p <- ggplot(by_extra, aes(x = "Years", y = "value_data", color = dim)) +
+    geom_line(alpha = 0.8) +
+    facet_wrap(~Country, scales = "free_y") +
+    labs(title = glue::glue("Values over time by {dim} (faceted by Country)")) +
+    theme_minimal()
+
+  print(p)
+
+  cat("\n\n")
+}
+```
+
 
 
 ### New Values Time Series
@@ -586,35 +656,35 @@ ggplotly(p3, tooltip = "text") %>%
 
 ```{r}
 # Create data dictionary
-data_dict <- tibble(
-  Field = names(comp),
-  Description = c(
-    "Unique record identifier",
-    "Country code",
-    "Country name",
-    "Year code",
-    "Year name",
-    "Value in internal dataset",
-    "Value in public dataset",
-    "Absolute difference between values",
-    "Percent difference between values",
-    "Flag for missing entries",
-    "Flag for new entries",
-    "Flag for large differences",
-    "Flag for NA values",
-    "Comparison status",
-    "Z score within country",
-    "Z score outlier within country",
-    "Flag for some value"
-  )
-)
-
-data_dict %>%
-  gt() %>%
-  tab_header(
-    title = "Data Dictionary",
-    subtitle = "Description of fields in the comparison dataset"
-  )
+# data_dict <- tibble(
+#   Field = names(comp),
+#   Description = c(
+#     "Unique record identifier",
+#     "Country code",
+#     "Country name",
+#     "Year code",
+#     "Year name",
+#     "Value in internal dataset",
+#     "Value in public dataset",
+#     "Absolute difference between values",
+#     "Percent difference between values",
+#     "Flag for missing entries",
+#     "Flag for new entries",
+#     "Flag for large differences",
+#     "Flag for NA values",
+#     "Comparison status",
+#     "Z score within country",
+#     "Z score outlier within country",
+#     "Flag for some value"
+#   )
+# )
+# 
+# data_dict %>%
+#   gt() %>%
+#   tab_header(
+#     title = "Data Dictionary",
+#     subtitle = "Description of fields in the comparison dataset"
+#   )
 ```
 
 ### Technical Details
