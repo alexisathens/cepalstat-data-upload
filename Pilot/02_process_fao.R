@@ -4,6 +4,7 @@ library(readxl)
 library(httr2)
 library(jsonlite)
 library(glue)
+library(writexl)
 library(here)
 library(assertthat)
 
@@ -56,6 +57,46 @@ id <- 2035
 i2035 <- grupo1
 
 get_indicator_dimensions(id)
+# could create a lookup table for this rather than calling it each time
 
+get_full_dimension_table(21899)
 
+# i2035 %>% distinct(item) %>% View()
 
+# manually match over and force labels to match cepalstat
+i2035 %<>% 
+  filter(item %in% c("Country area", "Land area", "Inland waters")) %>% 
+  mutate(item = case_when(
+    item == "Country area" ~ "Total area",
+    item == "Inland waters" ~ "Area of inland waters",
+    TRUE ~ item
+  ))
+
+i2035_check <- i2035 %>% 
+  pivot_wider(names_from = item, values_from = value) %>% 
+  mutate(diff = round(`Total area` - `Land area` - `Area of inland waters`))
+
+# check for leftover values... should in theory net out to 0...
+i2035_check %>% filter(diff != 0) # %>% View()
+# these are problematic... country land area shouldn't change by the year
+# for now, continue processing data to look at before/after comparison with published CEPALSTAT data to see whether this is a new issue or not
+
+# join extra dim ids
+i2035 %<>% 
+  rename(`Type of area` = item) %>% 
+  left_join(get_full_dimension_table(21899) %>% select(name, id), by = c("Type of area" = "name")) %>% 
+  rename(area_id = id)
+
+# pare down to minimum df for cepalstat formatting
+i2035 %<>% select(ends_with("_id"), "value")
+
+# format for wasabi
+i2035f <- format_for_wasabi(i2035, 2035)
+
+i2035f
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Write to cleaned folder
+write_xlsx(data, here("Pilot", "Data", "Cleaned", glue("id{indicator_id}_{dt_stamp}.xlsx")))
