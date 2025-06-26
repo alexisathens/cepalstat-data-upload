@@ -19,6 +19,8 @@ str(land_use)
 
 land_use %<>% as_tibble()
 
+# write_xlsx(land_use, glue("Pilot/Data/Raw/fao/fao_land_use.xlsx"))
+
 # For the download portion, just save this file as-is, and do all the processing in later scripts.
 
 
