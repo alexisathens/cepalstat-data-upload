@@ -106,3 +106,70 @@ get_ind_dimension_table <- function(indicator_id, dimension_id) {
 
   return(members)
 }
+
+# Take bare minimum df with value and *_id fields only and format for CEPALSTAT Wasabi upload
+format_for_wasabi <- function(data, indicator_id){
+  
+  ## Final format:
+  # record_id: identificador único de cada fila (String)
+  # indicator_id: id del indicador (Integer)
+  # source_id: id de la fuente (Integer)
+  # footnotes_id: lista de ids separados por coma (String)
+  # members_id: lista de ids de dimensiones separadas por coma (String)
+  # value: valor numérico (Float)
+  
+  # Merge members_id field
+  data %<>%
+    mutate(
+      members_id = data %>%
+        select(ends_with("_id")) %>%
+        pmap_chr(~ paste(c(...), collapse = ","))
+    ) %>% select(-ends_with("_id"), members_id)
+  
+  # Create record_id field
+  data %<>%
+    mutate(
+      record_id = sprintf(
+        "r%0*d",                 # Format string with dynamic width
+        nchar(nrow(.)),           # Width = number of digits in row count
+        row_number()              # Values to format
+      ))
+  
+  # Create indicator_id field
+  data %<>% 
+    mutate(indicator_id = indicator_id) # Inherit from manually defined vector
+  
+  ## Get source_id from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
+  
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+  
+  sources_tbl <- result %>%
+    pluck("body", "sources") %>%
+    as_tibble()
+  
+  # Create source_id field
+  data %<>% 
+    mutate(source_id = sources_tbl %>% pull(id))
+  
+  ## Get footnotes_id from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang=en&format=json")
+  
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+  
+  footnotes_tbl <- result %>%
+    pluck("body", "footnotes") %>%
+    as_tibble()
+  
+  # Create footnotes_id field
+  data %<>% 
+    mutate(footnotes_id = ifelse(!is_empty(footnotes_tbl), footnotes_tbl %>% pull(id), ''))
+  
+  # Select final columns
+  data %<>% 
+    select(record_id, indicator_id, source_id, footnotes_id, members_id, value)
+  
+  return(data)
+}
