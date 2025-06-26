@@ -1,6 +1,7 @@
 library(tidyverse)
 library(magrittr)
 library(readxl)
+library(here)
 library(FAOSTAT)
 
 # Info for FAOSTAT package: https://r-packages.io/packages/FAOSTAT/download_faostat_bulk
@@ -19,7 +20,8 @@ str(land_use)
 
 land_use %<>% as_tibble()
 
-# write_xlsx(land_use, glue("Pilot/Data/Raw/fao/fao_land_use.xlsx"))
+# Save these files as rds since they're large - they take up about 1/20 of the space of a xlsx
+saveRDS(land_use, here("Pilot", "Data", "Raw", "fao", "fao_land_use.rds"))
 
 # For the download portion, just save this file as-is, and do all the processing in later scripts.
 
