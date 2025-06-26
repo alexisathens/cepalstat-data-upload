@@ -1,3 +1,9 @@
+library(tidyverse)
+library(magrittr)
+library(httr2)
+library(jsonlite)
+library(glue)
+
 # Helper: Fetch and parse JSON from CEPALSTAT API
 fetch_cepalstat_json <- function(url) {
   request(url) %>%
@@ -21,7 +27,7 @@ get_indicator_dimensions <- function(indicator_id) {
     pluck("body", "dimensions") %>%
     as_tibble() %>%
     select(name, id)
-  
+
   # Spanish
   url_es <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=es&format=json&in=1&path=0")
   result_es <- fetch_cepalstat_json(url_es)
@@ -29,11 +35,11 @@ get_indicator_dimensions <- function(indicator_id) {
     pluck("body", "dimensions") %>%
     as_tibble() %>%
     select(name, id)
-  
+
   # Join Spanish names as 'name_es'
   dims <- dims_en %>%
     left_join(dims_es %>% select(id, name_es = name), by = "id")
-  
+
   return(dims)
 }
 
@@ -49,7 +55,7 @@ get_full_dimension_table <- function(dimension_id) {
   members_en <- members_en %>%
     mutate(dim_id = dim_info_en$id[1],
            dim_name = dim_info_en$name[1])
-  
+
   # Spanish
   url_es <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/dimensions/{dimension_id}?lang=es")
   result_es <- fetch_cepalstat_json(url_es)
@@ -60,11 +66,11 @@ get_full_dimension_table <- function(dimension_id) {
   members_es <- members_es %>%
     mutate(dim_id = dim_info_es$id[1],
            dim_name = dim_info_es$name[1])
-  
+
   # Join Spanish names as '*_es'
   members <- members_en %>%
     left_join(members_es %>% select(id, name_es = name, dim_name_es = dim_name), by = "id")
-  
+
   return(members)
 }
 
@@ -81,7 +87,7 @@ get_ind_dimension_table <- function(indicator_id, dimension_id) {
   members_en <- members_en %>%
     mutate(dim_id = indicator_info_en$id[1],
            dim_name = indicator_info_en$name[1])
-  
+
   # Spanish
   url_es <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=es&format=json&in=1&path=0")
   result_es <- fetch_cepalstat_json(url_es)
@@ -93,10 +99,10 @@ get_ind_dimension_table <- function(indicator_id, dimension_id) {
   members_es <- members_es %>%
     mutate(dim_id = indicator_info_es$id[1],
            dim_name = indicator_info_es$name[1])
-  
+
   # Join Spanish names as '*_es'
   members <- members_en %>%
     left_join(members_es %>% select(id, name_es = name, dim_name_es = dim_name), by = "id")
-  
+
   return(members)
 }
