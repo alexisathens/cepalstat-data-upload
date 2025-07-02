@@ -10,10 +10,10 @@ source(here("Scripts/utils.R"))
 # ---- Create standard country name/id file ----
 
 # CEPALSTAT country names and IDs
-cs_iso <- get_full_dimension_table(208)
+cs_country <- get_full_dimension_table(208)
 
 # Treat this is as the standard country names / source of truth
-cs_std <- cs_iso %>% 
+cs_std <- cs_country %>% 
   select(cepalstat = id, std_name = name) # CEPALSTAT ID and English name
 
 
@@ -47,43 +47,110 @@ cs_std_iso <- cs_std %>%
 # Drop countries without cepalstat id - not needed for these data uploads
 cs_std_iso %<>% filter(!is.na(cepalstat))
 
+# Make any manual edits
+cs_std_iso %<>% 
+  mutate(iso3 = case_when(
+    std_name == "World" ~ "WLD",
+    TRUE ~ iso3
+  ))
+
 rm(mp_iso)
 
 
 # ---- Develop long iso file ----
 
-iso <- cs_iso %>% 
+iso <- cs_country %>% 
   select(cepalstat = id, name, name_es) %>% 
   pivot_longer(!cepalstat, names_to = "lang", values_to = "name") %>% # drop lang, make long on all name variations
   distinct(cepalstat, name)
 
 # Join with std_names
-iso %<>% 
+iso %<>%
   left_join(cs_std, by = c("cepalstat"))
 
-
-iso
-
-
-
-
-
-
-
-
-# My ISO file (ECLAC countries with multiple language spellings)
+# Add my ISO file (ECLAC countries with multiple language spellings)
 my_iso <- read_excel(here("Data/Misc/lac_countries.xlsx")) %>%
   select(iso3, english, english_short, spanish, spanish_short)
 
 # Convert to long format
-my_iso_long <- my_iso %>%
+my_iso %<>%
   pivot_longer(cols = -iso3, names_to = "type", values_to = "name") %>%
   distinct(iso3, name)
 
+# Map from iso3 to cepalstat id
+my_iso %<>% 
+  left_join(cs_std_iso, by = c("iso3")) %>% 
+  select(cepalstat, name, std_name)
+
+# Join to main iso and keep distinct entries
+iso %<>% 
+  bind_rows(my_iso) %>% 
+  distinct(cepalstat, name, std_name)
+
+rm(my_iso)
+
+
+# ---- Add manual entries ----
+
+# Enter manual entries here as they're found in the various data sources
+manual_entries <- tribble(
+  # name in data              # "correct" name in cs_std
+  ~name,                      ~std_name,
+  "Trinidad & Tobago",        "Trinidad and Tobago",
+)
+
+# Add manual entries and fill CEPALSTAT ids
+iso %<>% 
+  bind_rows(manual_entries) %>% 
+  group_by(std_name) %>% 
+  fill(cepalstat, .direction = "downup") %>% 
+  ungroup() %>% 
+  distinct(cepalstat, name, std_name)
 
 
 
+# ---- Add any flags ----
 
+# Add flag for ECLAC countries and regions
+lac_flags <- read_excel(here("Data/Misc/lac_countries.xlsx"))
+
+lac_flags %<>% 
+  select(iso3, english) %>% 
+  mutate(ECLAC = ifelse(iso3 != "WLD", "Y", ""),
+         region = ifelse(iso3 %in% c("LAA", "CAR", "SAA", "CAA"), "Y", ""),
+         world = ifelse(iso3 == "WLD", "Y", ""))
+
+lac_flags %<>% 
+  left_join(cs_std_iso, by = "iso3") %>% 
+  select(cepalstat, ECLAC, region, world)
+
+# Join to long iso
+iso %<>% 
+  left_join(lac_flags, by = "cepalstat")
+  
+# Force NA to "" for flags
+iso %<>%
+  mutate(across(ECLAC:last_col(), ~ ifelse(is.na(.), "", .)))
+
+
+# Create another flag for ECLAC associate members
+# List found here: # https://www.cepal.org/en/about/member-states-and-associate-members
+
+ECLACa <- c("Anguilla", "Aruba", "Bermudas", "British Virgin Islands", "Cayman Islands", "Curaçao", "Guadeloupe", "French Guiana", "Martinique",
+            "Montserrat", "Puerto Rico", "Sint Maarten (Dutch part)", "Turks and Caicos Islands", "United States Virgin Islands")
+# all(ECLACa %in% cs_std$std_name)
+
+# Add associate member countries field
+iso %<>% 
+  mutate(ECLACa = ifelse(std_name %in% ECLACa | ECLAC == "Y", "Y", "")) %>% 
+  relocate(ECLACa, .after = "ECLAC")
+
+
+# ---- Format for export ----
+
+# Arrange in ECLAC-alphabetical order
+iso %<>% 
+  arrange(desc(ECLAC), std_name)
 
 
 # last step - join with iso codes because this will make the df way longer
@@ -91,78 +158,6 @@ cs_std_iso
 
 
 
-
-cs_countries %<>% select(name, id) %>% rename(cepalstat = id)
-
-iso %<>% 
-  left_join(cs_countries, by = "name")
-
-
-
-### REFACTOR!!!
-
-# ---- Begin with World Data country table ----
-
-## Read in Maria Paz's iso code file
-# I believe this was downloaded from https://www.worlddata.info/countrycodes.php (a paid source)
-mp_iso <- read_csv(here("Data/Misc/code_iso_mp.csv"))
-mp_iso %<>% rename(name = `...1`)
-
-# Keep relevant columns
-iso <- mp_iso %>% 
-  select(name:numeric)
-
-iso %<>% 
-  rename(iso2 = alpha2, iso3 = alpha3)
-
-# ---- Join LAC country names ----
-
-## Read in my iso code file that only has ECLAC countries
-my_iso <- read_excel(here("Data/Misc/lac_countries.xlsx"))
-
-my_iso %<>% 
-  select(iso3, english:spanish_short)
-
-iso %<>% 
-  left_join(my_iso, by = "iso3") %>% 
-  mutate(ECLAC = ifelse(!is.na(spanish), "Y", ""))
-
-iso %<>% 
-  mutate(region = ifelse(is.na(numeric), "Y", ""))
-
-# ---- Create world entry ----
-
-# Create entry for world
-world <- tibble(name = "World", iso2 = NA_character_, iso3 = "WLD", numeric = NA_real_, 
-                english = "World", english_short = "World", spanish = "Mundo", spanish_short = "Mundo",
-                ECLAC = "", region = "Y")
-
-iso %<>% bind_rows(world)
-
-# Create another iso with full WORLD spelled out (also common)
-iso %<>% 
-  mutate(iso = ifelse(name == "World", "WORLD", iso3))
-
-# ---- Join CEPALSTAT country codes ----
-
-# Get util functions for easy json access
-source(here("utils.R"))
-
-cs_countries <- get_full_dimension_table(208)
-
-cs_countries %<>% select(name, id) %>% rename(cepalstat = id)
-
-iso %<>% 
-  left_join(cs_countries, by = "name")
-
-# double check all the ECLAC countries match, yes
-# iso %>% filter(ECLAC == "Y") %>% View()
-
-# ---- Final formatting + export ----
-
-# Organize rows
-iso %<>% 
-  select(name, iso2, iso3, iso, numeric, ECLAC, region, everything())
 
 # Export spreadsheet
 write_csv(iso, here("Data", "iso_codes.csv"))
