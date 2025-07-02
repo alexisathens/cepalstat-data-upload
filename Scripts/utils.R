@@ -175,7 +175,7 @@ format_for_wasabi <- function(data, indicator_id){
 }
 
 # Take long df with value and dimensions only and create map to CEPALSTAT dimensions and fields
-match_dimension_columns <- function(dims_vector, data) {
+get_data_dim_map <- function(dims_vector, data) {
   
   # Take a sample of the values in the long df
   set.seed(123)
@@ -234,3 +234,28 @@ match_dimension_columns <- function(dims_vector, data) {
   
   return(col_map)
 }
+
+# Take dimension map to long df with value and dimensions only and join them
+join_data_dim_members <- function(dim_map, data) {
+  
+  for(i in 1:nrow(dim_map)) {
+    data_col <- dim_map$data_column[i]
+    dim_id <- dim_map$dim_id[i]
+    dim_field <- dim_map$dim_field[i]
+    
+    if(dim_field == "iso"){
+      matching_dim_id <- dim_map$dim_id[i]
+      matching_dim_col <- read_xlsx(here("Data/iso_codes.xlsx")) %>% select(id = cepalstat, match = name) %>% distinct(id, match)
+      matching_dim_col %<>% rename(!!paste0("d", dim_id, "_id") := id)
+    } else {
+      matching_dim_id <- dim_map$dim_id[i]
+      matching_dim_table <- get_full_dimension_table(matching_dim_id)
+      matching_dim_col <- matching_dim_table %>% select(id, match = !!sym(dim_field))
+      matching_dim_col %<>% rename(!!paste0("d", dim_id, "_id") := id)
+    }
+    
+    # Join members
+    data %<>% 
+      left_join(matching_dim_col, by = setNames("match", data_col))
+    
+  }
