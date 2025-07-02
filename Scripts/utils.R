@@ -173,3 +173,64 @@ format_for_wasabi <- function(data, indicator_id){
   
   return(data)
 }
+
+# Take long df with value and dimensions only and create map to CEPALSTAT dimensions and fields
+match_dimension_columns <- function(dims_vector, data) {
+  
+  # Take a sample of the values in the long df
+  set.seed(123)
+  sampled_values <- data %>%
+    select(!value) %>%
+    reframe(across(everything(), ~ sample(unique(.x), size = 50, replace = TRUE)))
+  
+  # check sampled_values = same length as dims_vector
+  
+  # Cycle through each sampled column value (and find match in dim table)
+  match_results <- NULL
+  for(i in 1:ncol(sampled_values)) {
+    
+    this_sampled_col <- sampled_values[[i]]
+    
+    # Cycle through each dimension table
+    for(j in 1:length(dims_vector)){
+      
+      # Get table for this dimension
+      this_dim_id <- dims_vector[j]
+      this_dim_table <- get_full_dimension_table(this_dim_id)
+      
+      # Calculate match scores
+      result <- tibble(
+        column = names(sampled_values[,i]),
+        dim_id = this_dim_id,
+        iso = sum(this_sampled_col %in% iso$name, na.rm = T),
+        cs_en = sum(this_sampled_col %in% this_dim_table$name, na.rm = T),
+        cs_es = sum(this_sampled_col %in% this_dim_table$name_es, na.rm = T))
+      
+      match_results %<>% bind_rows(result)
+    }
+  }
+  
+  # Make sense of match_results
+  # match_results
+  
+  # Only keep dimension with most matches
+  col_map <- match_results %>% 
+    mutate(sum = iso + cs_en + cs_es) %>% 
+    group_by(column) %>% 
+    arrange(desc(sum)) %>% 
+    slice(1) %>% 
+    ungroup() %>% 
+    select(-sum)
+  
+  col_map %<>%
+    rowwise() %>%
+    mutate(
+      field = case_when(
+        iso >= cs_en & iso >= cs_es ~ "iso",
+        cs_en >= cs_es ~ "name",
+        TRUE ~ "name_es")) %>% 
+    ungroup() %>% 
+    select(data_column = column, dim_id, dim_field = field)
+  
+  return(col_map)
+}
