@@ -2,6 +2,7 @@ library(tidyverse)
 library(magrittr)
 library(readxl)
 library(here)
+library(writexl)
 
 source(here("Scripts/utils.R"))
 
@@ -152,12 +153,9 @@ iso %<>%
 iso %<>% 
   arrange(desc(ECLAC), std_name)
 
-
-# last step - join with iso codes because this will make the df way longer
-cs_std_iso
-
-
-
+# Join iso codes
+iso %<>% 
+  left_join(cs_std_iso %>% select(-std_name), by = c("cepalstat"))
 
 # Export spreadsheet
-write_csv(iso, here("Data", "iso_codes.csv"))
+write_xlsx(iso, here("Data", "iso_codes.xlsx"))
