@@ -77,7 +77,7 @@ i2035_check <- i2035 %>%
   mutate(diff = round(`Total area` - `Land area` - `Area of inland waters`))
 
 # check for leftover values... should in theory net out to 0...
-i2035_check %>% filter(diff != 0) # %>% View()
+i2035_check %>% filter(diff != 0) %>% View()
 # these are problematic... country land area shouldn't change by the year
 # for now, continue processing data to look at before/after comparison with published CEPALSTAT data to see whether this is a new issue or not
 

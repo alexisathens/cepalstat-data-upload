@@ -224,17 +224,30 @@ for(dim in extra_dims) {
               value_pub = sum(value_pub, na.rm = TRUE),
               .groups = "drop") %>% ungroup()
 
-  ## restart here!
+  p <- by_extra %>%
+    ggplot(aes(
+      x = dim_29117_label,
+      y = value_data,
+      color = .data[[dim]],
+      group = .data[[dim]],
+      text = glue("Group: {.data[[dim]]}<br>Value: {scales::comma(value_data)}")
+    )) +
+    geom_line(linewidth = 0.8) +
+    #geom_point() +
+    facet_wrap(~ dim_208_label, scales = "free_y") +
+    labs(
+      title = glue("Values by {dim}, over dim_29117_label"),
+      x = "dim_29117_label",
+      y = "Value",
+      color = dim
+    ) +
+    theme_minimal() +
+    theme(
+      legend.position = "none"
+    )
   
-  # Plot: breakdown within country by extra dimension
-  p <- ggplot(by_extra, aes(x = "Years", y = "value_data", color = dim)) +
-    geom_line(alpha = 0.8) +
-    facet_wrap(~Country, scales = "free_y") +
-    labs(title = glue::glue("Values over time by {dim} (faceted by Country)")) +
-    theme_minimal()
-
-  print(p)
-
+  ggplotly(p, tooltip = "text")
+  
   cat("\n\n")
 }
 ```
@@ -368,7 +381,7 @@ p <- comp %>%
   x = value_data,
   color = flag_large_diff,
   text = paste(
-    "Record ID:", record_id,
+    #"Record ID:", record_id,
     "<br>Country:", dim_208_label,
     "<br>Year:", dim_29117_label,
     "<br>Public:", round(value_pub, 1),
@@ -413,7 +426,7 @@ p <- comp %>%
     x = as.numeric(dim_29117_label),
     y = perc_diff,
     text = paste(
-      "Record ID:", record_id,
+      #"Record ID:", record_id,
       "<br>Country:", dim_208_label,
       "<br>Year:", dim_29117_label,
       "<br>% Diff:", round(perc_diff, 1)

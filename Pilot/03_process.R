@@ -1,6 +1,6 @@
 
-indicator_id <- 1754
-data <- i1754
+indicator_id <- 2486
+data <- i2486
 
 ### function:
 
@@ -9,7 +9,7 @@ library(writexl)
 # ---- Get CEPALSTAT dimensions ----
 
 # Retrieve dimension list for indicator
-dims_list <- get_indicator_dimensions(ind)
+dims_list <- get_indicator_dimensions(indicator_id)
 
 # Initialize table storing full dimension info
 dims_tbl <- NULL
@@ -17,7 +17,7 @@ dims_tbl <- NULL
 # Gather all relevant dimension members
 for(this_dim_id in dims_list$id) {
   
-  this_dims_tbl <- get_dimension_table(this_dim_id)
+  this_dims_tbl <- get_full_dimension_table(this_dim_id)
   
   # Bind to full table
   dims_tbl %<>% bind_rows(this_dims_tbl)
@@ -47,7 +47,7 @@ for(this_dim_name in unique(dims_tbl$dim_name)) {
       rename(!!paste0(this_join_key, "_id") := id)
     
   } else { 
-    stop(glue("Column '{data_join_key}' not found in main data.")) # throw an error if key isn't found
+    stop(glue("Column '{this_join_key}' not found in main data.")) # throw an error if key isn't found
   }
 }
 
@@ -131,4 +131,4 @@ dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
 # write_csv(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.csv"))
 
-write_xlsx(data, glue("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx"))
+write_xlsx(data, glue("Pilot/Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx"))

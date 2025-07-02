@@ -5,13 +5,15 @@ library(httr2)
 library(jsonlite)
 library(glue)
 library(lubridate)
+library(here)
+library(assertthat)
 
 # Manually define
-indicator_id <- 1754
+indicator_id <- 2035
 
 # ---- Get latest file of indicator ----
 # Folder where cleaned files live
-folder_path <- "Data/Cleaned"
+folder_path <- here("Pilot", "Data", "Cleaned")
 
 # List all relevant files for this indicator
 file_list <- list.files(folder_path, pattern = glue("id{indicator_id}_\\d{{4}}-\\d{{2}}-\\d{{2}}T\\d{{6}}\\.xlsx"), full.names = TRUE)
@@ -81,14 +83,19 @@ pub_long <- pub %>%
 
 # Get mapping from sampled_values to pub cols
 dim_map <- pub_long %>% 
-  left_join(sampled_values, by = c("pub_val" = "sampled_val"), suffix = c("", ".match")) %>% 
+  left_join(sampled_values, by = c("pub_val" = "sampled_val"), suffix = c("", ".match")) %>% View()
   filter(!is.na(dim_col.match)) %>% 
   distinct(dim_col, dim_col.match)
 
 # Throw an error if more matches than dimensions
-if(nrow(dim_map) != ncol(data %>% select(starts_with("dim_")))) {
-  stop(glue::glue("Error: dim_map has {nrow(dim_map)} rows, but {ncol(data %>% select(starts_with('dim_')))} dimension columns found in data."))
-}
+assert_that(
+  nrow(dim_map) == ncol(select(data, starts_with("dim_"))),
+  msg = glue(
+    "Error: dim_map has {nrow(dim_map)} rows, but {ncol(select(data, starts_with('dim_')))} dimension columns found in data."
+  )
+)
+
+dim_map
 
 # Rename columns of data with correct dimension IDs
 data %<>%
@@ -189,7 +196,7 @@ comp %<>%
   ))
 
 # Export comp file for now
-write_csv(comp, glue("Data/Checks/comp_id{indicator_id}.csv"))
+write_csv(comp, glue("Pilot/Data/Checks/comp_id{indicator_id}.csv"))
 
 
 # ---- Compare with internal data file ----

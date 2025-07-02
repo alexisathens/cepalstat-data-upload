@@ -174,6 +174,24 @@ i2486 %<>%
 i2486
 
 
+### change all labels to English - country and type
+i2486 %<>% 
+  left_join(iso, by = c("Country" = "spanish_short")) %>% 
+  select(-Country) %>% 
+  rename(Country = name)
+
+i2486 %<>% 
+  left_join(comb44959 %>% select(Type, name), by = c("Type")) %>% 
+  select(-Type) %>% 
+  rename(Type = name)
+
+i2486 %<>% 
+  select(Country, Years, Type, value)
+
+i2486 %<>% 
+  rename(`Renewable and non-renewable primary energy type` = Type)
+
+
 # ---- 2487: primary & secondary energy supply ----
 
 id <- 2487
