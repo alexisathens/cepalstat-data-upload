@@ -259,3 +259,6 @@ join_data_dim_members <- function(dim_map, data) {
       left_join(matching_dim_col, by = setNames("match", data_col))
     
   }
+  
+  return(data)
+}
