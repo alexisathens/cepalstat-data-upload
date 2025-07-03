@@ -76,10 +76,16 @@ grupo1 %<>%
   filter(!str_detect(Country, "\\b\\d{4}$")) %>% 
   filter(Country != "Series de oferta y demanda")
 
+# Overwrite country names with std_name in iso file
+grupo1 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
 # Check which countries in olade don't match to iso (if any, add manually to build_iso_table.R script)
-# grupo1 %>%
-#   filter(!Country %in% iso$name) %>%
-#   distinct(Country)
+grupo1 %>%
+  filter(!Country %in% iso$name) %>%
+  distinct(Country)
 
 # Filter out extra groups
 grupo1 %<>% 
@@ -92,6 +98,7 @@ grupo1 %<>%
 
 grupo1
 
+rm(header_row, unit_row)
 
 ### ---- IND-2486 ----
 
@@ -108,8 +115,8 @@ pub
 dim_config2486 <- tibble(
   data_col = c("Country", "Years", "Type"),
   dim_id = c("208", "29117", "44959"),
-  pub_col = c("208_name_es", "29117_name", "44959_name_es") # was 208_name_es
-) # *** change to map to iso here!!
+  pub_col = c("208_name", "29117_name", "44959_name_es")
+)
 
 # ---- harmonize labels and filter to final set ----
 
@@ -190,6 +197,8 @@ i2486 %<>%
   arrange(Country, Years, Type) %>% 
   filter(!is.na(value))
 
+rm(clean_renew, nonclean_renew, nonrenew)
+
 # ---- join CEPALSTAT dimension IDs ----
 
 # Join dimensions
@@ -214,7 +223,6 @@ dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
 # Export!
 # write_xlsx(i2486f, glue(export_path, "/id{indicator_id}_{dt_stamp}.xlsx"))
-
 
 
 # ---- create comparison file ----
