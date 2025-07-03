@@ -4,6 +4,17 @@ library(httr2)
 library(jsonlite)
 library(glue)
 
+# Stop code if there are any NA fields that didn't match
+assert_no_na <- function(data) {
+  na_count <- sum(is.na(data))
+  
+  if (na_count > 0) {
+    stop(glue::glue("Error: the data contains {na_count} missing value(s)."))
+  }
+  
+  invisible(TRUE)
+}
+
 # Helper: Fetch and parse JSON from CEPALSTAT API
 fetch_cepalstat_json <- function(url) {
   request(url) %>%
@@ -107,6 +118,31 @@ get_ind_dimension_table <- function(indicator_id, dimension_id) {
   return(members)
 }
 
+# Fetch currently published CEPALSTAT data for given indicator
+get_cepalstat_data <- function(indicator_id) {
+  # Build URL
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/data?lang=en&format=json")
+  
+  # Perform the request and parse JSON
+  result <- request(url) %>%
+    req_perform() %>%
+    resp_body_json(simplifyDataFrame = TRUE)
+  
+  # Extract and flatten the data portion
+  pub <- result$body$data %>%
+    as_tibble()
+  
+  # Force dim_* columns to characters
+  pub %<>% 
+    mutate(across(starts_with("dim_"), as.character))
+  
+  # Keep dimensions and value only
+  pub %<>% 
+    select(starts_with("dim_"), value)
+  
+  return(pub)
+}
+
 # Take bare minimum df with value and *_id fields only and format for CEPALSTAT Wasabi upload
 format_for_wasabi <- function(data, indicator_id){
   
@@ -176,6 +212,8 @@ format_for_wasabi <- function(data, indicator_id){
 
 # Take long df with value and dimensions only and create map to CEPALSTAT dimensions and fields
 get_data_dim_map <- function(dims_vector, data) {
+  
+  iso <- read_xlsx(here("Data/iso_codes.xlsx"))
   
   # Take a sample of the values in the long df
   set.seed(123)
@@ -261,4 +299,33 @@ join_data_dim_members <- function(dim_map, data) {
   }
   
   return(data)
+}
+
+# Function that takes public CEPALSTAT data [output from get_cepalstat_data] and matches to readable labels
+match_cepalstat_labels <- function(pub) {
+  
+  # Extract dimension numbers from column names
+  dim_cols <- names(pub) %>%
+    str_extract("\\d+") %>%   # Extract first sequence of digits
+    na.omit() %>%             # Drop anything without a number (e.g. "value")
+    as.vector()
+  
+  for(i in dim_cols) {
+    this_pub_col <- names(pub)[str_detect(names(pub), i)] # Get corresponding name of column in pub
+    this_dim_table <- get_full_dimension_table(i) # Get full dimension member table
+    # Relabel columns for join
+    this_dim_table %<>% 
+      mutate(across(everything(), as.character)) %>% 
+      select(id, name, name_es) %>% 
+      rename(!!this_pub_col := id,
+             !!glue::glue("{i}_name") := name,
+             !!glue::glue("{i}_name_es") := name_es)
+    # Join labels on pub df
+    pub %<>% 
+      left_join(this_dim_table, by = setNames(this_pub_col, this_pub_col))
+  }
+  
+  assert_no_na(pub)
+  
+  return(pub)
 }
