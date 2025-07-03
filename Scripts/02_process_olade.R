@@ -103,24 +103,25 @@ get_indicator_dimensions(indicator_id)
 
 pub <- get_cepalstat_data(indicator_id)
 pub <- match_cepalstat_labels(pub)
-# pub
+pub
 
 dim_config2486 <- tibble(
   data_col = c("Country", "Years", "Type"),
   dim_id = c("208", "29117", "44959"),
-  pub_col = c("208_name_es", "29117_name", "44959_name_es")
-)
-
+  pub_col = c("208_name_es", "29117_name", "44959_name_es") # was 208_name_es
+) # *** change to map to iso here!!
 
 # ---- harmonize labels and filter to final set ----
 
-### make manual adjustments to data labels ---
+### make manual adjustments to data labels *****
+
 i2486 %<>% 
   mutate(Type = case_when(
     Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
     TRUE ~ Type
   ))
-# -------------------------------------------
+
+# **********************************************
 
 join_keys <- setNames(dim_config2486$pub_col, dim_config2486$data_col)
 
@@ -143,10 +144,7 @@ comp_sum %>%
 # Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
 
 # (3) View all - this can help match up labels
-# comp_sum %>% View()
-
-
-
+# comp_sum %>% filter(dim_name == "Type") %>% View()
 
 
 ### filter only on labels in CEPALSTAT dims ---
@@ -194,26 +192,11 @@ i2486 %<>%
 
 # ---- join CEPALSTAT dimension IDs ----
 
-# Define dimensions for this group and get members
-ind2486_dims <- get_indicator_dimensions(2486) %>% pull(id)
-
-# Get map from data to dimensions by sampling function
-ind2486_dim_map <- get_data_dim_map(ind2486_dims, i2486)
-
 # Join dimensions
-i2486f <- join_data_dim_members(ind2486_dim_map, i2486)
+i2486f <- join_data_dim_members(i2486, dim_config2486)
 
-# Assert that there are no NA member values
-assert_that(
-  all(
-    i2486f %>%
-      select(ends_with("_id")) %>%
-      summarise(across(everything(), ~ all(!is.na(.)))) %>%
-      unlist()
-  ),
-  msg = "❌ Some _id columns in `i2486f` contain NA values."
-)
-# i2486f %>% filter(if_any(ends_with("_id"), is.na))
+# Assert that there are no NA values
+assert_no_na_cols(i2486f)
 
 
 # ---- add metadata fields and export ----
@@ -223,21 +206,18 @@ i2486f %<>%
 
 i2486f <- format_for_wasabi(i2486f, 2486)
 
-assert_that(
-  all(
-    i2486f %>%
-      select(ends_with("_id")) %>%
-      summarise(across(everything(), ~ all(!is.na(.)))) %>%
-      unlist()
-  ),
-  msg = "❌ Some _id columns in `i2486f` contain NA values."
-)
+# Assert that there are no NA values
+assert_no_na_cols(i2486f)
 
 # Create a date/time stamp for export version control
 dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
 # Export!
 # write_xlsx(i2486f, glue(export_path, "/id{indicator_id}_{dt_stamp}.xlsx"))
+
+
+
+# ---- create comparison file ----
 
 
 ### ---- IND-3154 ----
