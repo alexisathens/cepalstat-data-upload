@@ -18,6 +18,7 @@ library(assertthat)
 source(here("Scripts/utils.R"))
 
 input_path <- here("Data/Raw/olade")
+export_path <- here("Data/Cleaned")
 
 # read in ISO with cepalstat ids
 
@@ -151,6 +152,7 @@ cs44959 <- comb44959 %>%
 i2486 %<>% 
   filter(Type %in% cs44959$Type)
 
+
 # ---- add summary groups ----
 
 clean_renew <- i2486 %>% 
@@ -209,19 +211,29 @@ assert_that(
 
 # ---- add metadata fields and export ----
 
+i2486f %<>% 
+  select(ends_with("_id"), value)
+
+i2486f <- format_for_wasabi(i2486f, 2486)
+
+assert_that(
+  all(
+    i2486f %>%
+      select(ends_with("_id")) %>%
+      summarise(across(everything(), ~ all(!is.na(.)))) %>%
+      unlist()
+  ),
+  msg = "❌ Some _id columns in `i2486f` contain NA values."
+)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i2486f, glue(export_path, "/id{id}_{dt_stamp}.xlsx"))
 
 
 ### ---- IND-3154 ----
 
-# ---- match dimensions and labels ----
 
-# ---- harmonize labels and filter to final set ----
-
-# ---- add summary groups ----
-
-# ---- translate names ----
-
-# ---- join CEPALSTAT dimension IDs ----
-
-# ---- add metadata fields and export ----
 
