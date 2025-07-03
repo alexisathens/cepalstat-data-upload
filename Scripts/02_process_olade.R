@@ -18,7 +18,6 @@ library(assertthat)
 source(here("Scripts/utils.R"))
 
 input_path <- here("Data/Raw/olade")
-export_path <- here("Data/Cleaned")
 
 # read in ISO with cepalstat ids
 
@@ -197,7 +196,7 @@ i2486 %<>%
   arrange(Country, Years, Type) %>% 
   filter(!is.na(value))
 
-rm(clean_renew, nonclean_renew, nonrenew)
+rm(clean_renew, nonclean_renew, nonrenew, these_types)
 
 # ---- join CEPALSTAT dimension IDs ----
 
@@ -222,10 +221,30 @@ assert_no_na_cols(i2486f)
 dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
 # Export!
-# write_xlsx(i2486f, glue(export_path, "/id{indicator_id}_{dt_stamp}.xlsx"))
+# write_xlsx(i2486f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
 
 
 # ---- create comparison file ----
+
+# Begin with i2486 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i2486, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config2486)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config2486)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+rm(rename_labels)
 
 
 ### ---- IND-3154 ----
