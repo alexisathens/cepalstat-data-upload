@@ -329,3 +329,33 @@ match_cepalstat_labels <- function(pub) {
   
   return(pub)
 }
+
+# Function that takes comp data frame and returns table with a flag for what members are present between the new and public data
+get_comp_summary_table <- function(comp, dim_config) {
+  dim_comp_table <- NULL
+  for(i in dim_config$data_col) {
+    sum_or_na <- function(x) {
+      if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
+    }
+    
+    this_dim_comp <- comp %>%
+      rename(dim = !!sym(i)) %>% 
+      mutate(dim_name = i) %>% 
+      group_by(dim, dim_name) %>% 
+      summarize(
+        value = sum_or_na(as.numeric(value)),
+        value.pub = sum_or_na(as.numeric(value.pub)),
+        .groups = "drop"
+      ) %>% 
+      mutate(status = case_when(
+        !is.na(value) & !is.na(value.pub) ~ "Present in Both",
+        !is.na(value) & is.na(value.pub) ~ "New Only",
+        is.na(value) & !is.na(value.pub) ~ "Old Only",
+        TRUE ~ "Missing in Both"
+      )) %>% 
+      arrange(desc(status))
+    
+    dim_comp_table %<>% bind_rows(this_dim_comp)
+  }
+  return(dim_comp_table)
+}
