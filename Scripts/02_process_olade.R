@@ -95,62 +95,69 @@ grupo1
 
 ### ---- IND-2486 ----
 
-id <- 2486
+indicator_id <- 2486
 i2486 <- grupo1
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+# pub
+
+dim_config2486 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "44959"),
+  pub_col = c("208_name_es", "29117_name", "44959_name_es")
+)
+
 
 # ---- harmonize labels and filter to final set ----
 
-get_indicator_dimensions(2486)
-# 44959 - renewable and non-renewable primary energy type
-
-## compare dimensions associated with id, versus full dimensions, versus dimensions in data
-# summarize data to dimension level
-d44959 <- i2486 %>% 
-  group_by(Type) %>% 
-  mutate(value = as.numeric(value)) %>% 
-  summarize(value = sum(value, na.rm = TRUE)) %>% 
-  ungroup()
-
-d44959 %<>% 
-  mutate(DATA = "Y")
-
-# get full dimension table names
-f44959 <- get_full_dimension_table(44959)
-
-f44959 %<>% 
-  select(name_es, name, id) %>% 
-  mutate(FULL = "Y")
-
-# get current indicator dimension table
-c44959 <- get_ind_dimension_table(2486, 44959)
-
-c44959 %<>% 
-  select(id) %>% 
-  mutate(CURR = "Y")
-
-## join into combined table to cross-check dims
-comb44959 <- d44959 %>% 
-  full_join(f44959, by = c("Type" = "name_es")) %>% 
-  full_join(c44959, by = c("id"))
-
-comb44959
-
-
-### make manual adjustments to data labels
+### make manual adjustments to data labels ---
 i2486 %<>% 
   mutate(Type = case_when(
     Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
     TRUE ~ Type
   ))
+# -------------------------------------------
+
+join_keys <- setNames(dim_config2486$pub_col, dim_config2486$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i2486, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config2486)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% View()
 
 
-### filter only on labels in CEPALSTAT dims
+
+
+
+### filter only on labels in CEPALSTAT dims ---
 # (here keep only primary data sources)
-cs44959 <- comb44959 %>% 
-  filter(FULL == "Y")
+these_types <- comp_sum %>% 
+  filter(dim_name == "Type") %>% 
+  filter(status == "Present in Both") %>% 
+  pull(dim)
 
 i2486 %<>% 
-  filter(Type %in% cs44959$Type)
+  filter(Type %in% these_types)
 
 
 # ---- add summary groups ----
@@ -230,7 +237,7 @@ assert_that(
 dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
 # Export!
-# write_xlsx(i2486f, glue(export_path, "/id{id}_{dt_stamp}.xlsx"))
+# write_xlsx(i2486f, glue(export_path, "/id{indicator_id}_{dt_stamp}.xlsx"))
 
 
 ### ---- IND-3154 ----
