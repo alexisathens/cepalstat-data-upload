@@ -98,6 +98,8 @@ manual_entries <- tribble(
   # name in data              # "correct" name in cs_std
   ~name,                      ~std_name,
   "Trinidad & Tobago",        "Trinidad and Tobago",
+  "Sint Maarten",             "Sint Maarten (Dutch part)",
+  "Bermuda",                  "Bermudas"
 )
 
 # Add manual entries and fill CEPALSTAT ids
