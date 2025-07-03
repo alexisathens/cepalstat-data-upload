@@ -368,3 +368,43 @@ get_comp_summary_table <- function(comp, dim_config) {
   }
   return(dim_comp_table)
 }
+
+# Function that creates basic comparison checks and formats for QC report
+create_comparison_checks <- function(comp, dim_config) {
+  # Relabel columns to match old comp formatting
+  rename_labels <- setNames(dim_config$data_col, paste0("dim_",dim_config$dim_id, "_label"))
+  
+  comp %<>%
+    rename(!!!rename_labels) %>% 
+    rename_with(
+      ~ str_replace(., "^d(\\d+)_id$", "dim_\\1"),
+      .cols = matches("^d\\d+_id$")
+    ) %>% 
+    rename(value_data = value, value_pub = value.pub) %>% 
+    select(starts_with("dim"), everything())
+  
+  # Calculate absolute and relative differences
+  comp %<>% 
+    mutate(value_data = as.numeric(value_data),
+           value_pub = as.numeric(value_pub)) %>% 
+    mutate(abs_diff = abs(value_data - value_pub),
+           perc_diff = round((abs_diff / value_pub) * 100, 2))
+  
+  # Flag issues
+  comp %<>%
+    mutate(
+      flag_large_diff = perc_diff > 20,  # adjust threshold as needed
+      flag_missing_entry = is.na(value_data), # exists in pub but not in data
+      flag_new_entry = is.na(value_pub),     # entry exists in data but not in pub
+      flag_some_na = is.na(value_data) | is.na(value_pub) # either new or missing entry
+    )
+  
+  # Label data availability status
+  comp %<>% 
+    mutate(status = case_when(
+      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+      is.na(value_data) ~ "Old Only",
+      is.na(value_pub) ~ "New Only",
+      TRUE ~ "Present in Both"
+    ))
+}
