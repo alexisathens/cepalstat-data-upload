@@ -24,6 +24,11 @@ assert_no_na_cols <- function(data, cols = everything(), data_name = deparse(sub
   invisible(TRUE)
 }
 
+# Helper: take sum, but retain NAs if all values are NA
+sum_or_na <- function(x) {
+  if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
+}
+
 # Helper: Fetch and parse JSON from CEPALSTAT API
 fetch_cepalstat_json <- function(url) {
   request(url) %>%
@@ -343,9 +348,6 @@ match_cepalstat_labels <- function(pub) {
 get_comp_summary_table <- function(comp, dim_config) {
   dim_comp_table <- NULL
   for(i in dim_config$data_col) {
-    sum_or_na <- function(x) {
-      if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
-    }
     
     this_dim_comp <- comp %>%
       rename(dim = !!sym(i)) %>% 
