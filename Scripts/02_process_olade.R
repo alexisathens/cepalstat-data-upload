@@ -107,6 +107,9 @@ rm(header_row, unit_row)
 
 ### ---- IND-2486 ----
 
+# Indicator name: Primary energy supply from renewable (combustible and non-combustible) and non-renewable sources by energy resource
+# General instructions: primary energy supply (in units of 103 bep) aggregated at the energy resource level
+
 indicator_id <- 2486
 i2486 <- grupo1
 
@@ -256,6 +259,9 @@ rm(list = ls())
 
 ### ---- IND-3154 ----
 
+# Indicator name: Renewable proportion of primary energy supply
+# General instructions: sum renewable energy resources and divide by total primary energy supply
+
 indicator_id <- 3154
 i3154 <- grupo1
 
@@ -276,11 +282,32 @@ dim_config3154 <- tibble(
 
 ### make manual adjustments to data labels *****
 
-# i3154 %<>% 
-#   mutate(Type = case_when(
-#     Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
-#     TRUE ~ Type
-#   ))
+# Standardize type labels
+i3154 %<>% 
+  mutate(Type = case_when(
+    Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
+    TRUE ~ Type
+  ))
+
+renew <- c("Hidroenergía", "Geotermia", "Otras primarias", "Leña", "Caña de azúcar y derivados")
+
+# Filter only on renewables and total primary supply
+i3154 %<>%
+  filter(Type %in% renew | Type == "Total primarias")
+
+# Calculate renewable share of total primary energy
+i3154 %<>% 
+  mutate(Renewable = ifelse(Type %in% renew, "Renew", "Total")) %>% 
+  group_by(Country, Years, Renewable) %>% 
+  summarize(value = sum_or_na(value)) %>% 
+  ungroup() %>% 
+  pivot_wider(names_from = Renewable) %>% 
+  mutate(value = Renew / Total * 100) %>% 
+  select(-Renew, -Total)
+
+# Remove all empty rows
+i3154 %<>% 
+  filter(!is.na(value))
 
 # **********************************************
 
@@ -317,38 +344,7 @@ comp_sum %>%
 
 
 # ---- add summary groups ----
-
-clean_renew <- i3154 %>% 
-  filter(Type %in% c("Hidroenergía", "Geotermia", "Otras primarias"))
-
-nonclean_renew <- i3154 %>% 
-  filter(Type %in% c("Leña", "Caña de azúcar y derivados"))
-
-nonrenew <- i3154 %>% 
-  filter(Type %in% c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear"))
-
-# summarize
-clean_renew %<>% group_by(Country, Years) %>% summarize(value = sum(value, na.rm = TRUE))
-nonclean_renew %<>% group_by(Country, Years) %>% summarize(value = sum(value, na.rm = TRUE))
-nonrenew %<>% group_by(Country, Years) %>% summarize(value = sum(value, na.rm = TRUE))
-
-# label
-clean_renew %<>% mutate(Type = "Energía primaria renovable limpia") %>% select(Country, Years, Type, value)
-nonclean_renew %<>% mutate(Type = "Energía primaria renovable no limpia") %>% select(Country, Years, Type, value)
-nonrenew %<>% mutate(Type = "Energía primaria no renovable") %>% select(Country, Years, Type, value)
-
-### join summary rows to data table
-
-i3154 %<>% 
-  bind_rows(clean_renew) %>% 
-  bind_rows(nonclean_renew) %>% 
-  bind_rows(nonrenew)
-
-i3154 %<>% 
-  arrange(Country, Years, Type) %>% 
-  filter(!is.na(value))
-
-rm(clean_renew, nonclean_renew, nonrenew, these_types)
+# none with this indicator
 
 # ---- join CEPALSTAT dimension IDs ----
 
