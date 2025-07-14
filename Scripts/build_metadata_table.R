@@ -42,13 +42,53 @@ env %<>%
   select(!starts_with("Indicador")) %>% 
   relocate(id, name, everything())
 
+env %<>% 
+  rename(dimension = Dimension, subdimension = Subdimension)
+
+
+# ---- get sources ---- 
+
+## UPDATE code from here ->
+
+all_sources <- NULL 
+
+for(i in 1:length(env_ids)){
+  
+  this_id <- env_ids[i]
+  
+  ## Get source_id from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{this_id}/sources?lang=en&format=json")
+  
+  # Send request and parse JSON
+  result <- request(url) %>%
+    req_perform() %>%
+    resp_body_string() %>%
+    fromJSON(flatten = TRUE)
+  
+  sources_tbl <- result %>%
+    pluck("body", "sources") %>%
+    as_tibble()
+  
+  sources_tbl %<>% mutate(env_id = this_id)
+  
+  all_sources %<>% bind_rows(sources_tbl)
+}
+
+all_sources
+
+all_sources %<>% 
+  filter(!str_detect(description, "Calculations made|calculated"))
+
+basic_sources <- all_sources %>% 
+  distinct(env_id, organization_acronym, organization_name)
+
+## join to main df
+env %<>% 
+  left_join(basic_sources, by = c(`Indicator ID` = "env_id"))
 
 
 
-
-
-
-# ---- get full environmental indicator dimension list ----
+# ---- get dimensions ----
 
 all_dims <- NULL
 
@@ -61,3 +101,5 @@ for(i in 1:length(env_ids)){
 }
 
 all_dims
+
+# ---- create flags ----
