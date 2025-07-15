@@ -80,11 +80,15 @@ all_sources %<>%
   filter(!str_detect(description, "Calculations made|calculated"))
 
 basic_sources <- all_sources %>% 
-  distinct(env_id, organization_acronym, organization_name)
+  distinct(env_id, organization_acronym)
 
 ## join to main df
 env %<>% 
-  left_join(basic_sources, by = c(`Indicator ID` = "env_id"))
+  left_join(basic_sources, by = c("id" = "env_id"))
+
+env %<>% 
+  rename(source = organization_acronym) %>% 
+  mutate(source = ifelse(dimension == "Energy resources" & is.na(source), "OLADE", source))
 
 
 
@@ -95,11 +99,31 @@ all_dims <- NULL
 for(i in 1:length(env_ids)){
   this_id <- env_ids[i]
   
-  these_dims <- get_indicator_dimensions(this_id)
+  these_dims <- get_indicator_dimensions(this_id) %>% pull(name)
   
-  all_dims <- all_dims %>% bind_rows(these_dims) %>% distinct(name, id, name_es)
+  these_dims <- setdiff(these_dims, c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type"))
+  
+  dims_tbl <- tibble(id = this_id, dimensions = these_dims)
+  
+  all_dims %<>% bind_rows(dims_tbl)
 }
 
 all_dims
 
+# Collapse groups with more than one dimension
+all_dims %<>%
+  group_by(id) %>%
+  summarise(dimensions = paste(unique(dimensions), collapse = "; "), .groups = "drop")
+
+## join to main df
+env %<>% 
+  left_join(all_dims, by = "id")
+
+
 # ---- create flags ----
+
+
+# ---- export ----
+
+# Export spreadsheet
+write_xlsx(env, here("Data", "indicator_metadata.xlsx"))
