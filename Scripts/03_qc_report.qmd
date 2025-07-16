@@ -1,5 +1,5 @@
 ---
-title: "Quality Check Report: `r params$indicator_name`"
+title: "Quality Check Report"
 format: 
   html:
     self-contained: true
@@ -9,15 +9,14 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 2486
-  indicator_name: "Indicator Name"
-  data_source: "Data Source"
-  comp_data_path: "Data/Checks/comp_id2486.csv"
+  indicator_id: 3154
 execute:
   echo: false
   warning: false
   message: false
 ---
+
+## Quality Check Report for Indicator `r params$indicator_id`
 
 <!--
 This report summarizes the quality checks performed to validate updated internal data for environmental indicators.
@@ -38,23 +37,45 @@ library(scales)
 library(lubridate)
 library(DT)
 library(scales)
+library(here)
+library(fs)
 
 # Load data
 indicator_id <- params$indicator_id
-comp <- read_csv(params$comp_data_path)
-countries <- read_csv("../Data/iso_codes.csv")
+comp <- read_xlsx(here(glue("Data/Checks/comp_id{indicator_id}.xlsx")), 
+                  col_types = c("text", "text", "text", "text", "numeric", "numeric", "numeric", "numeric", "logical", "logical", "logical", "logical", "text"))
 
-# Metadata
+iso <- read_xlsx(here("Data/iso_codes.xlsx"))
+
+iso %<>% 
+  filter(ECLACa == "Y") %>% 
+  select(cepalstat, name, std_name)
+
+meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+indicator_name <- meta %>% filter(id == indicator_id) %>% pull(name)
+
 date_stamp <- Sys.Date()
-indicator_name <- params$indicator_name
-data_source <- params$data_source
+
+# Get data vintage
+files <- dir_ls(here("Data/Cleaned"), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
+
+latest_file <- tibble(
+  file = files,
+  datetime = str_extract(files, "\\d{4}-\\d{2}-\\d{2}T\\d{6}") %>%
+    ymd_hms(truncated = 1)) %>%
+  arrange(desc(datetime)) %>%
+  slice(1) %>%
+  pull(file)
+
+data_date <- str_extract(latest_file, "\\d{4}-\\d{2}-\\d{2}T\\d{6}")
 
 # Create summary info
 summary_info <- list(
   "Report Date" = format(date_stamp, "%d %B %Y"),
   "Indicator ID" = indicator_id,
   "Indicator Name" = indicator_name,
-  "Data Source" = data_source,
+  "Data Vintage" = data_date,
+  "Data Source" = meta %>% filter(id == indicator_id) %>% pull(source),
   "Time Coverage" = paste(min(comp$dim_29117_label), "-", max(comp$dim_29117_label)),
   "Number of Countries" = n_distinct(comp$dim_208_label),
   "Total Records" = nrow(comp)
@@ -151,15 +172,15 @@ The visual below shows data coverage by country and year. Gaps or additions shou
 
 ```{r}
 all_combinations <- expand_grid(
-  country = countries$name[which(countries$ECLAC == "Y")],
-  year = min(comp$dim_29117_label):max(comp$dim_29117_label)
+  country = unique(iso$std_name),
+  year = as.character(min(comp$dim_29117_label):max(comp$dim_29117_label))
 )
 
 coverage_check <- all_combinations %>%
   left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>% 
   mutate(status = ifelse(is.na(status), "Missing in Both", status))
 
-# Remove sub-regions if not in data set
+# Remove sub-regions if not in data set ## CHANGE TO ASSOCIATES
 regional_status <- coverage_check$status[which(coverage_check$country %in% c("Latin America", "Caribbean", "South America", "Central America"))]
 
 if(all(regional_status == "Missing in Both")) {
@@ -214,42 +235,42 @@ Need to add check for missing records when there are additional dimensions, or a
 -->
 
 ```{r}
-for(dim in extra_dims) {
-  
-  cat(glue::glue("### QC Breakdown by {dim}\n\n"))
-
-  by_extra <- comp_detailed %>%
-    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim)))) %>%
-    summarize(value_data = sum(value_data, na.rm = TRUE),
-              value_pub = sum(value_pub, na.rm = TRUE),
-              .groups = "drop") %>% ungroup()
-
-  p <- by_extra %>%
-    ggplot(aes(
-      x = dim_29117_label,
-      y = value_data,
-      color = .data[[dim]],
-      group = .data[[dim]],
-      text = glue("Group: {.data[[dim]]}<br>Value: {scales::comma(value_data)}")
-    )) +
-    geom_line(linewidth = 0.8) +
-    #geom_point() +
-    facet_wrap(~ dim_208_label, scales = "free_y") +
-    labs(
-      title = glue("Values by {dim}, over dim_29117_label"),
-      x = "dim_29117_label",
-      y = "Value",
-      color = dim
-    ) +
-    theme_minimal() +
-    theme(
-      legend.position = "none"
-    )
-  
-  ggplotly(p, tooltip = "text")
-  
-  cat("\n\n")
-}
+# for(dim in extra_dims) {
+#   
+#   cat(glue::glue("### QC Breakdown by {dim}\n\n"))
+# 
+#   by_extra <- comp_detailed %>%
+#     group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim)))) %>%
+#     summarize(value_data = sum(value_data, na.rm = TRUE),
+#               value_pub = sum(value_pub, na.rm = TRUE),
+#               .groups = "drop") %>% ungroup()
+# 
+#   p <- by_extra %>%
+#     ggplot(aes(
+#       x = dim_29117_label,
+#       y = value_data,
+#       color = .data[[dim]],
+#       group = .data[[dim]],
+#       text = glue("Group: {.data[[dim]]}<br>Value: {scales::comma(value_data)}")
+#     )) +
+#     geom_line(linewidth = 0.8) +
+#     #geom_point() +
+#     facet_wrap(~ dim_208_label, scales = "free_y") +
+#     labs(
+#       title = glue("Values by {dim}, over dim_29117_label"),
+#       x = "dim_29117_label",
+#       y = "Value",
+#       color = dim
+#     ) +
+#     theme_minimal() +
+#     theme(
+#       legend.position = "none"
+#     )
+#   
+#   ggplotly(p, tooltip = "text")
+#   
+#   cat("\n\n")
+# }
 ```
 
 
@@ -260,9 +281,6 @@ This section visualizes the values of the new data points. Whether any of the ne
 
 
 ```{r}
-library(ggplot2)
-library(plotly)
-
 p <- ggplot(comp, aes(
   x = as.numeric(dim_29117_label),  # Year
   y = value_data,
@@ -381,7 +399,6 @@ p <- comp %>%
   x = value_data,
   color = flag_large_diff,
   text = paste(
-    #"Record ID:", record_id,
     "<br>Country:", dim_208_label,
     "<br>Year:", dim_29117_label,
     "<br>Public:", round(value_pub, 1),
@@ -426,7 +443,6 @@ p <- comp %>%
     x = as.numeric(dim_29117_label),
     y = perc_diff,
     text = paste(
-      #"Record ID:", record_id,
       "<br>Country:", dim_208_label,
       "<br>Year:", dim_29117_label,
       "<br>% Diff:", round(perc_diff, 1)
@@ -488,7 +504,7 @@ reactable(
     filter(flag_large_diff == TRUE) %>%
     arrange(desc(z_perc_diff)) %>%
     select(
-      record_id,
+      #record_id,
       dim_208_label,
       dim_29117_label,
       value_data,
@@ -580,7 +596,7 @@ reactable(
     ) %>%
     arrange(desc(abs(z_within_country))) %>%
     select(
-      record_id,
+      #record_id,
       dim_208_label,
       dim_29117_label,
       value_data,
@@ -662,11 +678,11 @@ ggplotly(p3, tooltip = "text") %>%
 ```
 
 
-
+<!--
 ## Appendix
 
 ### Data Dictionary
-
+-->
 ```{r}
 # Create data dictionary
 # data_dict <- tibble(
@@ -700,7 +716,9 @@ ggplotly(p3, tooltip = "text") %>%
 #   )
 ```
 
+<!--
 ### Technical Details
+-->
 
 <!--
 Add code to spit out the name of the data being referenced. comp_idXXX currently doesn't store this. consider writing a second tab for the corresponding clean data file (since the comp files don't have time stamps)
@@ -708,5 +726,5 @@ Add code to spit out the name of the data being referenced. comp_idXXX currently
 
 ```{r}
 # Session information
-sessionInfo()
+# sessionInfo()
 ```
