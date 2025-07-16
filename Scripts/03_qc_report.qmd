@@ -9,7 +9,7 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 3154
+  indicator_id: 2486
 execute:
   echo: false
   warning: false
@@ -40,10 +40,23 @@ library(scales)
 library(here)
 library(fs)
 
+source(here("Scripts/utils.R"))
+
 # Load data
 indicator_id <- params$indicator_id
-comp <- read_xlsx(here(glue("Data/Checks/comp_id{indicator_id}.xlsx")), 
-                  col_types = c("text", "text", "text", "text", "numeric", "numeric", "numeric", "numeric", "logical", "logical", "logical", "logical", "text"))
+comp <- read_xlsx(here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+# Overwrite types
+comp %<>%
+  mutate(across(
+    .cols = matches("dim"),
+    .fns = as.character)) %>%
+  mutate(across(
+    .cols = matches("value|^abs_diff$|^perc_diff$"),
+    .fns = as.numeric)) %>%
+  mutate(across(
+    .cols = starts_with("flag_"),
+    .fns = as.logical))
 
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 
@@ -69,6 +82,18 @@ latest_file <- tibble(
 
 data_date <- str_extract(latest_file, "\\d{4}-\\d{2}-\\d{2}T\\d{6}")
 
+# Get dimension info
+ind_dims <- comp %>% select(ends_with("_label")) %>% names()
+base_dims <- c("dim_29117_label", "dim_208_label") # year, country
+extra_dims <- str_extract(setdiff(ind_dims, base_dims), "\\d+")
+
+extra_dim_names <- get_indicator_dimensions(indicator_id) %>% 
+  filter(id %in% extra_dims) %>% 
+  pull(name)
+
+dim_ids <- if (length(extra_dims) > 0) paste(extra_dims, collapse = ", ") else ""
+dim_names <- if (length(extra_dim_names) > 0) paste(extra_dim_names, collapse = ", ") else ""
+
 # Create summary info
 summary_info <- list(
   "Report Date" = format(date_stamp, "%d %B %Y"),
@@ -76,6 +101,8 @@ summary_info <- list(
   "Indicator Name" = indicator_name,
   "Data Vintage" = data_date,
   "Data Source" = meta %>% filter(id == indicator_id) %>% pull(source),
+  "Dimension IDs" = dim_ids,
+  "Dimension Names" = dim_names,
   "Time Coverage" = paste(min(comp$dim_29117_label), "-", max(comp$dim_29117_label)),
   "Number of Countries" = n_distinct(comp$dim_208_label),
   "Total Records" = nrow(comp)
@@ -89,10 +116,6 @@ Create comparison dfs at two different levels of detail:
 -->
 
 ```{r}
-ind_dims <- comp %>% select(ends_with("_label")) %>% names()
-base_dims <- c("dim_29117_label", "dim_208_label") # year, country
-extra_dims <- setdiff(ind_dims, base_dims)
-
 # Keep `comp` df at country/year level. Create comp_detailed for IF there are additional dimensions.
 comp_detailed <- comp
 
