@@ -7,6 +7,7 @@ library(glue)
 library(writexl)
 library(here)
 library(assertthat)
+library(quarto)
 
 # This script does the full cleaning and standardizing of OLADE indicators
 
@@ -26,6 +27,10 @@ iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 iso %<>% 
   filter(ECLACa == "Y") %>% 
   select(cepalstat, name, std_name)
+
+# read in indicator metadata
+
+meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
 
 # ---- cleaning helpers ----
@@ -101,6 +106,10 @@ grupo1 %<>%
   pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
   mutate(value = as.numeric(value))
 
+# Remove NAs
+grupo1 %<>% 
+  filter(!is.na(value))
+
 grupo1
 
 rm(header_row, unit_row)
@@ -169,6 +178,10 @@ these_types <- comp_sum %>%
   filter(status == "Present in Both") %>% 
   pull(dim)
 
+# manually add new labels for 2025
+these_types %<>%
+  union(c("Eólica", "Solar", "Etanol", "Otra biomasa", "Biodiésel", "Biogás"))
+
 i2486 %<>% 
   filter(Type %in% these_types)
 # **********************************************
@@ -177,10 +190,10 @@ i2486 %<>%
 # ---- add summary groups ----
 
 clean_renew <- i2486 %>% 
-  filter(Type %in% c("Hidroenergía", "Geotermia", "Otras primarias"))
+  filter(Type %in% c("Hidroenergía", "Geotermia", "Otras primarias", "Eólica", "Solar"))
 
 nonclean_renew <- i2486 %>% 
-  filter(Type %in% c("Leña", "Caña de azúcar y derivados"))
+  filter(Type %in% c("Leña", "Caña de azúcar y derivados", "Etanol", "Otra biomasa", "Biodiésel", "Biogás"))
 
 nonrenew <- i2486 %>% 
   filter(Type %in% c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear"))
@@ -254,7 +267,6 @@ comp
 # Export comp file!
 # write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
 
-rm(list = ls())
 
 
 ### ---- IND-3154 ----
@@ -264,6 +276,7 @@ rm(list = ls())
 
 indicator_id <- 3154
 i3154 <- grupo1
+ind_name <- meta %>% filter(id == indicator_id) %>% pull(name)
 
 # Fill out dim config table using following info:
 get_indicator_dimensions(indicator_id)
@@ -289,7 +302,8 @@ i3154 %<>%
     TRUE ~ Type
   ))
 
-renew <- c("Hidroenergía", "Geotermia", "Otras primarias", "Leña", "Caña de azúcar y derivados")
+renew <- c("Hidroenergía", "Geotermia", "Otras primarias", "Eólica", "Solar", 
+           "Leña", "Caña de azúcar y derivados", "Etanol", "Otra biomasa", "Biodiésel", "Biogás")
 
 # Filter only on renewables and total primary supply
 i3154 %<>%
@@ -392,5 +406,49 @@ comp
 # Export comp file!
 # write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
 
-rm(list = ls()[!sapply(mget(ls(), .GlobalEnv), is.function)])
+# ---- run QC report ----
 
+# output_name <- glue::glue("qc_report_{indicator_id}.html")
+# 
+# quarto::quarto_render(
+#   input = here::here("Scripts/03_qc_report.qmd"),
+#   execute_params = list(
+#     indicator_id = 3154,
+#     indicator_name = ind_name
+#   ),
+#   output_file = output_name
+# )
+# 
+# file.rename(output_name, here::here("QC Reports", output_name))
+# 
+# rm(list = ls())
+# 
+# 
+# quarto::quarto_render(
+#   input = here::here("Scripts/03_qc_report.qmd"),
+#   output_file = output_name,
+#   execute_params = list(
+#     indicator_id = 3154,
+#     indicator_name = ind_name
+#   ),
+#   quiet = FALSE
+# )
+# 
+# quarto::quarto_render("Scripts/test.qmd", execute_params = list(indicator_id = 3154, indicator_name = "Energy Intensity"))
+# 
+# quarto::quarto_render(
+#   input = here::here("Scripts/test.qmd"),
+#   output_file = "test.html",
+#   execute_params = list(
+#     indicator_id = 999,
+#     indicator_name = "Greenhouse Gases"
+#   )
+# )
+# 
+# quarto::quarto_render(
+#   input = here::here("Scripts/test.qmd"),
+#   execute_params = list(
+#     indicator_id = 3154,
+#     indicator_name = "GHG Emissions"
+#   )
+# )
