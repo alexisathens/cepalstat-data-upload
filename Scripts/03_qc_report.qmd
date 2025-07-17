@@ -85,13 +85,14 @@ data_date <- str_extract(latest_file, "\\d{4}-\\d{2}-\\d{2}T\\d{6}")
 # Get dimension info
 ind_dims <- comp %>% select(ends_with("_label")) %>% names()
 base_dims <- c("dim_29117_label", "dim_208_label") # year, country
-extra_dims <- str_extract(setdiff(ind_dims, base_dims), "\\d+")
+extra_dims <- setdiff(ind_dims, base_dims)
+extra_dim_ids <- str_extract(extra_dims, "\\d+")
 
 extra_dim_names <- get_indicator_dimensions(indicator_id) %>% 
-  filter(id %in% extra_dims) %>% 
+  filter(id %in% extra_dim_ids) %>% 
   pull(name)
 
-dim_ids <- if (length(extra_dims) > 0) paste(extra_dims, collapse = ", ") else ""
+dim_ids <- if (length(extra_dim_ids) > 0) paste(extra_dim_ids, collapse = ", ") else ""
 dim_names <- if (length(extra_dim_names) > 0) paste(extra_dim_names, collapse = ", ") else ""
 
 # Create summary info
@@ -253,50 +254,6 @@ ggplotly(p, tooltip = "text") %>%
   )
 ```
 
-<!--
-Need to add check for missing records when there are additional dimensions, or aggregate records
--->
-
-```{r}
-# for(dim in extra_dims) {
-#   
-#   cat(glue::glue("### QC Breakdown by {dim}\n\n"))
-# 
-#   by_extra <- comp_detailed %>%
-#     group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim)))) %>%
-#     summarize(value_data = sum(value_data, na.rm = TRUE),
-#               value_pub = sum(value_pub, na.rm = TRUE),
-#               .groups = "drop") %>% ungroup()
-# 
-#   p <- by_extra %>%
-#     ggplot(aes(
-#       x = dim_29117_label,
-#       y = value_data,
-#       color = .data[[dim]],
-#       group = .data[[dim]],
-#       text = glue("Group: {.data[[dim]]}<br>Value: {scales::comma(value_data)}")
-#     )) +
-#     geom_line(linewidth = 0.8) +
-#     #geom_point() +
-#     facet_wrap(~ dim_208_label, scales = "free_y") +
-#     labs(
-#       title = glue("Values by {dim}, over dim_29117_label"),
-#       x = "dim_29117_label",
-#       y = "Value",
-#       color = dim
-#     ) +
-#     theme_minimal() +
-#     theme(
-#       legend.position = "none"
-#     )
-#   
-#   ggplotly(p, tooltip = "text")
-#   
-#   cat("\n\n")
-# }
-```
-
-
 
 ### New Values Time Series
 
@@ -352,6 +309,61 @@ ggplotly(p, tooltip = "text") %>%
 
 ```
 
+### Country Values Time Series
+This shows the same information but is scaled to the country level. 
+
+```{r, warning = FALSE, fig.height=14}
+p <- comp %>% 
+  filter(!is.na(value_data)) %>% 
+  ggplot(aes(
+  x = as.numeric(dim_29117_label),  # Year
+  y = value_data,
+  group = dim_208_label,            # Country
+  color = flag_new_entry,
+  text = paste(
+    "Country:", dim_208_label,
+    "<br>Year:", dim_29117_label,
+    "<br>Value:", round(value_data, 1),
+    "<br>New Entry:", flag_new_entry
+  )
+)) +
+  # Base lines by country
+  geom_line(alpha = 0.5, color = "#e6e6e6") +
+  
+  # Graph by individual country
+  facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+  
+  # Highlight new entries
+  geom_point(size = 1, alpha = 0.8) +
+  
+  # Color scheme for new entries
+  scale_color_manual(values = c("FALSE" = "gray80", "TRUE" = "#99ccff")) +
+  
+  # Labels and theme
+  labs(
+    title = "Individual Country Time Series",
+    subtitle = "Red points indicate new entries not present in public dataset",
+    x = "Year",
+    y = "Value"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    plot.subtitle = element_text(size = 12),
+    legend.position = "none"
+  )
+
+# Interactive conversion
+ggplotly(p, tooltip = "text") %>%
+  layout(
+    title = list(
+      text = paste0(
+        "Time Series by Country"#,
+        #'<br><sup>Blue points indicate new entries not present in public dataset</sup>'
+      )
+    )
+  )
+```
 
 ## Value Comparisons (Between Data Sets)
 
@@ -700,6 +712,61 @@ ggplotly(p3, tooltip = "text") %>%
 
 ```
 
+<!--
+Need to add check for missing records when there are additional dimensions, or aggregate records
+-->
+
+```{r, warning = FALSE, fig.height=16, results='asis'}
+render_plot_for_dim <- function(dim) {
+  dim_name <- get_indicator_dimensions(indicator_id) %>% 
+    filter(id == str_extract(dim, "\\d+")) %>% 
+    pull(name)
+  
+  cat(glue::glue("### Dimension-Level Analysis"))
+  
+  by_extra <- comp_detailed %>%
+    filter(!is.na(value_data)) %>% 
+    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE),
+              value_pub = sum(value_pub, na.rm = TRUE),
+              .groups = "drop") %>%
+    ungroup()
+
+  p <- by_extra %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label)) %>% 
+    ggplot(aes(
+      x = dim_29117_label,
+      y = value_data,
+      color = .data[[dim]],
+      group = .data[[dim]],
+      text = paste(
+            "Country:", dim_208_label,
+            "<br>Year:", dim_29117_label,
+            "<br>Group:", .data[[dim]],
+            "<br>Value:", round(value_data, 1)
+          )
+      
+    )) +
+    geom_line(linewidth = 0.8) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    labs(
+      title = glue("Country Breakout by Dimension: '{dim_name}'"),
+      x = "Year",
+      y = "",
+      color = dim
+    ) +
+    scale_x_continuous(n.breaks = 4) +
+    scale_y_continuous(labels = scales::label_number(), n.breaks = 4) +
+    scale_color_brewer(palette = "Paired") +
+    theme_minimal() +
+    theme(legend.position = "none")
+
+  ggplotly(p, tooltip = "text")
+}
+
+if (length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
+if (length(extra_dims) == 2) render_plot_for_dim(extra_dims[2])
+```
 
 <!--
 ## Appendix
