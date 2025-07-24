@@ -213,9 +213,14 @@ format_for_wasabi <- function(data, indicator_id){
     pluck("body", "footnotes") %>%
     as_tibble()
   
+  # Remove specific footnotes that are no longer applicable
+  # f 6996 - note about what Caribbean country category includes. this category is no longer included.
+  footnotes_tbl %<>% 
+    filter(!id %in% c(6996))
+  
   # Create footnotes_id field
   data %<>% 
-    mutate(footnotes_id = ifelse(!is_empty(footnotes_tbl), footnotes_tbl %>% pull(id), ''))
+    mutate(footnotes_id = ifelse(!(is_empty(footnotes_tbl) | nrow(footnotes_tbl) == 0), footnotes_tbl %>% pull(id), ''))
   
   # Select final columns
   data %<>% 
