@@ -37,11 +37,26 @@ fetch_cepalstat_json <- function(url) {
     fromJSON(flatten = TRUE)
 }
 
-# # Helper: Join English and Spanish names, add 'name_es' column
-# add_spanish_names <- function(df_en, df_es) {
-#   df_en %>%
-#     left_join(df_es %>% select(id, name_es = name), by = "id")
-# }
+# Get table of indicator footnotes for manual assignment
+get_indicator_footnotes <- function(indicator_id) {
+  ## Get footnotes_id from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang=en&format=json")
+  
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+  
+  footnotes_tbl <- result %>%
+    pluck("body", "footnotes") %>%
+    as_tibble()
+  
+  # Remove specific footnotes that are no longer applicable
+  # f 6996 - note about what Caribbean country category includes. this category is no longer included.
+  footnotes_tbl %<>% 
+    filter(!id %in% c(6996))
+  
+  return(footnotes_tbl)
+}
+
 
 # Get indicator dimensions with English and Spanish names
 get_indicator_dimensions <- function(indicator_id) {
@@ -172,9 +187,10 @@ format_for_wasabi <- function(data, indicator_id){
   data %<>%
     mutate(
       members_id = data %>%
-        select(ends_with("_id")) %>%
+        select(ends_with("_id"), -footnotes_id) %>%
         pmap_chr(~ paste(c(...), collapse = ","))
-    ) %>% select(-ends_with("_id"), members_id)
+    ) %>%
+    select(-ends_with("_id"), members_id, footnotes_id)
   
   # Create record_id field
   data %<>%
@@ -203,24 +219,12 @@ format_for_wasabi <- function(data, indicator_id){
   data %<>% 
     mutate(source_id = sources_tbl %>% pull(id))
   
-  ## Get footnotes_id from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang=en&format=json")
-  
-  # Send request and parse JSON
-  result <- fetch_cepalstat_json(url)
-  
-  footnotes_tbl <- result %>%
-    pluck("body", "footnotes") %>%
-    as_tibble()
-  
-  # Remove specific footnotes that are no longer applicable
-  # f 6996 - note about what Caribbean country category includes. this category is no longer included.
-  footnotes_tbl %<>% 
-    filter(!id %in% c(6996))
-  
-  # Create footnotes_id field
-  data %<>% 
-    mutate(footnotes_id = ifelse(!(is_empty(footnotes_tbl) | nrow(footnotes_tbl) == 0), footnotes_tbl %>% pull(id), ''))
+  ## Get footnotes_id from CEPALSTAT -- do this fully in processing script since manual
+  # footnotes_tbl <- get_indicator_footnotes(indicator_id)
+  # 
+  # # Create footnotes_id field
+  # data %<>% 
+  #   mutate(footnotes_id = ifelse(!(is_empty(footnotes_tbl) | nrow(footnotes_tbl) == 0), footnotes_tbl %>% pull(id), ''))
   
   # Select final columns
   data %<>% 
