@@ -541,6 +541,149 @@ comp
 
 
 
+### ---- IND-2487 ----
+
+# Indicator name: Primary and secondary energy supply
+# General instructions: primary energy supply (in units of 103 bep) aggregated at the energy resource level
+
+indicator_id <- 2487
+i2487 <- grupo1
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config2487 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "44966"),
+  pub_col = c("208_name", "29117_name", "44966_name_es")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+### make manual adjustments to data labels *****
+
+i2487 %<>% 
+  mutate(Type = case_when(
+    Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
+    
+    Type == "Diésel oil con biodiésel" ~ "Diesel oil",
+    Type == "Diésel oil sin biodiésel" ~ "Diesel oil",
+    
+    Type == "Gas licuado de petróleo" ~ "Gas licuado",
+    
+    Type == "Gasolina con etanol" ~ "Gasolina/Alcohol",
+    Type == "Gasolina sin etanol" ~ "Gasolina/Alcohol",
+    
+    Type == "Kerosene/jet fuel" ~ "Kerosene/Jet fuel",
+    
+    TRUE ~ Type
+  ))
+
+
+i2487 %<>% 
+  group_by(Country, Years, Type) %>% 
+  summarize(value = sum(value, na.rm = T)) %>% 
+  ungroup()
+
+
+# **********************************************
+
+join_keys <- setNames(dim_config2487$pub_col, dim_config2487$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i2487, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config2487)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+# keep all categories this time since this dimension is primary + secondary sources
+
+# **********************************************
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i2487f <- join_data_dim_members(i2487, dim_config2487)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2487f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i2487f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+i2487f %<>% 
+  mutate(footnotes_id = case_when(
+    Type == "Total primarias" ~ "5896",
+    Type == "Total secundarias" ~ "5897",
+    TRUE ~ footnotes_id
+  ))
+# ***************************
+
+i2487f %<>% 
+  select(ends_with("_id"), value)
+
+i2487f <- format_for_wasabi(i2487f, 2487)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2487f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i2487f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i2487 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i2487, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config2487)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config2487)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+
+
 # ---- GRUPO 4 ----
 
 # ---- clean to long format ----
