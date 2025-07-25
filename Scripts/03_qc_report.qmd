@@ -9,7 +9,7 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 2486
+  indicator_id: 2487
 execute:
   echo: false
   warning: false
@@ -757,7 +757,7 @@ render_plot_for_dim <- function(dim) {
     ) +
     scale_x_continuous(n.breaks = 4) +
     scale_y_continuous(labels = scales::label_number(), n.breaks = 4) +
-    scale_color_brewer(palette = "Paired") +
+    scale_color_viridis_d(option = "C") +
     theme_minimal() +
     theme(legend.position = "none")
 
