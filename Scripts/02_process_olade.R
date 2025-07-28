@@ -854,3 +854,134 @@ comp
 
 # Export comp file!
 # write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+
+# ---- GRUPO 5 ----
+
+# ---- clean to long format ----
+
+grupo5 <- read_excel(paste0(input_path, "/olade_grupo5.xlsx"), col_names = FALSE)
+
+## Clean into standard flat data format
+
+# Extract header and unit rows for each table in spreadsheet
+header_row <- grupo5[3,]
+unit_row <- grupo5[4,]
+
+# Remove rows that match these patterns
+grupo5 %<>%
+  remove_headers(header_row, unit_row)
+
+# Format header row
+colnames(grupo5) <- standardize_headers(header_row)
+
+# Create year field
+grupo5 %<>% 
+  mutate(Years = str_extract(Country, "\\b\\d{4}$")) %>% 
+  fill(Years, .direction = "down") %>% 
+  select(Country, Years, everything())
+
+# Remove year header and first row
+grupo5 %<>% 
+  filter(!str_detect(Country, "\\b\\d{4}$")) %>% 
+  filter(Country != "Series de oferta y demanda")
+
+# Overwrite country names with std_name in iso file
+grupo5 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
+# Check which countries in olade don't match to iso (if any, add manually to build_iso_table.R script)
+grupo5 %>%
+  filter(!Country %in% iso$name) %>%
+  distinct(Country)
+
+# Filter out extra groups
+grupo5 %<>% 
+  filter(Country %in% iso$name)
+
+# Filter out sub-regions
+# This is because country data doesn't always total to sub-regional level, and sometimes different methodologies and classifications are used
+# Just keep country and regional level for clarity purposes
+grupo5 %<>% 
+  filter(!Country %in% c("Central America", "South America", "Caribbean"))
+
+# Finally make long
+grupo5 %<>% 
+  pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
+  mutate(value = as.numeric(value))
+
+# Remove NAs
+grupo5 %<>% 
+  filter(!is.na(value))
+
+grupo5
+
+rm(header_row, unit_row)
+
+
+
+# ---- GRUPO 6 ----
+
+# ---- clean to long format ----
+
+grupo6 <- read_excel(paste0(input_path, "/olade_grupo6.xlsx"), col_names = FALSE)
+
+## Clean into standard flat data format
+
+# Extract header and unit rows for each table in spreadsheet
+header_row <- grupo6[3,]
+unit_row <- grupo6[4,]
+
+# Remove rows that match these patterns
+grupo6 %<>%
+  remove_headers(header_row, unit_row)
+
+# Format header row
+colnames(grupo6) <- standardize_headers(header_row)
+
+# Create year field
+grupo6 %<>% 
+  mutate(Years = str_extract(Country, "\\b\\d{4}$")) %>% 
+  fill(Years, .direction = "down") %>% 
+  select(Country, Years, everything())
+
+# Remove year header and first row
+grupo6 %<>% 
+  filter(!str_detect(Country, "\\b\\d{4}$")) %>% 
+  filter(Country != "Series de oferta y demanda")
+
+# Overwrite country names with std_name in iso file
+grupo6 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
+# Check which countries in olade don't match to iso (if any, add manually to build_iso_table.R script)
+grupo6 %>%
+  filter(!Country %in% iso$name) %>%
+  distinct(Country)
+
+# Filter out extra groups
+grupo6 %<>% 
+  filter(Country %in% iso$name)
+
+# Filter out sub-regions
+# This is because country data doesn't always total to sub-regional level, and sometimes different methodologies and classifications are used
+# Just keep country and regional level for clarity purposes
+grupo6 %<>% 
+  filter(!Country %in% c("Central America", "South America", "Caribbean"))
+
+# Finally make long
+grupo6 %<>% 
+  pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
+  mutate(value = as.numeric(value))
+
+# Remove NAs
+grupo6 %<>% 
+  filter(!is.na(value))
+
+grupo6
+
+rm(header_row, unit_row)
