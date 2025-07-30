@@ -50,9 +50,11 @@ get_indicator_footnotes <- function(indicator_id) {
     as_tibble()
   
   # Remove specific footnotes that are no longer applicable
-  # f 6996 - note about what Caribbean country category includes. this category is no longer included.
-  footnotes_tbl %<>% 
-    filter(!id %in% c(6996))
+  if(!is_empty(footnotes_tbl)){
+    # f 6996 - note about what Caribbean country category includes. this category is no longer included.
+    footnotes_tbl %<>% 
+      filter(!id %in% c(6996))
+  }
   
   return(footnotes_tbl)
 }
