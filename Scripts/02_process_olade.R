@@ -920,6 +920,180 @@ grupo5
 
 rm(header_row, unit_row)
 
+### recreate summary rows *******************
+
+## data-specific issue: noticed that the total rows aren't always accurate for Brazil and this data source specifically, so recalculate manually
+
+primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña", 
+               "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
+
+secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel", 
+                 "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
+
+grupo5 %<>%
+  filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
+  bind_rows(
+    grupo5 %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
+    grupo5 %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
+    grupo5 %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
+  ) %>%
+  arrange(Country, Years, Type)
+
+# ********************************************
+
+### ---- IND-2040 ----
+
+# Indicator name: Energy production
+# General instructions: primary energy supply (in units of 103 bep) aggregated at the energy resource level
+
+indicator_id <- 2040
+i2040 <- grupo5
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config2040 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20726"),
+  pub_col = c("208_name", "29117_name", "20726_name_es")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+### make manual adjustments to data labels *****
+
+# ** fix these later to match indicator 2478 (dim 44966) - this is the duplicate dimension
+i2040 %<>% 
+  mutate(Type = case_when(
+    Type == "Bagazo de caña" ~ "Productos de caña",
+    
+    Type == "Diésel oil con biodiésel" ~ "Diesel oil",
+    Type == "Diésel oil sin biodiésel" ~ "Diesel oil",
+    
+    Type == "Gas licuado de petróleo" ~ "Gas licuado",
+    
+    Type == "Gasolina con etanol" ~ "Gasolinas/alcohol",
+    Type == "Gasolina sin etanol" ~ "Gasolinas/alcohol",
+    
+    Type == "Kerosene/jet fuel" ~ "Kerosene y turbo",
+    
+    Type == "Coque" ~ "Coques",
+    
+    Type == "Total primarias" ~ "PRIMARIA",
+    Type == "Total secundarias" ~ "SECUNDARIA",
+    
+    TRUE ~ Type
+  ))
+
+
+i2040 %<>% 
+  group_by(Country, Years, Type) %>% 
+  summarize(value = sum(value, na.rm = T)) %>% 
+  ungroup()
+
+
+# **********************************************
+
+join_keys <- setNames(dim_config2040$pub_col, dim_config2040$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i2040, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config2040)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+# keep all categories this time since this dimension is primary + secondary sources
+
+## ** temp fix: drop all new categories in dim 44966 to not duplicate efforts now -- eventually fix this
+
+drop <- c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total")
+
+i2040 %<>% 
+  filter(!Type %in% drop)
+
+# remove LatAm entry for 2024, keep up to 2023 - last available for all country data
+i2040 %<>% 
+  filter(Years != 2024)
+
+# **********************************************
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i2040f <- join_data_dim_members(i2040, dim_config2040)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2040f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i2040f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+# ***************************
+
+i2040f %<>% 
+  select(ends_with("_id"), value)
+
+i2040f <- format_for_wasabi(i2040f, 2040)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2040f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i2040f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i2040 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i2040, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config2040)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config2040)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
 
 
 # ---- GRUPO 6 ----
@@ -985,3 +1159,342 @@ grupo6 %<>%
 grupo6
 
 rm(header_row, unit_row)
+
+
+### ---- IND-2041 ----
+
+# Indicator name: Energy consumption
+# General instructions: primary energy supply (in units of 103 bep) aggregated at the energy resource level
+
+indicator_id <- 2041
+i2041 <- grupo6
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config2041 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20726"),
+  pub_col = c("208_name", "29117_name", "20726_name_es")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+### make manual adjustments to data labels *****
+
+# ** fix these later to match indicator 2478 (dim 44966) - this is the duplicate dimension
+i2041 %<>% 
+  mutate(Type = case_when(
+    Type == "Bagazo de caña" ~ "Productos de caña",
+    
+    Type == "Diésel oil con biodiésel" ~ "Diesel oil",
+    Type == "Diésel oil sin biodiésel" ~ "Diesel oil",
+    
+    Type == "Gas licuado de petróleo" ~ "Gas licuado",
+    
+    Type == "Gasolina con etanol" ~ "Gasolinas/alcohol",
+    Type == "Gasolina sin etanol" ~ "Gasolinas/alcohol",
+    
+    Type == "Kerosene/jet fuel" ~ "Kerosene y turbo",
+    
+    Type == "Coque" ~ "Coques",
+    
+    Type == "Total primarias" ~ "PRIMARIA",
+    Type == "Total secundarias" ~ "SECUNDARIA",
+    
+    TRUE ~ Type
+  ))
+
+i2041 %<>% 
+  filter(Type %in% c("PRIMARIA", "SECUNDARIA"))
+
+
+i2041 %<>% 
+  group_by(Country, Years, Type) %>% 
+  summarize(value = sum(value, na.rm = T)) %>% 
+  ungroup()
+
+
+# **********************************************
+
+join_keys <- setNames(dim_config2041$pub_col, dim_config2041$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i2041, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config2041)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+# keep all categories this time since this dimension is primary + secondary sources
+
+# remove LatAm only entry for 2024
+i2041 %<>% 
+  filter(Years != 2024)
+
+# **********************************************
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i2041f <- join_data_dim_members(i2041, dim_config2041)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2041f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i2041f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+# ***************************
+
+i2041f %<>% 
+  select(ends_with("_id"), value)
+
+i2041f <- format_for_wasabi(i2041f, 2041)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2041f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i2041f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i2041 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i2041, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config2041)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config2041)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+
+# ---- GRUPO 7 ----
+
+# **note this group cleaning code is different from prior
+
+# ---- clean to long format ----
+
+grupo7 <- read_excel(paste0(input_path, "/olade_grupo7.xlsx"), col_names = FALSE)
+
+## Clean into standard flat data format
+
+# Extract header and unit rows for each table in spreadsheet
+header_row <- grupo7[3,]
+unit_row <- grupo7[2,]
+
+# Remove rows that match these patterns
+grupo7 %<>%
+  remove_headers(header_row, unit_row)
+
+# Format header row
+colnames(grupo7) <- standardize_headers(header_row)
+
+# Create year field
+# grupo7 %<>% 
+#   mutate(Years = str_extract(Country, "\\b\\d{4}$")) %>% 
+#   fill(Years, .direction = "down") %>% 
+#   select(Country, Years, everything())
+
+# Remove year header and first row
+grupo7 %<>% 
+  filter(!str_detect(Country, "\\b\\d{4}$")) %>% 
+  filter(!grepl("-", Country)) %>% # **
+  filter(Country != "Series de oferta y demanda")
+
+# Overwrite country names with std_name in iso file
+grupo7 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
+# Check which countries in olade don't match to iso (if any, add manually to build_iso_table.R script)
+grupo7 %>%
+  filter(!Country %in% iso$name) %>%
+  distinct(Country)
+
+# Filter out extra groups
+grupo7 %<>% 
+  filter(Country %in% iso$name)
+
+# Filter out sub-regions
+# This is because country data doesn't always total to sub-regional level, and sometimes different methodologies and classifications are used
+# Just keep country and regional level for clarity purposes
+grupo7 %<>% 
+  filter(!Country %in% c("Central America", "South America", "Caribbean"))
+
+# Finally make long
+# grupo7 %<>% 
+#   pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
+#   mutate(value = as.numeric(value))
+
+grupo7 %<>%
+  pivot_longer(cols = -Country, names_to = "Years", values_to = "value")
+
+# Remove NAs
+grupo7 %<>% 
+  filter(!is.na(value))
+
+grupo7
+
+rm(header_row, unit_row)
+
+
+### ---- IND-2023 ----
+
+# Indicator name: Consumption of electric power
+# General instructions: electric power (in units of GwH)
+
+indicator_id <- 2023
+i2023 <- grupo7
+ind_name <- meta %>% filter(id == indicator_id) %>% pull(name)
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config2023 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+join_keys <- setNames(dim_config2023$pub_col, dim_config2023$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i2023, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config2023)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+# (here keep only primary data sources)
+
+i2023 %<>% 
+  filter(Years != "2024") # remove most recent year with only LatAm
+
+# **********************************************
+
+
+# ---- add summary groups ----
+# none with this indicator
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i2023f <- join_data_dim_members(i2023, dim_config2023)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2023f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i2023f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+# ***************************
+
+i2023f %<>% 
+  select(ends_with("_id"), value)
+
+i2023f <- format_for_wasabi(i2023f, 2023)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2023f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i2023f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i2023 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i2023, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config2023)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config2023)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
