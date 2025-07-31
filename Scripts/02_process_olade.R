@@ -1846,3 +1846,104 @@ comp
 
 # Export comp file!
 # write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+
+# ---- GRUPO 9 ----
+
+# **note this group cleaning code is significantly different from prior
+# data for each year is on a separate tab and country labels aren't always in the same order
+
+# ---- clean to long format ----
+
+# Define file path
+file_path <- paste0(input_path, "/olade_grupo9.xlsx")
+
+# List sheet names
+all_sheets <- excel_sheets(file_path)
+
+# Filter sheets starting from "10.2000" onward
+# This extracts the numeric prefix and keeps only sheets where the number is >= 10
+sheets_to_read <- all_sheets[str_extract(all_sheets, "^\\d+") %>% as.numeric() >= 10]
+
+# Read and combine all filtered sheets
+combined_df <- map_dfr(sheets_to_read, function(sheet) {
+
+  df <- read_excel(file_path, sheet = sheet, col_names = FALSE)
+  
+  # Extract header and unit rows for each table in spreadsheet
+  header_row <- df[3,]
+  unit_row <- df[2,]
+  
+  # Remove rows that match these patterns
+  df %<>%
+    remove_headers(header_row, unit_row)
+  
+  # Format header row
+  colnames(df) <- standardize_headers(header_row)
+  
+  # Add year row
+  df$Years <- str_extract(sheet, "\\d{4}")
+  
+  # Filter only on rows with sources
+  fuentes <- c("Nuclear", "Térmica no renovable (combustión)", "Térmica renovable (combustión)", "Hidro", "Geotermia", "Eólica", "Solar")
+  
+  df %<>% 
+    filter(Country %in% fuentes) %>% 
+    select(-Unidad)
+  
+  # Pivot long (to deal with different country availability)
+  df %<>% 
+    pivot_longer(!c(Country, Years), names_to = "Country_name") %>% 
+    rename(Type = Country, Country = Country_name) %>% 
+    select(Country, Years, Type, value)
+  
+  return(df)
+})
+
+grupo9 <- combined_df
+
+rm(combined_df, file_path, all_sheets, sheets_to_read)
+
+
+## Clean into standard flat data format
+
+# Overwrite country names with std_name in iso file
+grupo9 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
+# Check which countries in olade don't match to iso (if any, add manually to build_iso_table.R script)
+grupo9 %>%
+  filter(!Country %in% iso$name) %>%
+  distinct(Country)
+
+# Filter out extra groups
+grupo9 %<>% 
+  filter(Country %in% iso$name)
+
+# Filter out sub-regions
+# This is because country data doesn't always total to sub-regional level, and sometimes different methodologies and classifications are used
+# Just keep country and regional level for clarity purposes
+grupo9 %<>% 
+  filter(!Country %in% c("Central America", "South America", "Caribbean"))
+
+# Finally make long
+# grupo9 %<>% 
+#   pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
+#   mutate(value = as.numeric(value))
+# 
+# grupo9 %<>%
+#   pivot_longer(cols = -Country, names_to = "Years", values_to = "value")
+
+# Convert value to numeric
+grupo9 %<>% 
+  mutate(value = as.numeric(value))
+
+# Remove NAs
+grupo9 %<>% 
+  filter(!is.na(value))
+
+grupo9
+
+rm(header_row, unit_row)
