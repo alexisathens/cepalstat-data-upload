@@ -8,6 +8,7 @@ library(writexl)
 library(here)
 library(assertthat)
 library(quarto)
+library(CepalStatR)
 
 # This script does the full cleaning and standardizing of OLADE indicators
 
@@ -113,6 +114,7 @@ grupo1 %<>%
 grupo1
 
 rm(header_row, unit_row)
+
 
 ### ---- IND-2486 ----
 
@@ -406,6 +408,161 @@ assert_no_na_cols(comp, !contains("value"))
 
 # Run comparison checks and format
 comp <- create_comparison_checks(comp, dim_config3154)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+
+### ---- IND-4174 ----
+
+# Indicator name: GDP energy intensity (Primary energy supply / GDP at constant prices in 2018 dollars)
+# General instructions: GDP at constant prices in dollars (2018) must be obtained, selecting all the countries in the region and LAC. Once both variables are available, 
+# the indicator can be calculated by dividing the primary energy supply by the gross domestic product (GDP) at constant prices in dollars, which is obtained from 
+# CEPALSTAT [2204]
+
+indicator_id <- 4174
+i4174 <- grupo1
+ind_name <- meta %>% filter(id == indicator_id) %>% pull(name)
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config4174 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+### make manual adjustments to data labels *****
+
+# Filter only on total primaries
+i4174 %<>% 
+  filter(Type == "Total primarias") %>% 
+  select(-Type)
+
+# Obtain PIB data from CEPALSTAT
+pib <- call.data(id.indicator = 2204) %>% as_tibble()
+
+pib %<>%
+  mutate(Years = as.character(Years)) %>% 
+  select(Country, Years, pib = value)
+
+# Join PIB data
+i4174 %<>% 
+  left_join(pib, by = join_by(Country, Years))
+
+# Filter out early years where PIB isn't available
+i4174 %<>% 
+  filter(as.numeric(Years) >= 1990)
+
+# Calculate energy intensity
+i4174 %<>% 
+  rename(supply = value) %>% 
+  mutate(value = supply / pib)
+
+# Remove intermediary rows
+i4174 %<>% 
+  select(Country, Years, value)
+
+# Remove all empty rows (some for Venezuela)
+i4174 %<>% 
+  filter(!is.na(value))
+
+# **********************************************
+
+join_keys <- setNames(dim_config4174$pub_col, dim_config4174$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i4174, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config4174)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+# (here keep only primary data sources)
+
+
+
+# **********************************************
+
+
+# ---- add summary groups ----
+# none with this indicator
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i4174f <- join_data_dim_members(i4174, dim_config4174)
+
+# Assert that there are no NA values
+assert_no_na_cols(i4174f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i4174f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+# ***************************
+
+i4174f %<>% 
+  select(ends_with("_id"), value)
+
+i4174f <- format_for_wasabi(i4174f, 4174)
+
+# Assert that there are no NA values
+assert_no_na_cols(i4174f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i4174f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i4174 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i4174, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config4174)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config4174)
 
 comp
 
@@ -1384,7 +1541,7 @@ rm(header_row, unit_row)
 
 ### ---- IND-2023 ----
 
-# Indicator name: Consumption of electric power
+# Indicator name: GDP energy intensity (final energy consumption)
 # General instructions: electric power (in units of GwH)
 
 indicator_id <- 2023
@@ -1498,3 +1655,194 @@ comp
 # Export comp file!
 # write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
 
+
+# ---- GRUPO 8 ----
+
+# **note this group cleaning code is different from prior
+
+# ---- clean to long format ----
+
+grupo8 <- read_excel(paste0(input_path, "/olade_grupo8.xlsx"), col_names = FALSE)
+
+## Clean into standard flat data format
+
+# Extract header and unit rows for each table in spreadsheet
+header_row <- grupo8[3,]
+unit_row <- grupo8[2,]
+
+# Remove rows that match these patterns
+grupo8 %<>%
+  remove_headers(header_row, unit_row)
+
+# Format header row
+colnames(grupo8) <- standardize_headers(header_row)
+
+# Create year field
+# grupo8 %<>% 
+#   mutate(Years = str_extract(Country, "\\b\\d{4}$")) %>% 
+#   fill(Years, .direction = "down") %>% 
+#   select(Country, Years, everything())
+
+# Remove year header and first row
+grupo8 %<>% 
+  filter(!str_detect(Country, "\\b\\d{4}$")) %>% 
+  filter(!grepl("[-:]", Country)) %>%  # **
+  filter(Country != "Series de oferta y demanda")
+
+# Overwrite country names with std_name in iso file
+grupo8 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
+# Check which countries in olade don't match to iso (if any, add manually to build_iso_table.R script)
+grupo8 %>%
+  filter(!Country %in% iso$name) %>%
+  distinct(Country)
+
+# Filter out extra groups
+grupo8 %<>% 
+  filter(Country %in% iso$name)
+
+# Filter out sub-regions
+# This is because country data doesn't always total to sub-regional level, and sometimes different methodologies and classifications are used
+# Just keep country and regional level for clarity purposes
+grupo8 %<>% 
+  filter(!Country %in% c("Central America", "South America", "Caribbean"))
+
+# Finally make long
+# grupo8 %<>% 
+#   pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
+#   mutate(value = as.numeric(value))
+
+grupo8 %<>%
+  pivot_longer(cols = -Country, names_to = "Years", values_to = "value")
+
+# Remove NAs
+grupo8 %<>% 
+  filter(!is.na(value))
+
+grupo8
+
+rm(header_row, unit_row)
+
+
+### ---- IND-4235 ----
+
+# Indicator name: Proportion of losses in the electricity sector over the total supply of electrical energy
+# General instructions: electric power (in units of GwH), multiply by 100 for percentage
+
+indicator_id <- 4235
+i4235 <- grupo8
+ind_name <- meta %>% filter(id == indicator_id) %>% pull(name)
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config4235 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+join_keys <- setNames(dim_config4235$pub_col, dim_config4235$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i4235, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config4235)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+# (here keep only primary data sources)
+
+i4235 %<>% 
+  filter(Years != "2024") # remove most recent year with only LatAm
+
+# multiply by 100 to obtain percentage
+i4235 %<>% 
+  mutate(value = as.numeric(value) * 100)
+
+# **********************************************
+
+
+# ---- add summary groups ----
+# none with this indicator
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i4235f <- join_data_dim_members(i4235, dim_config4235)
+
+# Assert that there are no NA values
+assert_no_na_cols(i4235f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i4235f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+# ***************************
+
+i4235f %<>% 
+  select(ends_with("_id"), value)
+
+i4235f <- format_for_wasabi(i4235f, 4235)
+
+# Assert that there are no NA values
+assert_no_na_cols(i4235f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i4235f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i4235 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i4235, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config4235)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config4235)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
