@@ -1947,3 +1947,137 @@ grupo9 %<>%
 grupo9
 
 rm(header_row, unit_row)
+
+
+### ---- IND-4150 ----
+
+# Indicator name: Installed capacity for producing electricity, by source
+# General instructions: -
+
+indicator_id <- 4150
+i4150 <- grupo9
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config4150 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "77605"),
+  pub_col = c("208_name", "29117_name", "77605_name_es")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+### make manual adjustments to data labels *****
+
+i4150 %<>% 
+  mutate(Type = case_when(
+    Type == "Hidro" ~ "Hidroeléctrica",
+    Type == "Térmica no renovable (combustión)" ~ "Térmica no renovable",
+    Type == "Térmica renovable (combustión)" ~ "Térmica renovable",
+    TRUE ~ Type
+  ))
+
+
+# **********************************************
+
+join_keys <- setNames(dim_config4150$pub_col, dim_config4150$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i4150, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config4150)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+
+# remove LatAm only entry for 2024
+i4150 %<>% 
+  filter(Years != 2024)
+
+# create summary row
+i4150 %<>%
+  bind_rows(
+    group_by(., Country, Years) %>%
+      summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+      mutate(Type = "Total")) %>%
+  arrange(Country, Years, Type)
+
+
+# **********************************************
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i4150f <- join_data_dim_members(i4150, dim_config4150)
+
+# Assert that there are no NA values
+assert_no_na_cols(i4150f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i4150f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+# ***************************
+
+i4150f %<>% 
+  select(ends_with("_id"), value)
+
+i4150f <- format_for_wasabi(i4150f, 4150)
+
+# Assert that there are no NA values
+assert_no_na_cols(i4150f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i4150f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i4150 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i4150, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config4150)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config4150)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
