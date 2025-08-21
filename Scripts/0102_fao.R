@@ -272,8 +272,7 @@ i2530 %<>%
 
 # Remove countries without more detailed forest data
 i2530 %<>% 
-  filter(!is.na(value)) %>% 
-  select(Country, Years, value)
+  filter(!is.na(value))
 
 # Check country length for incomplete series
 # i2530 %>%
@@ -288,12 +287,15 @@ i2530 %<>%
 # Create ECLAC regional total
 eclac_totals <- i2530 %>% 
   group_by(Years) %>% 
-  summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+  summarize(total = sum(total, na.rm = T),
+            natural = sum(natural, na.rm = T), .groups = "drop") %>% 
+  mutate(value = round(natural / total * 100, 1)) %>% 
   mutate(Country = "Latin America and the Caribbean") %>% 
   select(Country, Years, value)
 
 # Add ECLAC to main data
 i2530 %<>% 
+  select(Country, Years, value) %>% 
   bind_rows(eclac_totals) %>% 
   arrange(Country, Years)
 
