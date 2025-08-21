@@ -216,6 +216,11 @@ format_for_wasabi <- function(data, indicator_id){
     pluck("body", "sources") %>%
     as_tibble()
   
+  ## Temp solution for more than one data source -- manually select which to keep
+  if(nrow(sources_tbl) > 1) {
+    if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs
+  }
+  
   # Create source_id field
   data %<>% 
     mutate(source_id = sources_tbl %>% pull(id))
