@@ -9,7 +9,7 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 2487
+  indicator_id: 2530
 execute:
   echo: false
   warning: false
@@ -700,7 +700,8 @@ p3 <- comp %>%
   )
 
 # Convert to interactive plot
-ggplotly(p3, tooltip = "text") %>%
+if(!is_empty(countries_with_flags)){
+  ggplotly(p3, tooltip = "text") %>%
   layout(
     title = list(
       text = paste0(
@@ -709,6 +710,10 @@ ggplotly(p3, tooltip = "text") %>%
       )
     )
   )
+} else {
+  plot(p3)
+}
+
 
 ```
 
