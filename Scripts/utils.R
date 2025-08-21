@@ -218,7 +218,10 @@ format_for_wasabi <- function(data, indicator_id){
   
   ## Temp solution for more than one data source -- manually select which to keep
   if(nrow(sources_tbl) > 1) {
-    if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs
+    if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs since direct from source
+    if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+    if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+    if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
   }
   
   # Create source_id field
