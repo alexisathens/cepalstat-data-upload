@@ -559,3 +559,183 @@ comp
 
 # Export comp file!
 # write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
+
+
+
+### ---- Proportion of Forest Area (2021) ----
+
+# Indicator name: Proportion of land area covered by forest
+# General instructions: Forest type / land area
+
+indicator_id <- 2021
+i2021 <- land
+
+### filter on applicable Types/Calculations *****
+
+i2021 %<>% 
+  filter(Calculation == "area") %>% 
+  filter(Type %in% c("Forest land", "Naturally regenerating forest", "Planted Forest", "Land area")) %>% 
+  select(-Calculation)
+
+# remove regional totals, construct ECLAC total from sum of countries
+i2021 %<>% 
+  filter(!Country %in% c("South America", "Central America", "Caribbean"))
+
+### ********************************
+
+# Fill out dim config table using following info:
+get_indicator_dimensions(indicator_id)
+
+pub <- get_cepalstat_data(indicator_id)
+pub <- match_cepalstat_labels(pub)
+pub
+
+dim_config2021 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20722"),
+  pub_col = c("208_name", "29117_name", "20722_name")
+)
+
+# ---- harmonize labels and filter to final set ----
+
+### make manual adjustments to data labels *****
+
+# Rename labels
+i2021 %<>% 
+  mutate(Type = case_when(
+    Type == "Forest land" ~ "Total forest",
+    Type == "Naturally regenerating forest" ~ "Natural forest",
+    Type == "Planted Forest" ~ "Forest plantations",
+    TRUE ~ Type
+  ))
+
+# Create ECLAC regional total
+eclac_totals <- i2021 %>% 
+  group_by(Years, Type) %>% 
+  summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+  mutate(Country = "Latin America and the Caribbean") %>% 
+  select(Country, Years, Type, value)
+
+# Add ECLAC to main data
+i2021 %<>% 
+  bind_rows(eclac_totals) %>% 
+  arrange(Country, Years)
+
+# Filter on data 1990 and beyond - this is when more detailed forest data began
+i2021 %<>% 
+  filter(as.numeric(Years) >= 1990)
+
+# Remove countries with incomplete entries to not affect aggregate LatAm calculation
+i2021 %<>% 
+  filter(!Country %in% c("Curaçao", "Sint Maarten (Dutch part)"))
+
+# Calculate proportion of forest over total land area
+i2021 %<>%
+  group_by(Country, Years) %>%
+  mutate(
+    land_area = value[Type == "Land area"],   # pull the denominator for that Country-Year
+    prop = ifelse(Type != "Land area", value / land_area, NA_real_)
+  ) %>% 
+  ungroup() %>% 
+  filter(Type != "Land area")
+
+# Transform to whole number
+i2021 %<>% 
+  mutate(prop = round(prop * 100, 1))
+
+# Keep only proportion variable
+i2021 %<>% 
+  select(Country, Years, Type, value = prop)
+
+# **********************************************
+
+join_keys <- setNames(dim_config2021$pub_col, dim_config2021$data_col)
+
+pub %<>% select(all_of(unname(join_keys)), value) # Keep only used labels
+
+comp <- full_join(i2021, pub, by = join_keys, suffix = c("", ".pub"))
+
+comp_sum <- get_comp_summary_table(comp, dim_config2021)
+
+### Run checks
+# (1) What dimensions were present in the old file but not in the new one?
+comp_sum %>% 
+  filter(status == "Old Only") #%>% View()
+# These are the manual edits to labels that are needed (or data loss that needs to be investigated)
+# This could also show summary rows that are in the data
+
+# (2) What dimensions are only present in the new file?
+comp_sum %>% 
+  filter(status == "New Only") #%>% View()
+# Expect to see the new year of data. Also check if any countries are new, and if so, why were they not included before? (Questions to ask Alberto)
+
+# (3) View all - this can help match up labels
+# comp_sum %>% filter(dim_name == "Type") %>% View()
+
+
+### filter only on labels in CEPALSTAT dims ***
+
+# **********************************************
+
+rm(eclac_totals)
+
+# ---- join CEPALSTAT dimension IDs ----
+
+# Join dimensions
+i2021f <- join_data_dim_members(i2021, dim_config2021)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2021f)
+
+
+# ---- add metadata fields and export ----
+
+# manually update footnotes, if necessary
+get_indicator_footnotes(indicator_id)
+
+i2021f %<>% 
+  mutate(footnotes_id = "")
+
+# ***** overwrite footnotes**
+
+i2021f %<>% 
+  mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+
+# used to use footnote 7771 Includes Bonaire, Sint Eustatius and Saba -> for Ex Netherlands Antilles
+
+# ***************************
+
+i2021f %<>% 
+  select(ends_with("_id"), value)
+
+i2021f <- format_for_wasabi(i2021f, 2021)
+
+# Assert that there are no NA values
+assert_no_na_cols(i2021f)
+
+# Create a date/time stamp for export version control
+dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+
+# Export!
+# write_xlsx(i2021f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+
+
+# ---- create comparison file ----
+
+# Begin with i2021 (before the switch to CEPALSTAT IDs) and pub
+# Rejoin comp (in case edits were made to data file)
+comp <- full_join(i2021, pub, by = join_keys, suffix = c("", ".pub"))
+
+# Join dimensions
+comp <- join_data_dim_members(comp, dim_config2021)
+
+# Assert that there are no NA values in non-value rows
+assert_no_na_cols(comp, !contains("value"))
+
+# Run comparison checks and format
+comp <- create_comparison_checks(comp, dim_config2021)
+
+comp
+
+# Export comp file!
+# write_xlsx(comp, here(glue("Data/Checks/comp_id{indicator_id}.xlsx")))
