@@ -66,6 +66,14 @@ land %<>%
   filter(!Country %in% c("Bermudas"))
 # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former) and Bermudas because data is inconsistent
 
+# remove regional totals, construct ECLAC total from sum of countries
+land %<>% 
+  filter(!Country %in% c("South America", "Central America", "Caribbean"))
+
+# Remove countries with incomplete entries to not affect aggregate LatAm calculation
+land %<>% 
+  filter(!Country %in% c("Curaçao", "Sint Maarten (Dutch part)"))
+
 # Correct types
 land %<>% 
   mutate(Years = as.character(Years))
@@ -85,10 +93,6 @@ i2036 %<>%
   filter(Calculation == "area") %>% 
   filter(Type %in% c("Forest land", "Naturally regenerating forest", "Planted Forest")) %>% 
   select(-Calculation)
-
-# remove regional totals, construct ECLAC total from sum of countries
-i2036 %<>% 
-  filter(!Country %in% c("South America", "Central America", "Caribbean"))
 
 ### ********************************
 
@@ -240,10 +244,6 @@ i2530 %<>%
   filter(Type %in% c("Forest land", "Naturally regenerating forest")) %>% 
   select(-Calculation)
 
-# remove regional totals, construct ECLAC total from sum of countries
-i2530 %<>% 
-  filter(!Country %in% c("South America", "Central America", "Caribbean"))
-
 ### ********************************
 
 
@@ -279,10 +279,6 @@ i2530 %<>%
 #   group_by(Country) %>%
 #   count() %>%
 #   arrange(n)
-
-# Remove countries with incomplete entries to not affect aggregate LatAm calculation
-i2530 %<>% 
-  filter(!Country %in% c("Curaçao", "Sint Maarten (Dutch part)"))
 
 # Create ECLAC regional total
 eclac_totals <- i2530 %>% 
@@ -408,10 +404,6 @@ i2531 %<>%
   filter(Type %in% c("Forest land", "Planted Forest")) %>% 
   select(-Calculation)
 
-# remove regional totals, construct ECLAC total from sum of countries
-i2531 %<>% 
-  filter(!Country %in% c("South America", "Central America", "Caribbean"))
-
 ### ********************************
 
 
@@ -447,10 +439,6 @@ i2531 %<>%
 #   group_by(Country) %>%
 #   count() %>%
 #   arrange(n)
-
-# Remove countries with incomplete entries to not affect aggregate LatAm calculation
-i2531 %<>% 
-  filter(!Country %in% c("Curaçao", "Sint Maarten (Dutch part)"))
 
 # Create ECLAC regional total
 eclac_totals <- i2531 %>% 
@@ -577,10 +565,6 @@ i2021 %<>%
   filter(Type %in% c("Forest land", "Naturally regenerating forest", "Planted Forest", "Land area")) %>% 
   select(-Calculation)
 
-# remove regional totals, construct ECLAC total from sum of countries
-i2021 %<>% 
-  filter(!Country %in% c("South America", "Central America", "Caribbean"))
-
 ### ********************************
 
 # Fill out dim config table using following info:
@@ -624,10 +608,6 @@ i2021 %<>%
 # Filter on data 1990 and beyond - this is when more detailed forest data began
 i2021 %<>% 
   filter(as.numeric(Years) >= 1990)
-
-# Remove countries with incomplete entries to not affect aggregate LatAm calculation
-i2021 %<>% 
-  filter(!Country %in% c("Curaçao", "Sint Maarten (Dutch part)"))
 
 # Calculate proportion of forest over total land area
 i2021 %<>%
