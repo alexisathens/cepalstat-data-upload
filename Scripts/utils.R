@@ -84,6 +84,35 @@ get_indicator_dimensions <- function(indicator_id) {
   return(dims)
 }
 
+# Get table of indicator metadata
+get_indicator_metadata <- function(indicator_id) {
+  ## Get footnotes_id from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang=en&format=json")
+  
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+  
+  metadata_tbl <- result$body$metadata %>%
+    enframe(name = "variable", value = "value") %>%
+    mutate(value = map_chr(value, as.character))
+  
+  return(metadata_tbl)
+}
+
+# Get table of indicator sources
+get_indicator_sources <- function(indicator_id) {
+  ## Get footnotes_id from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
+  
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+  
+  sources_tbl <- result$body$sources %>%
+    as_tibble()
+  
+  return(sources_tbl)
+}
+
 # Get full dimension table (members) with English and Spanish names
 get_full_dimension_table <- function(dimension_id) {
   # English
