@@ -1081,20 +1081,20 @@ rm(header_row, unit_row)
 
 ## data-specific issue: noticed that the total rows aren't always accurate for Brazil and this data source specifically, so recalculate manually
 
-primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña", 
-               "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
-
-secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel", 
-                 "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
-
-grupo5 %<>%
-  filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
-  bind_rows(
-    grupo5 %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
-    grupo5 %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
-    grupo5 %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
-  ) %>%
-  arrange(Country, Years, Type)
+# primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña", 
+#                "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
+# 
+# secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel", 
+#                  "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
+# 
+# grupo5 %<>%
+#   filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
+#   bind_rows(
+#     grupo5 %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
+#     grupo5 %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
+#     grupo5 %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
+#   ) %>%
+#   arrange(Country, Years, Type)
 
 # ********************************************
 
