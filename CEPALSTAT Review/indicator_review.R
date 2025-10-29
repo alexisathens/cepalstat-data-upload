@@ -105,6 +105,8 @@ anuario_plan %<>% select(id, anuario_entrega)
 env %<>% 
   left_join(anuario_plan, by = "id")
 
+# saveRDS(env, here("CEPALSTAT Review/env_indicators.rds"))
+
 
 # ---- indicator review ----
 
