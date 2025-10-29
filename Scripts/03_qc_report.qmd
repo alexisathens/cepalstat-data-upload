@@ -9,11 +9,15 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 2530
+  indicator_id: 2035
 execute:
   echo: false
   warning: false
   message: false
+project:
+  type: default
+  output-dir: "QC Reports"
+output-file: "qc_report_2035.html"
 ---
 
 ## Quality Check Report for Indicator `r params$indicator_id`
