@@ -44,25 +44,20 @@ rl %<>% as_tibble()
 # ---- generic indicator processing function ----
 
 ## testing
-indicator_id <- 2035
-data <- rl
-dim_config <- dim_config_2035
-filter_fn <- filter_2035
-transform_fn <- transform_2035
-footnotes_fn <- footnotes_2035
+# indicator_id <- 2035
+# data <- rl
+# dim_config <- dim_config_2035
+# filter_fn <- filter_2035
+# transform_fn <- transform_2035
+# footnotes_fn <- footnotes_2035
 
 process_fao_indicator <- function(indicator_id, data, dim_config,
                                   filter_fn, transform_fn, footnotes_fn,
-                                  diagnostics = TRUE, export = TRUE) {
+                                  diagnostics = TRUE, export = TRUE, quarto = TRUE) {
   message(glue("▶ Processing indicator {indicator_id}..."))
   
   ## 1. Filter and transform FAO data
   df <- data %>% filter_fn() %>% transform_fn()
-  
-  # Retain necessary information
-  df %<>% 
-    rename(Country = area, Type = item, Years = year) %>% 
-    select(Country, Years, Type, value)
   
   # Overwrite country names with std_name in iso file
   df %<>%
@@ -134,6 +129,7 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
   
   ## 6. Add footnotes and format
   df_f %<>%
+    mutate(footnotes_id = "") %>% 
     footnotes_fn()
   
   df_f %<>% 
@@ -172,19 +168,6 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
 ## ---- indicator 2035 - country area ----
 indicator_id <- 2035
 
-
-filter_2035 <- function(data) {
-  data %>% 
-    filter(item %in% c("Country area", "Land area", "Inland waters"))
-  # filter out any countries too with inconsistent entries (to not impact LAC total) -- come back to this
-    # filter(!area %in% c("Curaçao", "Sint Maarten (Dutch part)", "Bermudas"))
-}
-
-transform_2035 <- function(data) {
-  data %>% 
-    mutate(item = ifelse(item == "Inland waters", "Area of inland waters", item))
-}
-
 # Fill out dim config table by matching the following info:
 # get_indicator_dimensions(indicator_id)
 # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
@@ -195,8 +178,34 @@ dim_config_2035 <- tibble(
   pub_col = c("208_name", "29117_name", "21899_name")
 )
 
+filter_2035 <- function(data) {
+  data %>% 
+    filter(item %in% c("Country area", "Land area", "Inland waters")) %>% 
+  # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_2035 <- function(data) {
+  data %>% 
+    mutate(item = ifelse(item == "Inland waters", "Area of inland waters", item),
+           item = ifelse(item == "Country area", "Total area", item)) %>% 
+    rename(Country = area, Type = item, Years = year) %>% 
+    select(Country, Years, Type, value)
+}
+
 footnotes_2035 <- function(data) {
   data %>% 
     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-  # Says: ...
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
+
+result_2035 <- process_fao_indicator(
+  indicator_id = 2035,
+  data = rl,
+  dim_config = dim_config_2035,
+  filter_fn = filter_2035,
+  transform_fn = transform_2035,
+  footnotes_fn = footnotes_2035,
+  diagnostics = TRUE,
+  export = TRUE
+)
