@@ -279,6 +279,50 @@ result_1869 <- process_fao_indicator(
   export = TRUE
 )
 
+## ---- indicator 4049 - prop of ag area with organic agriculture ----
+indicator_id <- 4049
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4049 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_4049 <- function(data) {
+  data %>% 
+    filter(item %in% c("Agriculture area under organic agric.")) %>% 
+    filter(element == "share_in_agricultural_land") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_4049 <- function(data) {
+  data %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_4049 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_4049 <- process_fao_indicator(
+  indicator_id = 4049,
+  data = rl,
+  dim_config = dim_config_4049,
+  filter_fn = filter_4049,
+  transform_fn = transform_4049,
+  footnotes_fn = footnotes_4049,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 
 # FAO CLIMATE CHANGE (ET) INDICATORS -----
 
