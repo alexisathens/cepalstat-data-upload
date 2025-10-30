@@ -49,6 +49,10 @@ et %<>% as_tibble()
 lc <- get_faostat_bulk(code = "LC")
 lc %<>% as_tibble()
 
+# download crops and livestock products (QCL) data
+qcl <- get_faostat_bulk(code = "QCL")
+qcl %<>% as_tibble()
+
 
 # ---- generic indicator processing function ----
 
@@ -467,3 +471,67 @@ dim_config_4176 <- tibble(
 #   diagnostics = TRUE,
 #   export = TRUE
 # )
+
+
+# FAO CROP (QCL) INDICATORS -----
+
+
+## ---- indicator 1740 - harvested area of main crops ----
+indicator_id <- 1740
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_1740 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20721"),
+  pub_col = c("208_name", "29117_name", "20721_name")
+)
+
+filter_1740 <- function(data) {
+  data %>% 
+    filter(element == "area_harvested") %>% 
+    filter(item %in% c("Cereals, primary", "Sugar Crops Primary", "Fibre Crops, Fibre Equivalent",
+                       "Oilcrops, Oil Equivalent", "Fruit Primary", "Vegetables Primary",
+                       "Pulses, Total", "Treenuts, Total", "Roots and Tubers, Total")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_1740 <- function(data) {
+  data %>% 
+    mutate(item = case_when(
+      item == "Cereals, primary" ~ "Cereals",
+      item == "Sugar Crops Primary" ~ "Sugar crops",
+      item == "Fibre Crops, Fibre Equivalent" ~ "Fibre crops",
+      item == "Oilcrops, Oil Equivalent" ~ "Oilcrops",
+      item == "Fruit Primary" ~ "Fruit",
+      item == "Vegetables Primary" ~ "Vegetables",
+      item == "Pulses, Total" ~ "Pulses",
+      item == "Treenuts, Total" ~ "Treenuts",
+      item == "Roots and Tubers, Total" ~ "Roots and tubers",
+      TRUE ~ item
+    )) %>% 
+    mutate(value = value / 1000) %>% # transform into 1000s of hectares
+    rename(Country = area, Type = item, Years = year) %>% 
+    select(Country, Years, Type, value)
+}
+
+footnotes_1740 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_1740 <- process_fao_indicator(
+  indicator_id = 1740,
+  data = qcl,
+  dim_config = dim_config_1740,
+  filter_fn = filter_1740,
+  transform_fn = transform_1740,
+  footnotes_fn = footnotes_1740,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
