@@ -53,12 +53,12 @@ lc %<>% as_tibble()
 # ---- generic indicator processing function ----
 
 ## testing
-# indicator_id <- 3381
-# data <- et
-# dim_config <- dim_config_3381
-# filter_fn <- filter_3381
-# transform_fn <- transform_3381
-# footnotes_fn <- footnotes_3381
+indicator_id <- 1869
+data <- rl
+dim_config <- dim_config_1869
+filter_fn <- filter_1869
+transform_fn <- transform_1869
+footnotes_fn <- footnotes_1869
 
 process_fao_indicator <- function(indicator_id, data, dim_config,
                                   filter_fn, transform_fn, footnotes_fn,
@@ -81,7 +81,7 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
   
   # remove regional totals, construct ECLAC total from sum of countries
   df %<>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean"))
+    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
 
   # Correct types
   df %<>%
@@ -220,6 +220,65 @@ result_2035 <- process_fao_indicator(
 )
 
 
+## ---- indicator 1869 - ag area by land type use ----
+indicator_id <- 1869
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_1869 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "26646"),
+  pub_col = c("208_name", "29117_name", "26646_name")
+)
+
+filter_1869 <- function(data) {
+  data %>% 
+    filter(item %in% c("Arable land", "Permanent crops", "Permanent meadows and pastures")) %>% 
+    filter(element == "area") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_1869 <- function(data) {
+  data %<>% 
+    mutate(item = case_when(
+      item == "Arable land" ~ "Area of arable land",
+      item == "Permanent crops" ~ "Area of permanent crops",
+      item == "Permanent meadows and pastures" ~ "Area of permanent meadows and pastures",
+      TRUE ~ item
+    )) %>% 
+    rename(Country = area, Type = item, Years = year) %>% 
+    select(Country, Years, Type, value)
+    
+    # create the summed "Agricultural area"
+    # compute sum and append
+    agri_sum <- data %>%
+      group_by(Country, Years) %>%
+      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+      mutate(Type = "Agricultural area")
+    
+    bind_rows(data, agri_sum)
+}
+
+footnotes_1869 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_1869 <- process_fao_indicator(
+  indicator_id = 1869,
+  data = rl,
+  dim_config = dim_config_1869,
+  filter_fn = filter_1869,
+  transform_fn = transform_1869,
+  footnotes_fn = footnotes_1869,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 
 # FAO CLIMATE CHANGE (ET) INDICATORS -----
 
@@ -318,3 +377,49 @@ result_3355 <- process_fao_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+## ---- indicator 4176 - area covered by mangroves ----
+indicator_id <- 4176
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4176 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# filter_4176 <- function(data) {
+#   data %>% 
+#     filter(element == "area_from_cci_lc" & item == "Permanent snow and glaciers") %>% 
+#     # filter out any countries too with inconsistent entries (to not impact LAC total)
+#     filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao")) %>% 
+#     filter(!is.na(value))
+#   
+#   ## IMPORTANT:
+#   # comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
+# }
+# 
+# transform_4176 <- function(data) {
+#   data %>% 
+#     mutate(value = value * 1000) %>% # transform from 1,000 hectares into hectares
+#     rename(Country = area, Years = year) %>% 
+#     select(Country, Years, value)
+# }
+# 
+# footnotes_4176 <- function(data) {
+#   data
+# }
+# 
+# result_4176 <- process_fao_indicator(
+#   indicator_id = 4176,
+#   data = lc,
+#   dim_config = dim_config_4176,
+#   filter_fn = filter_4176,
+#   transform_fn = transform_4176,
+#   footnotes_fn = footnotes_4176,
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
