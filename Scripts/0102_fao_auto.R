@@ -41,15 +41,24 @@ rl <- get_faostat_bulk(code = "RL")
 rl %<>% as_tibble()
 
 
+# download climate change (ET) data
+et <- get_faostat_bulk(code = "ET")
+et %<>% as_tibble()
+
+# download land cover (LC) data
+lc <- get_faostat_bulk(code = "LC")
+lc %<>% as_tibble()
+
+
 # ---- generic indicator processing function ----
 
 ## testing
-# indicator_id <- 2035
-# data <- rl
-# dim_config <- dim_config_2035
-# filter_fn <- filter_2035
-# transform_fn <- transform_2035
-# footnotes_fn <- footnotes_2035
+# indicator_id <- 3381
+# data <- et
+# dim_config <- dim_config_3381
+# filter_fn <- filter_3381
+# transform_fn <- transform_3381
+# footnotes_fn <- footnotes_3381
 
 process_fao_indicator <- function(indicator_id, data, dim_config,
                                   filter_fn, transform_fn, footnotes_fn,
@@ -71,22 +80,22 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
   # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
   
   # remove regional totals, construct ECLAC total from sum of countries
-  df %<>% 
-    filter(!Country %in% c("South America", "Central America", "Caribbean"))
-  
-  # Correct types
-  df %<>% 
+  # df %<>%
+  #   filter(!Country %in% c("South America", "Central America", "Caribbean"))
+  # 
+  # # Correct types
+  df %<>%
     mutate(Years = as.character(Years))
-  
-  
-  ## 2. Create ECLAC regional total
-  eclac_totals <- df %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
-    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-  
-  df <- bind_rows(df, eclac_totals) %>%
-    arrange(Country, Years)
+  # 
+  # 
+  # ## 2. Create ECLAC regional total
+  # eclac_totals <- df %>%
+  #   group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+  #   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  #   mutate(Country = "Latin America and the Caribbean")
+  # 
+  # df <- bind_rows(df, eclac_totals) %>%
+  #   arrange(Country, Years)
   
   ## 3. Harmonize labels
   pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
@@ -206,6 +215,56 @@ result_2035 <- process_fao_indicator(
   filter_fn = filter_2035,
   transform_fn = transform_2035,
   footnotes_fn = footnotes_2035,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+
+# FAO CLIMATE CHANGE (ET) INDICATORS -----
+
+
+## ---- indicator 3381 - mean annual temperature change ----
+indicator_id <- 3381
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_3381 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3381 <- function(data) {
+  data %>% 
+    filter(element == "temperature_change" & months == "Meteorological year") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao")) %>% 
+    filter(!is.na(value))
+  
+  ## IMPORTANT:
+  # comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
+}
+
+transform_3381 <- function(data) {
+  data %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_3381 <- function(data) {
+  data
+}
+
+result_3381 <- process_fao_indicator(
+  indicator_id = 3381,
+  data = et,
+  dim_config = dim_config_3381,
+  filter_fn = filter_3381,
+  transform_fn = transform_3381,
+  footnotes_fn = footnotes_3381,
   diagnostics = TRUE,
   export = TRUE
 )
