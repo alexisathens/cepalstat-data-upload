@@ -374,7 +374,11 @@ create_comparison_checks <- function(comp, dim_config) {
     mutate(value_data = as.numeric(value_data),
            value_pub = as.numeric(value_pub)) %>% 
     mutate(abs_diff = abs(value_data - value_pub),
-           perc_diff = round((abs_diff / value_pub) * 100, 2))
+           perc_diff = if_else(
+             value_pub == 0, 
+             NA_real_,  # or 0 if you prefer
+             round((abs_diff / value_pub) * 100, 2)
+           ))
   
   # Flag issues
   comp %<>%
