@@ -53,53 +53,61 @@ lc %<>% as_tibble()
 qcl <- get_faostat_bulk(code = "QCL")
 qcl %<>% as_tibble()
 
+# download fertilizers by Nutrient (RFN) data
+rfn <- get_faostat_bulk(code = "RFN")
+rfn %<>% as_tibble()
+
+# download pesticide use (RP) data
+rp <- get_faostat_bulk(code = "RP")
+rp %<>% as_tibble()
+
 
 # ---- generic indicator processing function ----
 
 ## testing
-indicator_id <- 1869
-data <- rl
-dim_config <- dim_config_1869
-filter_fn <- filter_1869
-transform_fn <- transform_1869
-footnotes_fn <- footnotes_1869
+# indicator_id <- 1869
+# data <- rl
+# dim_config <- dim_config_1869
+# filter_fn <- filter_1869
+# transform_fn <- transform_1869
+# footnotes_fn <- footnotes_1869
 
 process_fao_indicator <- function(indicator_id, data, dim_config,
                                   filter_fn, transform_fn, footnotes_fn,
-                                  diagnostics = TRUE, export = TRUE, quarto = TRUE) {
+                                  diagnostics = TRUE, export = TRUE) {
   message(glue("▶ Processing indicator {indicator_id}..."))
   
   ## 1. Filter and transform FAO data
   df <- data %>% filter_fn() %>% transform_fn()
   
-  # Overwrite country names with std_name in iso file
-  df %<>%
-    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
-    mutate(Country = coalesce(std_name, Country)) %>%
-    select(-std_name)
-  
-  # Filter out extra non-LAC groups
-  df %<>% 
-    filter(Country %in% iso$name)
-  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
-  
-  # remove regional totals, construct ECLAC total from sum of countries
-  df %<>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
-
-  # Correct types
-  df %<>%
-    mutate(Years = as.character(Years))
-
-
-  ## 2. Create ECLAC regional total
-  eclac_totals <- df %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
-    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-
-  df <- bind_rows(df, eclac_totals) %>%
-    arrange(Country, Years)
+  # # Overwrite country names with std_name in iso file
+  # df %<>%
+  #   left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  #   mutate(Country = coalesce(std_name, Country)) %>%
+  #   select(-std_name)
+  # 
+  # # Filter out extra non-LAC groups
+  # df %<>%
+  #   filter(Country %in% iso$name)
+  # # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
+  # 
+  # # remove regional totals, construct ECLAC total from sum of countries
+  # df %<>%
+  #   filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
+  # 
+  # # Correct types
+  # df %<>%
+  #   mutate(Years = as.character(Years))
+  # 
+  # 
+  # ## 2. Create ECLAC regional total
+  # eclac_totals <- df %>%
+  #   group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+  #   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+  #   mutate(Country = "Latin America and the Caribbean")
+  # 
+  # df <- bind_rows(df, eclac_totals) %>%
+  #   arrange(Country, Years)
   
   ## 3. Harmonize labels
   pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
@@ -173,9 +181,20 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
 }
 
 
-
-
 # FAO LAND USE (RL) INDICATORS -----
+
+## ---- dummy indicator - cropland area ----
+
+# this variable is used as the denominator for the pesticide and fertilizer use intensity variables
+
+result_cropland <- rl %>% 
+  filter(item == "Cropland") %>% # Cropland = Arable Land + Permanent Crops
+  filter(element == "area") %>% 
+  filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla")) %>% 
+  rename(Country = area, Years = year) %>% 
+  mutate(Years = as.character(Years)) %>% 
+  select(Country, Years, area = value)
+
 
 
 ## ---- indicator 2035 - country area ----
@@ -282,6 +301,7 @@ result_1869 <- process_fao_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
 
 ## ---- indicator 4049 - prop of ag area with organic agriculture ----
 indicator_id <- 4049
@@ -439,38 +459,37 @@ dim_config_4176 <- tibble(
   pub_col = c("208_name", "29117_name")
 )
 
-# filter_4176 <- function(data) {
-#   data %>% 
-#     filter(element == "area_from_cci_lc" & item == "Permanent snow and glaciers") %>% 
-#     # filter out any countries too with inconsistent entries (to not impact LAC total)
-#     filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao")) %>% 
-#     filter(!is.na(value))
-#   
-#   ## IMPORTANT:
-#   # comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
-# }
-# 
-# transform_4176 <- function(data) {
-#   data %>% 
-#     mutate(value = value * 1000) %>% # transform from 1,000 hectares into hectares
-#     rename(Country = area, Years = year) %>% 
-#     select(Country, Years, value)
-# }
-# 
-# footnotes_4176 <- function(data) {
-#   data
-# }
-# 
-# result_4176 <- process_fao_indicator(
-#   indicator_id = 4176,
-#   data = lc,
-#   dim_config = dim_config_4176,
-#   filter_fn = filter_4176,
-#   transform_fn = transform_4176,
-#   footnotes_fn = footnotes_4176,
-#   diagnostics = TRUE,
-#   export = TRUE
-# )
+filter_4176 <- function(data) {
+  data %>%
+    filter(element == "area_from_cci_lc" & item == "Mangroves") %>%
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao")) %>%
+    filter(!is.na(value))
+
+  ## IMPORTANT:
+  # comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
+}
+
+transform_4176 <- function(data) {
+  data %>%
+    rename(Country = area, Years = year) %>%
+    select(Country, Years, value)
+}
+
+footnotes_4176 <- function(data) {
+  data
+}
+
+result_4176 <- process_fao_indicator(
+  indicator_id = 4176,
+  data = lc,
+  dim_config = dim_config_4176,
+  filter_fn = filter_4176,
+  transform_fn = transform_4176,
+  footnotes_fn = footnotes_4176,
+  diagnostics = TRUE,
+  export = TRUE
+)
 
 
 # FAO CROP (QCL) INDICATORS -----
@@ -535,3 +554,177 @@ result_1740 <- process_fao_indicator(
   export = TRUE
 )
 
+
+# FAO FERTILIZERS (RFN) INDICATORS -----
+
+## ---- indicator 2022 - fertilizer use intensity ----
+indicator_id <- 2022
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2022 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2022 <- function(data) {
+  data %<>% 
+    filter(element == "agricultural_use") %>% 
+    filter(item %in% c("Nutrient nitrogen N (total)", "Nutrient phosphate P2O5 (total)", "Nutrient potash K2O (total)")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_2022 <- function(data) {
+  data %<>% 
+    group_by(area, year) %>% # sum across fertilizer types (items)
+    summarize(value = sum(value, na.rm = T)) %>% 
+    ungroup %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+  
+  ## IMPORTANT: need to run dummy indicator cropland (RL) area first to obtain agricultural area
+  data %<>% 
+    mutate(Years = as.character(Years)) %>% 
+    left_join(result_cropland)
+  
+  ## IMPORTANT: calculate LAC now by summing fertilizers and land, comment out LAC total in function
+  # Overwrite country names with std_name in iso file
+  data %<>%
+    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+    mutate(Country = coalesce(std_name, Country)) %>%
+    select(-std_name)
+  
+  # Filter out extra non-LAC groups
+  data %<>% 
+    filter(Country %in% iso$name)
+  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
+  
+  # remove regional totals, construct ECLAC total from sum of countries
+  data %<>%
+    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
+  
+  # Correct types
+  data %<>%
+    mutate(Years = as.character(Years))
+  
+  ## 2. Create ECLAC regional total
+  eclac_totals <- data %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+    summarise(value = sum(value, na.rm = TRUE),
+              area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals) %>%
+    mutate(value = value/area) %>% 
+    arrange(Country, Years) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_2022 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_2022 <- process_fao_indicator(
+  indicator_id = 2022,
+  data = rfn,
+  dim_config = dim_config_2022,
+  filter_fn = filter_2022,
+  transform_fn = transform_2022, # *** need to comment out lines in fao function
+  footnotes_fn = footnotes_2022,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# FAO PESTICIDES (RP) INDICATORS -----
+
+
+## ---- indicator 3382 - pesticide use intensity ----
+indicator_id <- 3382
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_3382 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3382 <- function(data) {
+  data %<>% 
+    filter(element == "agricultural_use") %>% 
+    filter(item %in% c("Insecticides", "Herbicides", "Fungicides and Bactericides")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_3382 <- function(data) {
+  data %<>% 
+    group_by(area, year) %>% # sum across fertilizer types (items)
+    summarize(value = sum(value, na.rm = T)) %>% 
+    ungroup %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+  
+  ## IMPORTANT: need to run dummy indicator cropland (RL) area first to obtain agricultural area
+  data %<>% 
+    mutate(Years = as.character(Years)) %>% 
+    left_join(result_cropland)
+  
+  ## IMPORTANT: calculate LAC now by summing fertilizers and land, comment out LAC total in function
+  # Overwrite country names with std_name in iso file
+  data %<>%
+    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+    mutate(Country = coalesce(std_name, Country)) %>%
+    select(-std_name)
+  
+  # Filter out extra non-LAC groups
+  data %<>% 
+    filter(Country %in% iso$name)
+  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
+  
+  # remove regional totals, construct ECLAC total from sum of countries
+  data %<>%
+    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
+  
+  # Correct types
+  data %<>%
+    mutate(Years = as.character(Years))
+  
+  ## 2. Create ECLAC regional total
+  eclac_totals <- data %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+    summarise(value = sum(value, na.rm = TRUE),
+              area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals) %>%
+    mutate(value = value/area) %>% 
+    arrange(Country, Years) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_3382 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_3382 <- process_fao_indicator(
+  indicator_id = 3382,
+  data = rp,
+  dim_config = dim_config_3382,
+  filter_fn = filter_3382,
+  transform_fn = transform_3382, # *** need to comment out lines in fao function
+  footnotes_fn = footnotes_3382,
+  diagnostics = TRUE,
+  export = TRUE
+)
