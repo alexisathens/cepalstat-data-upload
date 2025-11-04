@@ -251,7 +251,12 @@ format_for_wasabi <- function(data, indicator_id){
     if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
     if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
     if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+    if(indicator_id == 4176) {sources_tbl %<>% filter(id == 651)} # general FAOSTAT source
   }
+  
+  ## Change any data sources here
+  if(indicator_id == 3382) {sources_tbl %<>% mutate(id == 1827)} # Calculations made based on pesticide consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+  if(indicator_id == 2022) {sources_tbl %<>% mutate(id == 913)} # Calculations made based on fertilizer consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
   
   # Create source_id field
   data %<>% 
