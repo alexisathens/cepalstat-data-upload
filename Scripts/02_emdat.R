@@ -39,12 +39,12 @@ emdat <- read_xlsx(here("Data/Raw/emdat/public_emdat_custom_request_2025-11-04.x
 # ---- generic indicator processing function ----
 
 ## testing
-# indicator_id <- 1869
-# data <- emdat
-# dim_config <- dim_config_1869
-# filter_fn <- filter_1869
-# transform_fn <- transform_1869
-# footnotes_fn <- footnotes_1869
+indicator_id <- 4046
+data <- emdat
+dim_config <- dim_config_4046
+filter_fn <- filter_4046
+transform_fn <- transform_4046
+footnotes_fn <- footnotes_4046
 
 ## this function is the exact same as process_fao_indicator()
 process_emdat_indicator <- function(indicator_id, data, dim_config,
@@ -73,6 +73,8 @@ process_emdat_indicator <- function(indicator_id, data, dim_config,
   # Correct types
   df %<>%
     mutate(Years = as.character(Years))
+  
+  assert_no_duplicates(df)
 
   ## 2. Create ECLAC regional total
   eclac_totals <- df %>%
@@ -170,7 +172,9 @@ dim_config_4046 <- tibble(
 
 filter_4046 <- function(data) {
   data %>% 
-    filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical"))
+    filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical")) %>%
+    filter(as.numeric(`Start Year`) >= 1970 & as.numeric(`Start Year`) < 2025) %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
 }
 
 transform_4046 <- function(data) {
@@ -179,19 +183,21 @@ transform_4046 <- function(data) {
       `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
       `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
       TRUE ~ NA_character_)) %>%
+    mutate(Years = as.character(`Start Year`)) %>% 
+    # Current year data doesn't have CPI adjustment yet, so use that column if Adjusted is empty
     mutate(value = ifelse(!is.na(`Total Damage, Adjusted ('000 US$)`), `Total Damage, Adjusted ('000 US$)`, `Total Damage ('000 US$)`)) %>%
-    filter(!is.na(value)) %>% 
+    mutate(value = replace_na(value, 0)) %>% 
+    group_by(Country, Years, Type) %>%
+    summarize(value = sum(value, na.rm = T)) %>% 
+    ungroup() %>% 
     select(Country, Years, Type, value)
 }
 
-## BEGIN HERE WED.
 footnotes_4046 <- function(data) {
-  data %>% 
-    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+  data
 }
 
-result_4046 <- process_fao_indicator(
+result_4046 <- process_emdat_indicator(
   indicator_id = 4046,
   data = emdat,
   dim_config = dim_config_4046,
@@ -199,5 +205,5 @@ result_4046 <- process_fao_indicator(
   transform_fn = transform_4046,
   footnotes_fn = footnotes_4046,
   diagnostics = TRUE,
-  export = FALSE
+  export = TRUE
 )
