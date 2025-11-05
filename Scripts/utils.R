@@ -24,6 +24,31 @@ assert_no_na_cols <- function(data, cols = everything(), data_name = deparse(sub
   invisible(TRUE)
 }
 
+# Stop code if there are any NA fields that didn't match
+# Sample usage: assert_no_duplicates(df)
+assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
+  
+  # Check for duplicates
+  n_keys <- data %>%
+    select(all_of(setdiff(names(data), "value"))) %>%
+    distinct() %>%
+    nrow()
+  
+  n_rows <- nrow(data)
+  
+  if (n_keys != n_rows) {
+    msg <- paste0(
+      "❌ Duplicate keys found in ", data_name, ":\n",
+      " - Expected ", n_keys, " unique rows\n",
+      " - Found ", n_rows, " rows\n",
+      " - Duplicates: ", n_rows - n_keys
+    )
+    stop(msg)
+  }
+  
+  invisible(TRUE)
+}
+
 # Helper: take sum, but retain NAs if all values are NA
 sum_or_na <- function(x) {
   if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
@@ -379,18 +404,18 @@ create_comparison_checks <- function(comp, dim_config) {
     mutate(value_data = as.numeric(value_data),
            value_pub = as.numeric(value_pub)) %>% 
     mutate(abs_diff = abs(value_data - value_pub),
-           perc_diff = if_else(
-             value_pub == 0, 
-             NA_real_,  # or 0 if you prefer
-             round((abs_diff / value_pub) * 100, 2)
+           perc_diff = case_when(
+             is.na(value_pub) | is.na(value_data) ~ NA_real_,
+             value_pub == 0 ~ NA_real_,
+             TRUE ~ round((abs_diff / value_pub) * 100, 2)
            ))
   
-  # Flag issues
+  # Flag issues - handle NA values properly
   comp %<>%
     mutate(
-      flag_large_diff = perc_diff > 20,  # adjust threshold as needed
-      flag_missing_entry = is.na(value_data), # exists in pub but not in data
-      flag_new_entry = is.na(value_pub),     # entry exists in data but not in pub
+      flag_large_diff = !is.na(perc_diff) & perc_diff > 20,  # Only flag if perc_diff exists and > 20
+      flag_missing_entry = is.na(value_data) & !is.na(value_pub), # exists in pub but not in data
+      flag_new_entry = is.na(value_pub) & !is.na(value_data),     # entry exists in data but not in pub
       flag_some_na = is.na(value_data) | is.na(value_pub) # either new or missing entry
     )
   
@@ -402,4 +427,6 @@ create_comparison_checks <- function(comp, dim_config) {
       is.na(value_pub) ~ "New Only",
       TRUE ~ "Present in Both"
     ))
+  
+  return(comp)
 }
