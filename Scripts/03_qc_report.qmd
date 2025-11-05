@@ -9,7 +9,7 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 2035
+  indicator_id: 4046
 execute:
   echo: false
   warning: false
@@ -17,7 +17,7 @@ execute:
 project:
   type: default
   output-dir: "QC Reports"
-output-file: "qc_report_2035.html"
+output-file: "qc_report_4046.html"
 ---
 
 ## Quality Check Report for Indicator `r params$indicator_id`
@@ -383,9 +383,9 @@ This helps identify outliers, input errors, or significant data revisions that m
 summary_info <- comp %>%
   filter(status == "Present in Both") %>%
   summarise(
-    "Mean % difference" = round(mean(perc_diff, na.rm = TRUE), 1),
+    "Mean % difference" = round(mean(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
     "% of values with large differences (<20%)" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
-    "Mean absolute difference" = round(mean(abs_diff, na.rm = TRUE), 1),
+    "Mean absolute difference" = round(mean(abs_diff[is.finite(abs_diff)], na.rm = TRUE), 1),
     "Median reported value" = round(median(value_data, na.rm = TRUE), 1),
     "Minimum reported value" = round(min(value_data, na.rm = TRUE), 1),
     "Maximum reported value" = round(max(value_data, na.rm = TRUE), 1)
