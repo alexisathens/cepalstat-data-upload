@@ -98,7 +98,8 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
   # # Correct types
   # df %<>%
   #   mutate(Years = as.character(Years))
-  # 
+  #
+  # assert_no_duplicates(df)
   # 
   # ## 2. Create ECLAC regional total
   # eclac_totals <- df %>%
@@ -622,6 +623,8 @@ transform_2022 <- function(data) {
     mutate(value = value/area) %>% 
     arrange(Country, Years) %>% 
     select(Country, Years, value)
+  
+  assert_no_duplicates(data)
 }
 
 footnotes_2022 <- function(data) {
@@ -710,6 +713,8 @@ transform_3382 <- function(data) {
     mutate(value = value/area) %>% 
     arrange(Country, Years) %>% 
     select(Country, Years, value)
+  
+  assert_no_duplicates(data)
 }
 
 footnotes_3382 <- function(data) {
