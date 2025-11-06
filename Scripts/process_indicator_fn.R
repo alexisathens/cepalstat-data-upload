@@ -2,7 +2,7 @@
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
                               regional_fn = NULL, # NULL = default sum, FALSE = skip, function = custom
-                              source_id = NULL,
+                              source_fn = NULL,
                               diagnostics = TRUE, export = TRUE) {
   message(glue("▶ Processing indicator {indicator_id}..."))
   
@@ -87,7 +87,7 @@ process_indicator <- function(indicator_id, data, dim_config,
   
   df_f %<>% 
     select(ends_with("_id"), value) %>%
-    format_for_wasabi(indicator_id, source_id = source_id)
+    format_for_wasabi(indicator_id, source_fn = source_fn)
   
   assert_no_na_cols(df_f)
   
