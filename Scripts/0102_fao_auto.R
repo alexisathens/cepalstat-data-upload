@@ -64,122 +64,125 @@ rp %<>% as_tibble()
 
 # ---- generic indicator processing function ----
 
-## testing
-indicator_id <- 4176
-data <- lc
-dim_config <- dim_config_4176
-filter_fn <- filter_4176
-transform_fn <- transform_4176
-footnotes_fn <- footnotes_4176
+# now use process_indicator()
+# moved to process_indicator_fn.R
 
-process_fao_indicator <- function(indicator_id, data, dim_config,
-                                  filter_fn, transform_fn, footnotes_fn,
-                                  diagnostics = TRUE, export = TRUE) {
-  message(glue("▶ Processing indicator {indicator_id}..."))
-  
-  ## 1. Filter and transform FAO data
-  df <- data %>% filter_fn() %>% transform_fn()
-  
-  # Overwrite country names with std_name in iso file
-  df %<>%
-    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
-    mutate(Country = coalesce(std_name, Country)) %>%
-    select(-std_name)
-
-  # Filter out extra non-LAC groups
-  df %<>%
-    filter(Country %in% iso$name)
-  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
-
-  # remove regional totals, construct ECLAC total from sum of countries
-  df %<>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
-
-  # Correct types
-  df %<>%
-    mutate(Years = as.character(Years))
-
-  assert_no_duplicates(df)
-
-  ## 2. Create ECLAC regional total
-  eclac_totals <- df %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
-    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-
-  df <- bind_rows(df, eclac_totals) %>%
-    arrange(Country, Years)
-  
-  ## 3. Harmonize labels
-  pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
-  
-  join_keys <- setNames(dim_config$pub_col, dim_config$data_col)
-  
-  # Keep only matching columns and join
-  pub <- pub %>% select(all_of(unname(join_keys)), value)
-  comp <- full_join(df, pub, by = join_keys, suffix = c("", ".pub"))
-  
-  # Summarize dimension overlap
-  comp_sum <- get_comp_summary_table(comp, dim_config)
-  
-  ## 4. Inspect differences between public and new file
-  if(diagnostics) {
-    message(glue("🧾 Comparison summary for indicator {indicator_id}:"))
-    
-    # 1️⃣ Missing from new data (likely label changes or dropped series)
-    missing_old <- comp_sum %>%
-      filter(status == "Old Only")
-    if (nrow(missing_old) > 0) {
-      message("⚠️  Dimensions present in old data only:")
-      print(missing_old %>% count(dim_name, sort = TRUE))
-      print(missing_old)
-    }
-    
-    # 2️⃣ Newly added in updated data (new years or countries)
-    missing_new <- comp_sum %>%
-      filter(status == "New Only")
-    if (nrow(missing_new) > 0) {
-      message("🆕  Dimensions present in new data only:")
-      print(missing_new %>% count(dim_name, sort = TRUE))
-      print(missing_new)
-    }
-  }
-  
-  ## 5. Join dimensions
-  df_f <- join_data_dim_members(df, dim_config)
-  assert_no_na_cols(df_f)
-  
-  ## 6. Add footnotes and format
-  df_f %<>%
-    mutate(footnotes_id = "") %>% 
-    footnotes_fn()
-  
-  df_f %<>% 
-    select(ends_with("_id"), value) %>%
-    format_for_wasabi(indicator_id)
-  
-  assert_no_na_cols(df_f)
-  
-  ## 7. Create comparison file
-  # Rebuild comp from current cleaned data and latest CEPALSTAT version
-  comp <- full_join(df, pub, by = join_keys, suffix = c("", ".pub"))
-  comp <- join_data_dim_members(comp, dim_config)
-  assert_no_na_cols(comp, !contains("value"))
-  
-  # Run comparison checks and format
-  comp <- create_comparison_checks(comp, dim_config)
-  
-  # 8. Optional export
-  if (export) {
-    dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
-    write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
-    write_xlsx(comp, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
-    message(glue("  ✓ Exported cleaned and comparison files for {indicator_id}"))
-  }
-  
-  return(list(clean = df_f, comp = comp, comp_sum = comp_sum))
-  
-}
+# ## testing
+# indicator_id <- 4176
+# data <- lc
+# dim_config <- dim_config_4176
+# filter_fn <- filter_4176
+# transform_fn <- transform_4176
+# footnotes_fn <- footnotes_4176
+# 
+# process_fao_indicator <- function(indicator_id, data, dim_config,
+#                                   filter_fn, transform_fn, footnotes_fn,
+#                                   diagnostics = TRUE, export = TRUE) {
+#   message(glue("▶ Processing indicator {indicator_id}..."))
+#   
+#   ## 1. Filter and transform FAO data
+#   df <- data %>% filter_fn() %>% transform_fn()
+#   
+#   # Overwrite country names with std_name in iso file
+#   df %<>%
+#     left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+#     mutate(Country = coalesce(std_name, Country)) %>%
+#     select(-std_name)
+# 
+#   # Filter out extra non-LAC groups
+#   df %<>%
+#     filter(Country %in% iso$name)
+#   # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
+# 
+#   # remove regional totals, construct ECLAC total from sum of countries
+#   df %<>%
+#     filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
+# 
+#   # Correct types
+#   df %<>%
+#     mutate(Years = as.character(Years))
+# 
+#   assert_no_duplicates(df)
+# 
+#   ## 2. Create ECLAC regional total
+#   eclac_totals <- df %>%
+#     group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+#     summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+# 
+#   df <- bind_rows(df, eclac_totals) %>%
+#     arrange(Country, Years)
+#   
+#   ## 3. Harmonize labels
+#   pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
+#   
+#   join_keys <- setNames(dim_config$pub_col, dim_config$data_col)
+#   
+#   # Keep only matching columns and join
+#   pub <- pub %>% select(all_of(unname(join_keys)), value)
+#   comp <- full_join(df, pub, by = join_keys, suffix = c("", ".pub"))
+#   
+#   # Summarize dimension overlap
+#   comp_sum <- get_comp_summary_table(comp, dim_config)
+#   
+#   ## 4. Inspect differences between public and new file
+#   if(diagnostics) {
+#     message(glue("🧾 Comparison summary for indicator {indicator_id}:"))
+#     
+#     # 1️⃣ Missing from new data (likely label changes or dropped series)
+#     missing_old <- comp_sum %>%
+#       filter(status == "Old Only")
+#     if (nrow(missing_old) > 0) {
+#       message("⚠️  Dimensions present in old data only:")
+#       print(missing_old %>% count(dim_name, sort = TRUE))
+#       print(missing_old)
+#     }
+#     
+#     # 2️⃣ Newly added in updated data (new years or countries)
+#     missing_new <- comp_sum %>%
+#       filter(status == "New Only")
+#     if (nrow(missing_new) > 0) {
+#       message("🆕  Dimensions present in new data only:")
+#       print(missing_new %>% count(dim_name, sort = TRUE))
+#       print(missing_new)
+#     }
+#   }
+#   
+#   ## 5. Join dimensions
+#   df_f <- join_data_dim_members(df, dim_config)
+#   assert_no_na_cols(df_f)
+#   
+#   ## 6. Add footnotes and format
+#   df_f %<>%
+#     mutate(footnotes_id = "") %>% 
+#     footnotes_fn()
+#   
+#   df_f %<>% 
+#     select(ends_with("_id"), value) %>%
+#     format_for_wasabi(indicator_id)
+#   
+#   assert_no_na_cols(df_f)
+#   
+#   ## 7. Create comparison file
+#   # Rebuild comp from current cleaned data and latest CEPALSTAT version
+#   comp <- full_join(df, pub, by = join_keys, suffix = c("", ".pub"))
+#   comp <- join_data_dim_members(comp, dim_config)
+#   assert_no_na_cols(comp, !contains("value"))
+#   
+#   # Run comparison checks and format
+#   comp <- create_comparison_checks(comp, dim_config)
+#   
+#   # 8. Optional export
+#   if (export) {
+#     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
+#     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+#     write_xlsx(comp, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
+#     message(glue("  ✓ Exported cleaned and comparison files for {indicator_id}"))
+#   }
+#   
+#   return(list(clean = df_f, comp = comp, comp_sum = comp_sum))
+#   
+# }
 
 
 # FAO LAND USE (RL) INDICATORS -----
@@ -462,13 +465,10 @@ dim_config_4176 <- tibble(
 
 filter_4176 <- function(data) {
   data %>%
-    filter(element == "area_from_worldcover" & item == "Mangroves") %>%
+    filter(element == "area_from_cci_lc" & item == "Mangroves") %>%
     # filter out any countries too with inconsistent entries (to not impact LAC total)
     filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao")) %>%
     filter(!is.na(value))
-
-  ## IMPORTANT:
-  # comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
 }
 
 transform_4176 <- function(data) {
@@ -481,13 +481,18 @@ footnotes_4176 <- function(data) {
   data
 }
 
-result_4176 <- process_fao_indicator(
+source_4176 <- function() {
+  651 # general FAOSTAT source
+}
+
+result_4176 <- process_indicator(
   indicator_id = 4176,
   data = lc,
   dim_config = dim_config_4176,
   filter_fn = filter_4176,
   transform_fn = transform_4176,
   footnotes_fn = footnotes_4176,
+  source_fn = source_4176,
   diagnostics = TRUE,
   export = TRUE
 )
@@ -582,39 +587,17 @@ filter_2022 <- function(data) {
 transform_2022 <- function(data) {
   data %<>% 
     group_by(area, year) %>% # sum across fertilizer types (items)
-    summarize(value = sum(value, na.rm = T)) %>% 
-    ungroup %>% 
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
     rename(Country = area, Years = year) %>% 
-    select(Country, Years, value)
-  
-  ## IMPORTANT: need to run dummy indicator cropland (RL) area first to obtain agricultural area
-  data %<>% 
+    select(Country, Years, value) %>% 
     mutate(Years = as.character(Years)) %>% 
-    left_join(result_cropland)
-  
-  ## IMPORTANT: calculate LAC now by summing fertilizers and land, comment out LAC total in function
-  # Overwrite country names with std_name in iso file
-  data %<>%
-    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
-    mutate(Country = coalesce(std_name, Country)) %>%
-    select(-std_name)
-  
-  # Filter out extra non-LAC groups
-  data %<>% 
-    filter(Country %in% iso$name)
-  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
-  
-  # remove regional totals, construct ECLAC total from sum of countries
-  data %<>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
-  
-  # Correct types
-  data %<>%
-    mutate(Years = as.character(Years))
-  
-  ## 2. Create ECLAC regional total
+    left_join(result_cropland, by = c("Country", "Years")) %>% 
+    arrange(Country, Years)
+}
+
+regional_2022 <- function(data) {
   eclac_totals <- data %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
     summarise(value = sum(value, na.rm = TRUE),
               area = sum(area, na.rm = TRUE), .groups = "drop") %>%
     mutate(Country = "Latin America and the Caribbean")
@@ -624,7 +607,7 @@ transform_2022 <- function(data) {
     arrange(Country, Years) %>% 
     select(Country, Years, value)
   
-  assert_no_duplicates(data)
+  return(data)
 }
 
 footnotes_2022 <- function(data) {
@@ -633,13 +616,19 @@ footnotes_2022 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-result_2022 <- process_fao_indicator(
+source_2022 <- function() {
+  913 # Calculations made based on fertilizer consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+}
+
+result_2022 <- process_indicator(
   indicator_id = 2022,
   data = rfn,
   dim_config = dim_config_2022,
   filter_fn = filter_2022,
-  transform_fn = transform_2022, # *** need to comment out lines in fao function
+  transform_fn = transform_2022,
+  regional_fn = regional_2022,
   footnotes_fn = footnotes_2022,
+  source_fn = source_2022,
   diagnostics = TRUE,
   export = TRUE
 )
@@ -671,40 +660,17 @@ filter_3382 <- function(data) {
 
 transform_3382 <- function(data) {
   data %<>% 
-    group_by(area, year) %>% # sum across fertilizer types (items)
-    summarize(value = sum(value, na.rm = T)) %>% 
-    ungroup %>% 
+    group_by(area, year) %>% # sum across pesticide types (items)
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
     rename(Country = area, Years = year) %>% 
-    select(Country, Years, value)
-  
-  ## IMPORTANT: need to run dummy indicator cropland (RL) area first to obtain agricultural area
-  data %<>% 
+    select(Country, Years, value) %>% 
     mutate(Years = as.character(Years)) %>% 
-    left_join(result_cropland)
-  
-  ## IMPORTANT: calculate LAC now by summing fertilizers and land, comment out LAC total in function
-  # Overwrite country names with std_name in iso file
-  data %<>%
-    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
-    mutate(Country = coalesce(std_name, Country)) %>%
-    select(-std_name)
-  
-  # Filter out extra non-LAC groups
-  data %<>% 
-    filter(Country %in% iso$name)
-  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
-  
-  # remove regional totals, construct ECLAC total from sum of countries
-  data %<>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
-  
-  # Correct types
-  data %<>%
-    mutate(Years = as.character(Years))
-  
-  ## 2. Create ECLAC regional total
+    left_join(result_cropland, by = c("Country", "Years"))
+}
+
+regional_3382 <- function(data) {
   eclac_totals <- data %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
     summarise(value = sum(value, na.rm = TRUE),
               area = sum(area, na.rm = TRUE), .groups = "drop") %>%
     mutate(Country = "Latin America and the Caribbean")
@@ -714,7 +680,7 @@ transform_3382 <- function(data) {
     arrange(Country, Years) %>% 
     select(Country, Years, value)
   
-  assert_no_duplicates(data)
+  return(data)
 }
 
 footnotes_3382 <- function(data) {
@@ -723,13 +689,19 @@ footnotes_3382 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-result_3382 <- process_fao_indicator(
+source_3382 <- function() {
+  1827 # Calculations made based on pesticide consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+}
+
+result_3382 <- process_indicator(
   indicator_id = 3382,
   data = rp,
   dim_config = dim_config_3382,
   filter_fn = filter_3382,
-  transform_fn = transform_3382, # *** need to comment out lines in fao function
+  transform_fn = transform_3382,
+  regional_fn = regional_3382,
   footnotes_fn = footnotes_3382,
+  source_fn = source_3382,
   diagnostics = TRUE,
   export = TRUE
 )
