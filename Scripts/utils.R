@@ -228,7 +228,7 @@ get_cepalstat_data <- function(indicator_id) {
 }
 
 # Take bare minimum df with value and *_id fields only and format for CEPALSTAT Wasabi upload
-format_for_wasabi <- function(data, indicator_id){
+format_for_wasabi <- function(data, indicator_id, source_id = NULL){
   
   ## Final format:
   # record_id: identificador único de cada fila (String)
@@ -260,39 +260,44 @@ format_for_wasabi <- function(data, indicator_id){
   data %<>% 
     mutate(indicator_id = indicator_id) # Inherit from manually defined vector
   
-  ## Get source_id from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
-  
-  # Send request and parse JSON
-  result <- fetch_cepalstat_json(url)
-  
-  sources_tbl <- result %>%
-    pluck("body", "sources") %>%
-    as_tibble()
-  
-  ## Temp solution for more than one data source -- manually select which to keep
-  if(nrow(sources_tbl) > 1) {
-    if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs since direct from source
-    if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    if(indicator_id == 4176) {sources_tbl %<>% filter(id == 651)} # general FAOSTAT source
-  }
-  
-  ## Change any data sources here
-  if(indicator_id == 3382) {sources_tbl %<>% mutate(id == 1827)} # Calculations made based on pesticide consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
-  if(indicator_id == 2022) {sources_tbl %<>% mutate(id == 913)} # Calculations made based on fertilizer consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
-  
   # Create source_id field
-  data %<>% 
-    mutate(source_id = sources_tbl %>% pull(id))
-  
-  ## Get footnotes_id from CEPALSTAT -- do this fully in processing script since manual
-  # footnotes_tbl <- get_indicator_footnotes(indicator_id)
-  # 
-  # # Create footnotes_id field
-  # data %<>% 
-  #   mutate(footnotes_id = ifelse(!(is_empty(footnotes_tbl) | nrow(footnotes_tbl) == 0), footnotes_tbl %>% pull(id), ''))
+  if(is.function(source_id)) { # Use provided source_id directly (already assigned)
+
+    # Create source_id field
+    data %<>% 
+      mutate(source_id = source_id())
+    
+  } else { # Fall back to CEPALSTAT API lookup
+    
+    # Get source_id from CEPALSTAT
+    url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
+    
+    # Send request and parse JSON
+    result <- fetch_cepalstat_json(url)
+    
+    source_ids <- result %>%
+      pluck("body", "sources") %>%
+      as_tibble()
+    
+    ## Transition these manual source assignments to indicator-specific code
+    if(nrow(sources_tbl) > 1) {
+      if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs since direct from source
+      if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+      if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+      if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+      if(indicator_id == 4176) {sources_tbl %<>% filter(id == 651)} # general FAOSTAT source
+    }
+    
+    if(nrow(sources_tbl) == 1) {
+      if(indicator_id == 3382) {sources_tbl %<>% mutate(id = 1827)} # Calculations made based on pesticide consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+      if(indicator_id == 2022) {sources_tbl %<>% mutate(id = 913)} # Calculations made based on fertilizer consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+    }
+    
+    # Create source_id field
+    data %<>% 
+      mutate(source_id = sources_tbl %>% pull(id))
+    
+  }
   
   # Select final columns
   data %<>% 
