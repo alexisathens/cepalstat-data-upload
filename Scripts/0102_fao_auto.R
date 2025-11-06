@@ -65,12 +65,12 @@ rp %<>% as_tibble()
 # ---- generic indicator processing function ----
 
 ## testing
-# indicator_id <- 1869
-# data <- rl
-# dim_config <- dim_config_1869
-# filter_fn <- filter_1869
-# transform_fn <- transform_1869
-# footnotes_fn <- footnotes_1869
+indicator_id <- 4176
+data <- lc
+dim_config <- dim_config_4176
+filter_fn <- filter_4176
+transform_fn <- transform_4176
+footnotes_fn <- footnotes_4176
 
 process_fao_indicator <- function(indicator_id, data, dim_config,
                                   filter_fn, transform_fn, footnotes_fn,
@@ -80,35 +80,35 @@ process_fao_indicator <- function(indicator_id, data, dim_config,
   ## 1. Filter and transform FAO data
   df <- data %>% filter_fn() %>% transform_fn()
   
-  # # Overwrite country names with std_name in iso file
-  # df %<>%
-  #   left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
-  #   mutate(Country = coalesce(std_name, Country)) %>%
-  #   select(-std_name)
-  # 
-  # # Filter out extra non-LAC groups
-  # df %<>%
-  #   filter(Country %in% iso$name)
-  # # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
-  # 
-  # # remove regional totals, construct ECLAC total from sum of countries
-  # df %<>%
-  #   filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
-  # 
-  # # Correct types
-  # df %<>%
-  #   mutate(Years = as.character(Years))
-  #
-  # assert_no_duplicates(df)
-  # 
-  # ## 2. Create ECLAC regional total
-  # eclac_totals <- df %>%
-  #   group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
-  #   summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-  #   mutate(Country = "Latin America and the Caribbean")
-  # 
-  # df <- bind_rows(df, eclac_totals) %>%
-  #   arrange(Country, Years)
+  # Overwrite country names with std_name in iso file
+  df %<>%
+    left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+    mutate(Country = coalesce(std_name, Country)) %>%
+    select(-std_name)
+
+  # Filter out extra non-LAC groups
+  df %<>%
+    filter(Country %in% iso$name)
+  # remove Bonaire, Sint Eustatius and Saba and Netherlands Antilles (former)
+
+  # remove regional totals, construct ECLAC total from sum of countries
+  df %<>%
+    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America and the Caribbean", "Latin America"))
+
+  # Correct types
+  df %<>%
+    mutate(Years = as.character(Years))
+
+  assert_no_duplicates(df)
+
+  ## 2. Create ECLAC regional total
+  eclac_totals <- df %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+
+  df <- bind_rows(df, eclac_totals) %>%
+    arrange(Country, Years)
   
   ## 3. Harmonize labels
   pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
@@ -462,7 +462,7 @@ dim_config_4176 <- tibble(
 
 filter_4176 <- function(data) {
   data %>%
-    filter(element == "area_from_cci_lc" & item == "Mangroves") %>%
+    filter(element == "area_from_worldcover" & item == "Mangroves") %>%
     # filter out any countries too with inconsistent entries (to not impact LAC total)
     filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao")) %>%
     filter(!is.na(value))
