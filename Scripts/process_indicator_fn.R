@@ -1,12 +1,3 @@
-## testing
-# indicator_id <- 4046
-# data <- emdat
-# dim_config <- dim_config_4046
-# filter_fn <- filter_4046
-# transform_fn <- transform_4046
-# footnotes_fn <- footnotes_4046
-# regional_fn <- regional_4046
-
 # Generic CEPALSTAT indicator processing function
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
@@ -28,24 +19,24 @@ process_indicator <- function(indicator_id, data, dim_config,
                            "Latin America and the Caribbean", "Latin America")) %>%
     mutate(Years = as.character(Years))
   
-  assert_no_duplicates(df)
-  
   ## 3. Create ECLAC regional total
   if (!isFALSE(regional_fn)) {
     if (is.function(regional_fn)) {
       # Use custom aggregation function
-      eclac_totals <- regional_fn(df)
+      df <- regional_fn(df)
     } else {
       # Default: simple sum
       eclac_totals <- df %>%
         group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
         summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
         mutate(Country = "Latin America and the Caribbean")
+      
+      df <- bind_rows(df, eclac_totals) %>%
+        arrange(Country, Years)
     }
-    
-    df <- bind_rows(df, eclac_totals) %>%
-      arrange(Country, Years)
   }
+  
+  assert_no_duplicates(df)
   
   ## 4. Harmonize labels
   pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
@@ -69,6 +60,8 @@ process_indicator <- function(indicator_id, data, dim_config,
       message("⚠️  Dimensions present in old data only:")
       print(missing_old %>% count(dim_name, sort = TRUE))
       print(missing_old)
+    } else {
+      message(glue(" - No missing dimensions"))
     }
     
     # 2️⃣ Newly added in updated data (new years or countries)
@@ -78,6 +71,8 @@ process_indicator <- function(indicator_id, data, dim_config,
       message("🆕  Dimensions present in new data only:")
       print(missing_new %>% count(dim_name, sort = TRUE))
       print(missing_new)
+    } else {
+      message(glue(" - No new dimensions"))
     }
   }
   
@@ -110,11 +105,93 @@ process_indicator <- function(indicator_id, data, dim_config,
     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
-    message(glue("  ✓ Exported cleaned and comparison files for {indicator_id}"))
+    message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
   }
   
   return(list(clean = df_f, comp = comp, comp_sum = comp_sum))
   
 }
 
+## Debugging
+# indicator_id = 2022
+# data = rfn
+# dim_config = dim_config_2022
+# filter_fn = filter_2022
+# transform_fn = transform_2022
+# regional_fn = regional_2022
+# footnotes_fn = footnotes_2022
+# source_id = source_2022
+# diagnostics = TRUE
+# export = FALSE
+
 ## Sample indicator processing code
+
+# indicator_id <- 2022 # fertilizer use intensity
+# 
+# # Fill out dim config table by matching the following info:
+# # get_indicator_dimensions(indicator_id)
+# # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+# 
+# dim_config_2022 <- tibble(
+#   data_col = c("Country", "Years"),
+#   dim_id = c("208", "29117"),
+#   pub_col = c("208_name", "29117_name")
+# )
+# 
+# filter_2022 <- function(data) {
+#   data %<>% 
+#     filter(element == "agricultural_use") %>% 
+#     filter(item %in% c("Nutrient nitrogen N (total)", "Nutrient phosphate P2O5 (total)", "Nutrient potash K2O (total)")) %>% 
+#     # filter out any countries too with inconsistent entries (to not impact LAC total)
+#     filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+# }
+# 
+# transform_2022 <- function(data) {
+#   data %<>% 
+#     group_by(area, year) %>% # sum across fertilizer types (items)
+#     summarize(value = sum(value, na.rm = T)) %>% 
+#     ungroup %>% 
+#     rename(Country = area, Years = year) %>% 
+#     select(Country, Years, value) %>% 
+#     mutate(Years = as.character(Years)) %>% 
+#     left_join(result_cropland) %>% 
+#     arrange(Country, Years)
+# }
+# 
+# regional_2022 <- function(data) {
+#   eclac_totals <- data %>%
+#     group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
+#     summarise(value = sum(value, na.rm = TRUE),
+#               area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   data <- bind_rows(data, eclac_totals) %>%
+#     mutate(value = value/area) %>% 
+#     arrange(Country, Years) %>% 
+#     select(Country, Years, value)
+#   
+#   return(data)
+# }
+# 
+# footnotes_2022 <- function(data) {
+#   data %>% 
+#     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+#   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+# }
+# 
+# source_2022 <- function() {
+#   913 # Calculations made based on fertilizer consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+# }
+# 
+# result_2022 <- process_indicator(
+#   indicator_id = 2022,
+#   data = rfn,
+#   dim_config = dim_config_2022,
+#   filter_fn = filter_2022,
+#   transform_fn = transform_2022,
+#   regional_fn = regional_2022,
+#   footnotes_fn = footnotes_2022,
+#   source_id = source_2022,
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
