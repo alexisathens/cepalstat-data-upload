@@ -228,7 +228,7 @@ get_cepalstat_data <- function(indicator_id) {
 }
 
 # Take bare minimum df with value and *_id fields only and format for CEPALSTAT Wasabi upload
-format_for_wasabi <- function(data, indicator_id, source_id = NULL){
+format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
   
   ## Final format:
   # record_id: identificador único de cada fila (String)
@@ -261,11 +261,11 @@ format_for_wasabi <- function(data, indicator_id, source_id = NULL){
     mutate(indicator_id = indicator_id) # Inherit from manually defined vector
   
   # Create source_id field
-  if(is.function(source_id)) { # Use provided source_id directly (already assigned)
+  if(is.function(source_fn)) { # Use provided source_id directly (already assigned)
 
     # Create source_id field
     data %<>% 
-      mutate(source_id = source_id())
+      mutate(source_id = source_fn())
     
   } else { # Fall back to CEPALSTAT API lookup
     
@@ -285,12 +285,6 @@ format_for_wasabi <- function(data, indicator_id, source_id = NULL){
       if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
       if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
       if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-      if(indicator_id == 4176) {sources_tbl %<>% filter(id == 651)} # general FAOSTAT source
-    }
-    
-    if(nrow(sources_tbl) == 1) {
-      if(indicator_id == 3382) {sources_tbl %<>% mutate(id = 1827)} # Calculations made based on pesticide consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
-      if(indicator_id == 2022) {sources_tbl %<>% mutate(id = 913)} # Calculations made based on fertilizer consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
     }
     
     # Create source_id field
