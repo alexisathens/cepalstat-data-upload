@@ -1,129 +1,155 @@
 library(tidyverse)
 library(magrittr)
 library(readxl)
+library(httr2)
+library(jsonlite)
+library(glue)
 library(here)
-library(writexl)
+library(lubridate)
 library(CepalStatR)
 
 source(here("Scripts/utils.R"))
 
-# Create basic table with one row per indicator, including id, area, indicator, source, dimensions, anuario Y/N
+# Create basic metadata table with one row per indicator, including id, area, indicator, source, dimensions, anuario, code version
 
-# ---- access CEPALSTAT indicator list via API ----
+## 1. Retrieve full list of environmental indicators ----
 
-# explore available indicators in Viewer
-# viewer.indicators()
+ind <- call.indicators() %>% as_tibble()
 
-# save indicators to df
-ind <- call.indicators()
+env <- ind %>%
+  filter(Area == "Environmental", !is.na(`Indicator ID`)) %>%
+  mutate(Subdimension = ifelse(
+    Indicador.1 == "Emissions of greenhouse gases (GHGs)",
+    paste(Subdimension, Indicador.1, sep = " / "),
+    Subdimension
+  )) %>%
+  mutate(Indicador.1 = ifelse(
+    Indicador.1 == "Emissions of greenhouse gases (GHGs)",
+    Indicador.2, Indicador.1
+  )) %>%
+  select(-c(Area, Indicador.2, Indicador.3)) %>%
+  rename(cat1 = Dimension, cat2 = Subdimension, indicator = Indicador.1, id = `Indicator ID`) %>%
+  select(id, indicator, cat1, cat2)
 
-ind %<>% as_tibble()
-
-# filter just on environmental indicators of interest
-env <- ind %>% 
-  filter(Area == "Environmental")
-
-env
-
-# filter out two indicators that don't show up on the front end - presumably moved to social
-env %<>% filter(!is.na(`Indicator ID`))
-
-# get vector of environmental IDs
-env_ids <- env %>% pull(`Indicator ID`)
-
-# clean
-env %<>%
-  rename(id = `Indicator ID`) %>% 
-  relocate(id, everything()) %>% 
-  select(-Area)
-
-env %<>% 
-  mutate(name = ifelse(Indicador.2 == "", Indicador.1, Indicador.2)) %>%
-  select(!starts_with("Indicador")) %>% 
-  relocate(id, name, everything())
-
-env %<>% 
-  rename(dimension = Dimension, subdimension = Subdimension)
+env_ids <- env$id
 
 
-# ---- get sources ---- 
+## 2. Get main sources ----
 
-## UPDATE code from here ->
+env <- env %>% mutate(source = NA_character_)
 
-all_sources <- NULL 
-
-for(i in 1:length(env_ids)){
-  
-  this_id <- env_ids[i]
-  
-  ## Get source_id from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{this_id}/sources?lang=en&format=json")
-  
-  # Send request and parse JSON
-  result <- request(url) %>%
-    req_perform() %>%
-    resp_body_string() %>%
-    fromJSON(flatten = TRUE)
-  
-  sources_tbl <- result %>%
-    pluck("body", "sources") %>%
-    as_tibble()
-  
-  sources_tbl %<>% mutate(env_id = this_id)
-  
-  all_sources %<>% bind_rows(sources_tbl)
+for(i in 1:nrow(env)) {
+  source <- get_indicator_sources(env$id[i])
+  # if(nrow(source) > 1) { stop() } # taking the first entry seems to work best
+  source %<>% slice(1)
+  acronym <- source %>% pull(organization_acronym)
+  env$source[i] <- acronym
 }
 
-all_sources
 
-all_sources %<>% 
-  filter(!str_detect(description, "Calculations made|calculated"))
+## 3. Get indicator dimensions ----
 
-basic_sources <- all_sources %>% 
-  distinct(env_id, organization_acronym)
+all_dims <- map_dfr(env_ids, function(id) {
+  dims <- get_indicator_dimensions(id) %>%
+    pull(name) %>%
+    setdiff(c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type"))
+  tibble(id = id, dimensions = paste(unique(dims), collapse = "; "))
+})
 
-## join to main df
-env %<>% 
-  left_join(basic_sources, by = c("id" = "env_id"))
-
-env %<>% 
-  rename(source = organization_acronym) %>% 
-  mutate(source = ifelse(dimension == "Energy resources" & is.na(source), "OLADE", source))
-
-
-
-# ---- get dimensions ----
-
-all_dims <- NULL
-
-for(i in 1:length(env_ids)){
-  this_id <- env_ids[i]
-  
-  these_dims <- get_indicator_dimensions(this_id) %>% pull(name)
-  
-  these_dims <- setdiff(these_dims, c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type"))
-  
-  dims_tbl <- tibble(id = this_id, dimensions = these_dims)
-  
-  all_dims %<>% bind_rows(dims_tbl)
-}
-
-all_dims
-
-# Collapse groups with more than one dimension
-all_dims %<>%
-  group_by(id) %>%
-  summarise(dimensions = paste(unique(dimensions), collapse = "; "), .groups = "drop")
-
-## join to main df
-env %<>% 
+env <- env %>%
   left_join(all_dims, by = "id")
 
 
-# ---- create flags ----
+## 4. Get CEPALSTAT metadata info ----
+
+env <- env %>%
+  mutate(last_update = as.Date(NA),
+         last_year = as.numeric(NA))
+
+for (i in seq_len(nrow(env))) {
+  # last update
+  meta <- tryCatch(get_indicator_metadata(env$id[i]), error = function(e) NULL)
+  if (!is.null(meta)) {
+    last_update <- meta %>%
+      filter(variable == "last_update") %>%
+      pull(value) %>%
+      str_squish()
+    env$last_update[i] <- suppressWarnings(mdy_hm(last_update) %>% as_date())
+  }
+  
+  # last year
+  if (!is.na(env$id[i])) {
+    data <- tryCatch(get_cepalstat_data(env$id[i]), error = function(e) NULL)
+    if (!is.null(data) && "29117_name" %in% names(data)) {
+      data <- match_cepalstat_labels(data)
+      env$last_year[i] <- suppressWarnings(max(as.numeric(data$`29117_name`), na.rm = TRUE))
+    }
+  }
+}
+
+# ---- last update info ----
+
+env %<>% mutate(last_update = as.Date(NA)) # initialize
+
+for(i in 1:nrow(env)) {
+  meta <- get_indicator_metadata(env$id[i])
+  last_update <- meta %>% filter(variable == "last_update") %>% pull(value)
+  last_update %<>% str_squish() %>% mdy_hm() %>% as_date()
+  env$last_update[i] <- last_update
+}
 
 
-# ---- export ----
+# ---- last year of data ----
 
-# Export spreadsheet
-write_xlsx(env, here("Data", "indicator_metadata.xlsx"))
+env %<>% mutate(last_year = as.numeric(NA)) # initialize
+
+for(i in 1:nrow(env)) {
+  if(i == 69){ # this indicator data has some NAs and doesn't pass quality checks -- manually update year
+    year = 2021
+  } else if(i == 87) { # keep NA, there is no year field (yet) for this indicator
+    
+  } else {
+    data <- get_cepalstat_data(env$id[i])
+    year <- match_cepalstat_labels(data)
+    year %<>% summarize(max = max(`29117_name`)) %>% pull(as.numeric(max))
+  }
+  env$last_year[i] <- year
+}
+
+
+
+## 5. Add Anuario (Yearbook) info ----
+
+anuario_plan <- read_xlsx(here("CEPALSTAT Review/anuario_plan_2025.xlsx"),
+                          sheet = "Indicator Plan", skip = 0) %>%
+  rename(id = `ID INDICADOR CEPALSTAT`, entrega = matches("^FECHA DE ENTREGA")) %>%
+  mutate(id = as.numeric(str_replace_all(id, "[\r\n]", ""))) %>%
+  filter(!is.na(entrega), !is.na(id)) %>%
+  mutate(anuario_entrega = ifelse(str_detect(entrega, "sept"), "1_Sept", "2_Nov")) %>%
+  distinct(id, anuario_entrega)
+
+env <- env %>%
+  left_join(anuario_plan, by = "id")
+
+
+## 6. Add local code tracking fields ----
+
+# Start empty (these get auto-filled when indicators are processed)
+env <- env %>%
+  mutate(
+    script_version = NA_character_,
+    last_run = as.Date(NA),
+    notes = NA_character_
+  )
+
+
+## 7. Export master metadata table ----
+
+# write_xlsx(env, here("Data/indicator_metadata.xlsx"))
+
+
+
+#### UPDATE CEPALSTAT METADATA ----------
+
+## write code for this later to update the fields that come from the CEPALSTAT API
+
