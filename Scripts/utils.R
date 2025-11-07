@@ -429,3 +429,25 @@ create_comparison_checks <- function(comp, dim_config) {
   
   return(comp)
 }
+
+# Function that updates indicator_metadata.xlsx with code versioning
+update_indicator_metadata <- function(indicator_id) {
+  
+  # Load metadata
+  meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+  
+  meta <- meta %>%
+    mutate(
+      last_run = lubridate::ymd(last_run, quiet = TRUE),
+      last_update = lubridate::ymd(last_update, quiet = TRUE)) %>% 
+    mutate(
+      script_version = if_else(id == indicator_id, .env$script_version, script_version),
+      last_run = if_else(id == indicator_id, Sys.Date(), as.Date(last_run)),
+      notes = if_else(id == indicator_id, .env$script_notes, notes),
+      last_update = as.Date(last_update)
+    )
+  
+  # Write back
+  writexl::write_xlsx(meta, here("Data/indicator_metadata.xlsx"))
+
+}

@@ -1,4 +1,7 @@
 # Generic CEPALSTAT indicator processing function
+script_version <- "v2025-11-06"  # bump manually when logic significantly changes
+script_notes <- ""
+
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
                               regional_fn = NULL, # NULL = default sum, FALSE = skip, function = custom
@@ -106,6 +109,9 @@ process_indicator <- function(indicator_id, data, dim_config,
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
+    
+    # Update metadata for code version and last updated
+    update_indicator_metadata(indicator_id)
   }
   
   return(list(clean = df_f, comp = comp, comp_sum = comp_sum))
