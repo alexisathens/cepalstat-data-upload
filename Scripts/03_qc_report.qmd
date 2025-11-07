@@ -9,7 +9,7 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 4046
+  indicator_id: 4049
 execute:
   echo: false
   warning: false
@@ -17,7 +17,7 @@ execute:
 project:
   type: default
   output-dir: "QC Reports"
-output-file: "qc_report_4046.html"
+output-file: "qc_report_4049.html"
 ---
 
 ## Quality Check Report for Indicator `r params$indicator_id`
@@ -69,7 +69,7 @@ iso %<>%
   select(cepalstat, name, std_name)
 
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
-indicator_name <- meta %>% filter(id == indicator_id) %>% pull(name)
+indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
 
 date_stamp <- Sys.Date()
 
