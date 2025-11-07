@@ -1,12 +1,13 @@
 # Generic CEPALSTAT indicator processing function
 script_version <- "v2025-11-06"  # bump manually when logic significantly changes
-script_notes <- ""
+script_notes <- "transition to centralized processing function"
 
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
                               regional_fn = NULL, # NULL = default sum, FALSE = skip, function = custom
                               source_fn = NULL,
-                              diagnostics = TRUE, export = TRUE) {
+                              diagnostics = TRUE, export = TRUE,
+                              ind_notes = NULL) {
   message(glue("▶ Processing indicator {indicator_id}..."))
   
   ## 1. Filter and transform EMDAT data
@@ -111,7 +112,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
     
     # Update metadata for code version and last updated
-    update_indicator_metadata(indicator_id)
+    update_indicator_metadata(indicator_id, ind_notes)
   }
   
   return(list(clean = df_f, comp = comp, comp_sum = comp_sum))
