@@ -275,7 +275,7 @@ format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
     # Send request and parse JSON
     result <- fetch_cepalstat_json(url)
     
-    source_ids <- result %>%
+    sources_tbl <- result %>%
       pluck("body", "sources") %>%
       as_tibble()
     
