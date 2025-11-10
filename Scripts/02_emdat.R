@@ -24,6 +24,7 @@ library(FAOSTAT)
 # ---- setup ----
 
 source(here("Scripts/utils.R"))
+source(here("Scripts/process_indicator_fn.R"))
 
 # Read in ISO with cepalstat ids
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
