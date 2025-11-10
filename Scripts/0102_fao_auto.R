@@ -16,6 +16,7 @@ library(FAOSTAT)
 # ---- setup ----
 
 source(here("Scripts/utils.R"))
+source(here("Scripts/process_indicator_fn.R"))
 
 # Read in ISO with cepalstat ids
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
@@ -340,11 +341,12 @@ footnotes_4049 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-result_4049 <- process_fao_indicator(
+result_4049 <- process_indicator(
   indicator_id = 4049,
   data = rl,
   dim_config = dim_config_4049,
   filter_fn = filter_4049,
+  regional_fn = FALSE,
   transform_fn = transform_4049,
   footnotes_fn = footnotes_4049,
   diagnostics = TRUE,
@@ -494,7 +496,8 @@ result_4176 <- process_indicator(
   footnotes_fn = footnotes_4176,
   source_fn = source_4176,
   diagnostics = TRUE,
-  export = TRUE
+  export = TRUE,
+  ind_notes = "changed data source from fra to cci_lc"
 )
 
 
