@@ -358,7 +358,7 @@ calculate_per_capita_gdp <- function(emissions_data, calculation_type = c("per_c
     per_capita <- emissions_long %>%
       left_join(pop_data, by = c("iso_code3", "year")) %>%
       mutate(
-        value = .data$emissions / .data$population,
+        value = (.data$emissions / .data$population) * 1e6, # convert to tons of C02e per capita
         unit = paste0(.data$unit, " per capita")
       ) %>%
       select(-.data$emissions, -.data$population) %>%
@@ -372,7 +372,7 @@ calculate_per_capita_gdp <- function(emissions_data, calculation_type = c("per_c
     per_gdp <- emissions_long %>%
       left_join(gdp_data, by = c("iso_code3", "year")) %>%
       mutate(
-        value = (.data$emissions / .data$gdp_constant_2015_usd) * 1e6,  # Tonnes per millions of dollars of GDP
+        value = (.data$emissions / .data$gdp_constant_2015_usd) * 1e12,  # convert to tons of C02e per millions of dollars of GDP
         unit = "Tonnes of carbon dioxide equivalent (tCO2e) per millions of dollars of GDP"
       ) %>%
       select(-.data$emissions, -.data$gdp_constant_2015_usd) %>%
