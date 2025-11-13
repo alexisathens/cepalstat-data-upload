@@ -15,32 +15,10 @@ library(FAOSTAT)
 
 # ---- download ----
 
+# run script 01_climatewatch.R to download raw data from API
+
 # Visit: https://www.climatewatchdata.org/data-explorer/historical-emissions? 
 # For information on the API and bulk data downloads
-
-
-## Instructions for DOWNLOADING the Climate Watch data (Step 01): ---- convert this into code now that the API can be used
-# 01_climatewatch_instructions.qmd
-# This was translated and formatted from Alberto's step-by-step guide
-
-# # Define API endpoint
-# url <- "https://www.climatewatchdata.org/api/v1/data/historical_emissions"
-# 
-# # Get the API json and convert to R object
-# result <- request(url) %>% 
-#   req_perform() %>% 
-#   resp_body_json(simplifyVector = TRUE)
-# 
-# # Grab main data table and expand the nested list column
-# cw <- result$data %>% 
-#   as_tibble() %>% 
-#   unnest(emissions)
-# 
-# # Basic data cleaning
-# cw %<>% 
-#   filter(data_source == "Climate Watch") %>% 
-#   select(-data_source)
-
 
 # ---- setup ----
 
@@ -55,28 +33,12 @@ iso %<>%
   select(cepalstat, name, std_name)
 
 # ---- read downloaded files ----
-# cw_path <- here("Data/Raw/climate watch")
-# 
-# country_3159 <- read_csv(paste0(cw_path, "/3159-cait-elucf-co2-total-lac.csv")) %>% filter(iso != "Data source")
-# region_3159 <- read_csv(paste0(cw_path, "/3159-cait-elucf-co2-total-regional.csv")) %>% filter(iso != "Data source")
-# data_3159 <- bind_rows(country_3159, region_3159)
-# 
-# data_3351 <- bind_rows(
-#   read_csv(paste0(cw_path, "/3351-cait-ag-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "ag"),
-#   read_csv(paste0(cw_path, "/3351-cait-ag-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "ag"),
-#   read_csv(paste0(cw_path, "/3351-cait-energy-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "energy"),
-#   read_csv(paste0(cw_path, "/3351-cait-energy-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "energy"),
-#   read_csv(paste0(cw_path, "/3351-cait-industrial-ghg-total-lac.csv"), col_types = cols(`1990` = col_double())) %>% 
-#     filter(iso != "Data source") %>% mutate(sector = "industrial"),
-#   read_csv(paste0(cw_path, "/3351-cait-industrial-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "industrial"),
-#   read_csv(paste0(cw_path, "/3351-cait-waste-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "waste"),
-#   read_csv(paste0(cw_path, "/3351-cait-waste-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "waste")
-# )
+cw_path <- here("Data/Raw/climate watch")
 
-
-cw %>% 
-  distinct(country)
-  filter(!country %in% iso$name)
+data_2027 <- read_csv(paste0(cw_path, "/2027_raw.csv"))
+# data_3158 <- read_csv(paste0(cw_path, "/3158_raw.csv"))
+data_3159 <- read_csv(paste0(cw_path, "/3159_raw.csv"))
+data_3351 <- read_csv(paste0(cw_path, "/3351_raw.csv"))
 
 
 ## ---- indicator 3159 - share of carbon dioxide (CO₂) emissions relative to the global total ----
@@ -95,16 +57,15 @@ dim_config_3159 <- tibble(
 
 filter_3159 <- function(data) {
   data %>% 
-    rename(Country = `Country/Region`) %>% 
-    select(-iso, -unit) %>% 
-    pivot_longer(!Country, names_to = "Years")
+    rename(Country = country, Years = year) %>% 
+    select(Country, Years, value)
 }
 
 transform_3159 <- function(data) {
   world <- data %>% 
     filter(Country == "World")
   
-  data %<>% 
+  data %>% 
     filter(Country != "World") %>% 
     left_join(world, by = "Years", suffix = c("", ".wld")) %>% 
     mutate(prop = value/value.wld*100) %>% 
@@ -116,11 +77,6 @@ footnotes_3159 <- function(data) {
     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
-
-# overwrite this once because I messed it up
-# source_3159 <- function(indicator_id) {
-#   1742 # CAIT Explorador de Datos Climáticos
-# }
 
 result_3159 <- process_indicator(
   indicator_id = 3159,
@@ -152,17 +108,12 @@ dim_config_3351 <- tibble(
 
 filter_3351 <- function(data) {
   data %>% 
-    rename(Country = `Country/Region`, Type = sector) %>% 
-    select(-iso, -unit) %>% 
-    pivot_longer(!c(Country, Type), names_to = "Years") %>% 
+    rename(Country = country, Type = sector, Years = year) %>% 
+    select(Country, Type, Years, value) %>% 
     mutate(Type = case_when(
-      Type == "ag" ~ "Agriculture",
-      Type == "energy" ~ "Energy",
-      Type == "industrial" ~ "Industrial processes",
-      Type == "waste" ~ "Waste",
+      Type == "Industrial Processes" ~ "Industrial processes",
       TRUE ~ Type
-    )) %>% 
-    mutate(value = ifelse(Country == "Bahamas" & Years == 1990 & is.na(value), 0.00, value)) # fill in single missing value
+    ))
 }
 
 transform_3351 <- function(data) {
