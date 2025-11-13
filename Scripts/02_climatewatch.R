@@ -23,23 +23,23 @@ library(FAOSTAT)
 # 01_climatewatch_instructions.qmd
 # This was translated and formatted from Alberto's step-by-step guide
 
-# Define API endpoint
-url <- "https://www.climatewatchdata.org/api/v1/data/historical_emissions"
-
-# Get the API json and convert to R object
-result <- request(url) %>% 
-  req_perform() %>% 
-  resp_body_json(simplifyVector = TRUE)
-
-# Grab main data table and expand the nested list column
-cw <- result$data %>% 
-  as_tibble() %>% 
-  unnest(emissions)
-
-# Basic data cleaning
-cw %<>% 
-  filter(data_source == "Climate Watch") %>% 
-  select(-data_source)
+# # Define API endpoint
+# url <- "https://www.climatewatchdata.org/api/v1/data/historical_emissions"
+# 
+# # Get the API json and convert to R object
+# result <- request(url) %>% 
+#   req_perform() %>% 
+#   resp_body_json(simplifyVector = TRUE)
+# 
+# # Grab main data table and expand the nested list column
+# cw <- result$data %>% 
+#   as_tibble() %>% 
+#   unnest(emissions)
+# 
+# # Basic data cleaning
+# cw %<>% 
+#   filter(data_source == "Climate Watch") %>% 
+#   select(-data_source)
 
 
 # ---- setup ----
@@ -55,23 +55,28 @@ iso %<>%
   select(cepalstat, name, std_name)
 
 # ---- read downloaded files ----
-cw_path <- here("Data/Raw/climate watch")
+# cw_path <- here("Data/Raw/climate watch")
+# 
+# country_3159 <- read_csv(paste0(cw_path, "/3159-cait-elucf-co2-total-lac.csv")) %>% filter(iso != "Data source")
+# region_3159 <- read_csv(paste0(cw_path, "/3159-cait-elucf-co2-total-regional.csv")) %>% filter(iso != "Data source")
+# data_3159 <- bind_rows(country_3159, region_3159)
+# 
+# data_3351 <- bind_rows(
+#   read_csv(paste0(cw_path, "/3351-cait-ag-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "ag"),
+#   read_csv(paste0(cw_path, "/3351-cait-ag-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "ag"),
+#   read_csv(paste0(cw_path, "/3351-cait-energy-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "energy"),
+#   read_csv(paste0(cw_path, "/3351-cait-energy-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "energy"),
+#   read_csv(paste0(cw_path, "/3351-cait-industrial-ghg-total-lac.csv"), col_types = cols(`1990` = col_double())) %>% 
+#     filter(iso != "Data source") %>% mutate(sector = "industrial"),
+#   read_csv(paste0(cw_path, "/3351-cait-industrial-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "industrial"),
+#   read_csv(paste0(cw_path, "/3351-cait-waste-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "waste"),
+#   read_csv(paste0(cw_path, "/3351-cait-waste-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "waste")
+# )
 
-country_3159 <- read_csv(paste0(cw_path, "/3159-cait-elucf-co2-total-lac.csv")) %>% filter(iso != "Data source")
-region_3159 <- read_csv(paste0(cw_path, "/3159-cait-elucf-co2-total-regional.csv")) %>% filter(iso != "Data source")
-data_3159 <- bind_rows(country_3159, region_3159)
 
-data_3351 <- bind_rows(
-  read_csv(paste0(cw_path, "/3351-cait-ag-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "ag"),
-  read_csv(paste0(cw_path, "/3351-cait-ag-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "ag"),
-  read_csv(paste0(cw_path, "/3351-cait-energy-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "energy"),
-  read_csv(paste0(cw_path, "/3351-cait-energy-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "energy"),
-  read_csv(paste0(cw_path, "/3351-cait-industrial-ghg-total-lac.csv"), col_types = cols(`1990` = col_double())) %>% 
-    filter(iso != "Data source") %>% mutate(sector = "industrial"),
-  read_csv(paste0(cw_path, "/3351-cait-industrial-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "industrial"),
-  read_csv(paste0(cw_path, "/3351-cait-waste-ghg-total-lac.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "waste"),
-  read_csv(paste0(cw_path, "/3351-cait-waste-ghg-total-regional.csv")) %>% filter(iso != "Data source") %>% mutate(sector = "waste")
-)
+cw %>% 
+  distinct(country)
+  filter(!country %in% iso$name)
 
 
 ## ---- indicator 3159 - share of carbon dioxide (CO₂) emissions relative to the global total ----
