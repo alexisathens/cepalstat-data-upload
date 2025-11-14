@@ -12,7 +12,7 @@ utils::globalVariables(c(
   "emissions", "year", "value",
   "iso3", "wb_iso_code3", "wb_iso3",
   "population", "gdp_constant_2015_usd",
-  "countryiso3code", "country"
+  "countryiso3code", "country", ".", "lookup_iso3"
 ))
 
 # Visit: https://www.climatewatchdata.org/data-explorer/historical-emissions? 
@@ -24,16 +24,16 @@ iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 iso %<>% 
   filter(ECLACa == "Y" | name == "World") %>% 
   mutate(
-    iso3 = ifelse(name == "World", "WORLD", iso3),
-    wb_iso3 = ifelse(iso3 == "WORLD", "WLD", iso3)
+    iso3 = ifelse(.data$name == "World", "WORLD", .data$iso3),
+    wb_iso3 = ifelse(.data$iso3 == "WORLD", "WLD", .data$iso3)
   ) %>% 
-  distinct(iso3, wb_iso3, std_name)
+  distinct(across(all_of(c("iso3", "wb_iso3", "std_name"))))
 
 # Lookup table for converting between WB and CEPAL iso codes
-iso_lookup_wb <- iso %>% select(iso3, wb_iso3)
+iso_lookup_wb <- iso %>% select(all_of(c("iso3", "wb_iso3")))
 
 # Get ISO codes for LAC countries and World
-regions_iso <- iso %>% filter(!iso3 %in% c("LAA", "CAA", "CAR")) %>% pull(iso3)
+regions_iso <- iso %>% filter(!.data$iso3 %in% c("LAA", "CAA", "CAR")) %>% pull("iso3")
 
 # Get base API URL
 base <- "https://www.climatewatchdata.org/api/v1/data/historical_emissions"
@@ -189,8 +189,8 @@ cw_get_data <- function(source_ids = NULL,
     # The API returns emissions as a nested list
     if ("emissions" %in% names(data)) {
       data <- data %>%
-        tidyr::unnest(cols = c(emissions), keep_empty = TRUE) %>%
-        pivot_wider(names_from = year, values_from = value, names_prefix = "")
+        tidyr::unnest(cols = all_of("emissions"), keep_empty = TRUE) %>%
+        pivot_wider(names_from = all_of("year"), values_from = all_of("value"), names_prefix = "")
     }
     
     return(data)
@@ -240,9 +240,7 @@ wb_get_data <- function(indicator, countries = NULL, start_date = 1990, end_date
   if (is.null(countries) || length(countries) == 0) {
     wb_countries <- iso_lookup_wb$wb_iso3
   } else {
-    wb_countries <- iso_lookup_wb %>% 
-      filter(iso3 %in% countries) %>% 
-      pull(wb_iso3) %>% 
+    wb_countries <- iso_lookup_wb$wb_iso3[iso_lookup_wb$iso3 %in% countries] %>% 
       unique()
     
     # Fallback to provided countries if not found in lookup
@@ -277,10 +275,14 @@ wb_get_data <- function(indicator, countries = NULL, start_date = 1990, end_date
              value = as.numeric(.data$value))
     
     # Convert WB iso codes back to CEPAL iso codes
+    iso_lookup_wb_join <- iso_lookup_wb
+    iso_lookup_wb_join$lookup_iso3 <- iso_lookup_wb_join[["iso3"]]
+    iso_lookup_wb_join[["iso3"]] <- NULL
+    
     data <- data %>%
-      left_join(iso_lookup_wb, by = c("wb_iso_code3" = "wb_iso3")) %>%
+      left_join(iso_lookup_wb_join, by = c("wb_iso_code3" = "wb_iso3")) %>%
       mutate(
-        iso_code3 = dplyr::coalesce(.data$iso3, .data$wb_iso_code3)
+        iso_code3 = dplyr::coalesce(.data$lookup_iso3, .data$wb_iso_code3)
       ) %>%
       select(.data$iso_code3, .data$country_name, .data$year, .data$value)
     
@@ -298,18 +300,18 @@ wb_get_data <- function(indicator, countries = NULL, start_date = 1990, end_date
   }
 }
 
-# Function to calculate per capita and per GDP values
-calculate_per_capita_gdp <- function(emissions_data, calculation_type = c("per_capita", "per_gdp")) {
+# Function to append population and GDP denominators to emissions data
+prepare_emissions_with_denominators <- function(emissions_data,
+                                                include_population = TRUE,
+                                                include_gdp = TRUE) {
   
-  # Get unique countries and years from emissions data
   if (!"iso_code3" %in% names(emissions_data)) {
     warning("No iso_code3 column found in emissions data")
     return(emissions_data)
   }
   
-  # Get year columns (numeric column names)
   year_cols <- names(emissions_data)[sapply(names(emissions_data), function(x) {
-    !is.na(suppressWarnings(as.numeric(x)))
+    suppressWarnings(!is.na(as.numeric(x)))
   })]
   
   if (length(year_cols) == 0) {
@@ -320,74 +322,53 @@ calculate_per_capita_gdp <- function(emissions_data, calculation_type = c("per_c
   years <- as.numeric(year_cols)
   countries <- unique(emissions_data$iso_code3[!is.na(emissions_data$iso_code3)])
   
-  # Initialize variables
   pop_data <- NULL
   gdp_data <- NULL
   
-  # Download population data if needed
-  if ("per_capita" %in% calculation_type) {
-    print("Downloading World Bank population data...")
-    pop_data <- wb_get_data("SP.POP.TOTL", countries = countries, 
-                            start_date = min(years, na.rm = TRUE), 
+  if (isTRUE(include_population)) {
+    message("Downloading World Bank population data...")
+    pop_data <- wb_get_data("SP.POP.TOTL",
+                            countries = countries,
+                            start_date = min(years, na.rm = TRUE),
                             end_date = max(years, na.rm = TRUE)) %>%
       rename(population = .data$value) %>%
       select(.data$iso_code3, .data$year, .data$population)
   }
   
-  # Download GDP data if needed
-  if ("per_gdp" %in% calculation_type) {
-    print("Downloading World Bank GDP data...")
-    gdp_data <- wb_get_data("NY.GDP.MKTP.KD", countries = countries,
+  if (isTRUE(include_gdp)) {
+    message("Downloading World Bank GDP data...")
+    gdp_data <- wb_get_data("NY.GDP.MKTP.KD",
+                            countries = countries,
                             start_date = min(years, na.rm = TRUE),
                             end_date = max(years, na.rm = TRUE)) %>%
       rename(gdp_constant_2015_usd = .data$value) %>%
       select(.data$iso_code3, .data$year, .data$gdp_constant_2015_usd)
   }
   
-  # Pivot emissions data to long format
+  static_cols <- setdiff(names(emissions_data), year_cols)
+  
   emissions_long <- emissions_data %>%
-    select(.data$iso_code3, any_of(c("country", "data_source", "sector", "gas", "unit")), all_of(year_cols)) %>%
+    select(all_of(static_cols), all_of(year_cols)) %>%
     pivot_longer(cols = all_of(year_cols), names_to = "year", values_to = "emissions") %>%
     mutate(year = as.numeric(.data$year))
   
-  # Join with population/GDP data and calculate
-  results_list <- list()
+  combined_long <- emissions_long %>%
+    left_join(pop_data, by = c("iso_code3", "year")) %>%
+    left_join(gdp_data, by = c("iso_code3", "year"))
   
-  if ("per_capita" %in% calculation_type && !is.null(pop_data)) {
-    print("Calculating per capita values...")
-    per_capita <- emissions_long %>%
-      left_join(pop_data, by = c("iso_code3", "year")) %>%
-      mutate(
-        value = (.data$emissions / .data$population) * 1e6, # convert to tons of C02e per capita
-        unit = paste0(.data$unit, " per capita")
-      ) %>%
-      select(-.data$emissions, -.data$population) %>%
-      pivot_wider(names_from = .data$year, values_from = .data$value, names_prefix = "")
-    
-    results_list[["per_capita"]] <- per_capita
-  }
-  
-  if ("per_gdp" %in% calculation_type && !is.null(gdp_data)) {
-    print("Calculating per GDP values...")
-    per_gdp <- emissions_long %>%
-      left_join(gdp_data, by = c("iso_code3", "year")) %>%
-      mutate(
-        value = (.data$emissions / .data$gdp_constant_2015_usd) * 1e12,  # convert to tons of C02e per millions of dollars of GDP
-        unit = "Tonnes of carbon dioxide equivalent (tCO2e) per millions of dollars of GDP"
-      ) %>%
-      select(-.data$emissions, -.data$gdp_constant_2015_usd) %>%
-      pivot_wider(names_from = .data$year, values_from = .data$value, names_prefix = "")
-    
-    results_list[["per_gdp"]] <- per_gdp
-  }
-  
-  # Combine results
-  if (length(results_list) > 0) {
-    result <- bind_rows(results_list)
-    return(result)
-  } else {
-    return(emissions_data)
-  }
+  combined_long %>%
+    mutate(year = as.numeric(.data$year)) %>%
+    select(any_of(c(
+      "iso_code3",
+      "country",
+      "sector",
+      "gas",
+      "unit",
+      "year",
+      "emissions",
+      "population",
+      "gdp_constant_2015_usd"
+    )))
 }
 
 # Helper to reshape indicator output before export
@@ -396,127 +377,33 @@ format_indicator_output <- function(data) {
     return(tibble())
   }
   
-  # Identify year columns (YYYY format)
-  year_cols <- names(data)[grepl("^\\d{4}$", names(data))]
+  data <- data %>%
+    select(-any_of(c("id", "iso", "data_source")))
   
-  if (length(year_cols) == 0) {
-    warning("No year columns found when formatting output")
-    return(data)
+  if ("year" %in% names(data)) {
+    data <- data %>%
+      mutate(
+        year = as.integer(.data$year),
+        value = as.numeric(.data$value)
+      )
+  } else {
+    year_cols <- names(data)[grepl("^\\d{4}$", names(data))]
+    
+    if (length(year_cols) == 0) {
+      warning("No year columns found when formatting output")
+      return(data)
+    }
+    
+    data <- data %>%
+      pivot_longer(cols = all_of(year_cols), names_to = "year", values_to = "value") %>%
+      mutate(
+        year = as.integer(.data$year),
+        value = as.numeric(.data$value)
+      )
   }
   
-  data %>%
-    select(-any_of(c("id", "iso", "iso_code3", "data_source"))) %>%
-    pivot_longer(cols = all_of(year_cols), names_to = "year", values_to = "value") %>%
-    mutate(
-      year = as.integer(.data$year),
-      value = as.numeric(.data$value)
-    )
+  data
 }
-
-## ---- indicator 4463 - greenhouse gas (ghg) emissions per gdp ----
-
-indicator_4463 <- cw_get_data(
-  source_ids = source_id_climate_watch,
-  regions = regions_iso,
-  sector_ids = sector_id_total_no_lucf,
-  gas_ids = gas_id_all_ghg
-)
-
-# Calculate per GDP values
-indicator_4463_per_gdp <- calculate_per_capita_gdp(indicator_4463, calculation_type = "per_gdp")
-
-# Combine total and per GDP
-indicator_4463 <- bind_rows(
-  indicator_4463 %>% mutate(calculation = "Total"),
-  indicator_4463_per_gdp %>% mutate(calculation = "Per GDP")
-)
-
-# Reshape and clean output
-indicator_4463 <- format_indicator_output(indicator_4463)
-
-write.csv(indicator_4463, 
-          file = file.path(output_dir, "4463_raw.csv"),
-          row.names = FALSE)
-
-## ---- indicator 4462 - greenhouse gas (ghg) emissions from the energy sector ----
-
-# Find sector IDs for energy subsectors
-sector_ids_energy <- sectors %>% 
-  filter(str_detect(tolower(.data$name), "electricity|heat|manufacturing|construction|transport|fuel combustion|fugitive") &
-         str_detect(tolower(.data$name), "energy")) %>% 
-  pull(id)
-
-# If no subsectors found, try finding "Energy" sector parent
-if (length(sector_ids_energy) == 0) {
-  sector_ids_energy <- sectors %>% 
-    filter(str_detect(tolower(.data$name), "^energy$|^energy sector$")) %>% 
-    pull(id) %>% 
-    first()
-}
-
-indicator_4462 <- cw_get_data(
-  source_ids = source_id_climate_watch,
-  regions = regions_iso,
-  sector_ids = sector_ids_energy,
-  gas_ids = gas_id_all_ghg
-)
-
-# Reshape and clean output
-indicator_4462 <- format_indicator_output(indicator_4462)
-
-write.csv(indicator_4462, 
-          file = file.path(output_dir, "4462_raw.csv"),
-          row.names = FALSE)
-
-## ---- indicator 4461 - greenhouse gas (ghg) emissions per capita ----
-
-indicator_4461 <- cw_get_data(
-  source_ids = source_id_climate_watch,
-  regions = regions_iso,
-  sector_ids = sector_id_total_no_lucf,
-  gas_ids = gas_id_all_ghg
-)
-
-# Calculate per capita values
-indicator_4461_per_capita <- calculate_per_capita_gdp(indicator_4461, calculation_type = "per_capita")
-
-# Combine total and per capita
-indicator_4461 <- bind_rows(
-  indicator_4461 %>% mutate(calculation = "Total"),
-  indicator_4461_per_capita %>% mutate(calculation = "Per capita")
-)
-
-# Reshape and clean output
-indicator_4461 <- format_indicator_output(indicator_4461)
-
-write.csv(indicator_4461, 
-          file = file.path(output_dir, "4461_raw.csv"),
-          row.names = FALSE)
-
-## ---- indicator 3158 - carbon dioxide (co₂) emissions, total excluding land-use change and forestry (lucf) ----
-
-indicator_3158_raw <- cw_get_data(
-  source_ids = source_id_climate_watch,
-  regions = regions_iso,
-  sector_ids = sector_id_total_no_lucf,
-  gas_ids = gas_id_co2
-)
-
-# Reshape and clean output
-indicator_3158 <- format_indicator_output(indicator_3158_raw)
-
-write.csv(indicator_3158, 
-          file = file.path(output_dir, "3158_raw.csv"),
-          row.names = FALSE)
-
-## ---- indicator 3159 - share of carbon dioxide (co₂) emissions relative to the global total ----
-
-# Use same data as 3158
-indicator_3159 <- format_indicator_output(indicator_3158_raw)
-
-write.csv(indicator_3159, 
-          file = file.path(output_dir, "3159_raw.csv"),
-          row.names = FALSE)
 
 ## ---- indicator 3351 - greenhouse gas (ghg) emissions by sector ----
 
@@ -557,45 +444,153 @@ write.csv(indicator_3351,
           file = file.path(output_dir, "3351_raw.csv"),
           row.names = FALSE)
 
-## ---- indicator 3387 - share of greenhouse gas (ghg) emissions relative to the global total ----
+## ---- indicator 3158 - carbon dioxide (co₂) emissions, total excluding land-use change and forestry (lucf) ----
 
-indicator_3387 <- cw_get_data(
-  source_ids = source_id_climate_watch,
-  regions = regions_iso,
-  sector_ids = sector_id_total_no_lucf,
-  gas_ids = gas_id_all_ghg
-)
-
-# Reshape and clean output
-indicator_3387 <- format_indicator_output(indicator_3387)
-
-write.csv(indicator_3387, 
-          file = file.path(output_dir, "3387_raw.csv"),
-          row.names = FALSE)
-
-## ---- indicator 2027 - carbon dioxide (co₂) emissions (total, per capita, and per gdp) ----
-
-indicator_2027 <- cw_get_data(
+indicator_3158_raw <- cw_get_data(
   source_ids = source_id_climate_watch,
   regions = regions_iso,
   sector_ids = sector_id_total_no_lucf,
   gas_ids = gas_id_co2
 )
 
-# Calculate per capita and per GDP values
-indicator_2027_per_capita <- calculate_per_capita_gdp(indicator_2027, calculation_type = "per_capita")
-indicator_2027_per_gdp <- calculate_per_capita_gdp(indicator_2027, calculation_type = "per_gdp")
+# Reshape and clean output
+indicator_3158 <- format_indicator_output(indicator_3158_raw)
 
-# Combine total, per capita, and per GDP
-indicator_2027 <- bind_rows(
-  indicator_2027 %>% mutate(calculation = "Total"),
-  indicator_2027_per_capita %>% mutate(calculation = "Per capita"),
-  indicator_2027_per_gdp %>% mutate(calculation = "Per GDP")
+write.csv(indicator_3158, 
+          file = file.path(output_dir, "3158_raw.csv"),
+          row.names = FALSE)
+
+## ---- indicator 3159 - share of carbon dioxide (co₂) emissions relative to the global total ----
+
+# Use same data as 3158
+indicator_3159 <- format_indicator_output(indicator_3158_raw)
+
+write.csv(indicator_3159, 
+          file = file.path(output_dir, "3159_raw.csv"),
+          row.names = FALSE)
+
+## ---- indicator 2027 - carbon dioxide (co₂) emissions (total, per capita, and per gdp) ----
+
+indicator_2027_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_co2
 )
 
-# Reshape and clean output
-indicator_2027 <- format_indicator_output(indicator_2027)
+# Append population and GDP denominators
+indicator_2027 <- prepare_emissions_with_denominators(
+  indicator_2027_raw,
+  include_population = TRUE,
+  include_gdp = TRUE
+)
 
 write.csv(indicator_2027, 
           file = file.path(output_dir, "2027_raw.csv"),
           row.names = FALSE)
+
+
+## end anuario exports, check the rest later
+
+
+# ## ---- indicator 4463 - greenhouse gas (ghg) emissions per gdp ----
+# 
+# indicator_4463 <- cw_get_data(
+#   source_ids = source_id_climate_watch,
+#   regions = regions_iso,
+#   sector_ids = sector_id_total_no_lucf,
+#   gas_ids = gas_id_all_ghg
+# )
+# 
+# # Calculate per GDP values
+# indicator_4463_per_gdp <- calculate_per_capita_gdp(indicator_4463, calculation_type = "per_gdp")
+# 
+# # Combine total and per GDP
+# indicator_4463 <- bind_rows(
+#   indicator_4463 %>% mutate(calculation = "Total"),
+#   indicator_4463_per_gdp %>% mutate(calculation = "Per GDP")
+# )
+# 
+# # Reshape and clean output
+# indicator_4463 <- format_indicator_output(indicator_4463)
+# 
+# write.csv(indicator_4463, 
+#           file = file.path(output_dir, "4463_raw.csv"),
+#           row.names = FALSE)
+# 
+# ## ---- indicator 4462 - greenhouse gas (ghg) emissions from the energy sector ----
+# 
+# # Find sector IDs for energy subsectors
+# sector_ids_energy <- sectors %>% 
+#   filter(str_detect(tolower(.data$name), "electricity|heat|manufacturing|construction|transport|fuel combustion|fugitive") &
+#          str_detect(tolower(.data$name), "energy")) %>% 
+#   pull(id)
+# 
+# # If no subsectors found, try finding "Energy" sector parent
+# if (length(sector_ids_energy) == 0) {
+#   sector_ids_energy <- sectors %>% 
+#     filter(str_detect(tolower(.data$name), "^energy$|^energy sector$")) %>% 
+#     pull(id) %>% 
+#     first()
+# }
+# 
+# indicator_4462 <- cw_get_data(
+#   source_ids = source_id_climate_watch,
+#   regions = regions_iso,
+#   sector_ids = sector_ids_energy,
+#   gas_ids = gas_id_all_ghg
+# )
+# 
+# # Reshape and clean output
+# indicator_4462 <- format_indicator_output(indicator_4462)
+# 
+# write.csv(indicator_4462, 
+#           file = file.path(output_dir, "4462_raw.csv"),
+#           row.names = FALSE)
+# 
+# ## ---- indicator 4461 - greenhouse gas (ghg) emissions per capita ----
+# 
+# indicator_4461 <- cw_get_data(
+#   source_ids = source_id_climate_watch,
+#   regions = regions_iso,
+#   sector_ids = sector_id_total_no_lucf,
+#   gas_ids = gas_id_all_ghg
+# )
+# 
+# # Calculate per capita values
+# indicator_4461_per_capita <- calculate_per_capita_gdp(indicator_4461, calculation_type = "per_capita")
+# 
+# # Combine total and per capita
+# indicator_4461 <- bind_rows(
+#   indicator_4461 %>% mutate(calculation = "Total"),
+#   indicator_4461_per_capita %>% mutate(calculation = "Per capita")
+# )
+# 
+# # Reshape and clean output
+# indicator_4461 <- format_indicator_output(indicator_4461)
+# 
+# write.csv(indicator_4461, 
+#           file = file.path(output_dir, "4461_raw.csv"),
+#           row.names = FALSE)
+# 
+# 
+# 
+# 
+# 
+# ## ---- indicator 3387 - share of greenhouse gas (ghg) emissions relative to the global total ----
+# 
+# indicator_3387 <- cw_get_data(
+#   source_ids = source_id_climate_watch,
+#   regions = regions_iso,
+#   sector_ids = sector_id_total_no_lucf,
+#   gas_ids = gas_id_all_ghg
+# )
+# 
+# # Reshape and clean output
+# indicator_3387 <- format_indicator_output(indicator_3387)
+# 
+# write.csv(indicator_3387, 
+#           file = file.path(output_dir, "3387_raw.csv"),
+#           row.names = FALSE)
+
+
