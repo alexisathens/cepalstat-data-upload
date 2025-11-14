@@ -10,7 +10,7 @@ process_indicator <- function(indicator_id, data, dim_config,
                               ind_notes = NULL) {
   message(glue("▶ Processing indicator {indicator_id}..."))
   
-  ## 1. Filter and transform EMDAT data
+  ## 1. Filter and transform raw data
   df <- data %>% filter_fn() %>% transform_fn()
   
   ## 2. Standardize country names and filter to LAC
