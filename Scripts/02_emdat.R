@@ -218,78 +218,76 @@ result_4046 <- process_indicator(
 
 
 ## ---- indicator 1837 - occurrence of disasters ----
-## this indicator is no longer maintained
-# indicator_id <- 1837
-# 
-# # Fill out dim config table by matching the following info:
-# # get_indicator_dimensions(indicator_id)
-# # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
-# 
-# dim_config_1837 <- tibble(
-#   data_col = c("Country", "Years", "Type", "Indicator"),
-#   dim_id = c("208", "29117", "21714", "21725"),
-#   pub_col = c("208_name", "29117_name", "21714_name", "21725_name")
-# )
-# 
-# filter_1837 <- function(data) {
-#   data %<>% 
-#     filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical")) %>%
-#     filter(as.numeric(`Start Year`) >= 1990 & as.numeric(`Start Year`) <= max_year) %>% 
-#     filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
-# }
-# 
-# transform_1837 <- function(data) {
-#   data %<>% 
-#     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`,
-#            `Total Deaths`, `Total Affected`) %>% 
-#     mutate(Type = paste0(`Disaster Type`, "s")) %>% 
-#     mutate(Type = case_when(
-#       Type == "Mass movement (wet)s" ~ "Wet mass displacement", # was "desplacement", fixed typo in CEPALSTAT admin
-#       Type == "Volcanic activitys" ~ "Volcanic eruptions",
-#       Type == "Mass movement (dry)s" ~ "Dry mass displacement",
-#       TRUE ~ Type
-#     )) %>% 
-#     mutate(Group = case_when(
-#       `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
-#       `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
-#       TRUE ~ NA_character_)) %>%
-#     select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
-#     mutate(`Number of events` = 1) %>% 
-#     select(-DisNo.) %>% 
-#     pivot_longer(cols = c(`Total Deaths`, `Total Affected`, `Number of events`), names_to = "Indicator") %>% 
-#     mutate(Indicator = case_when(
-#       Indicator == "Total Deaths" ~ "Human deaths",
-#       Indicator == "Total Affected" ~ "Directly affected persons",
-#       TRUE ~ Indicator)) %>% 
-#     group_by(Country, Years, Group, Type, Indicator) %>% 
-#     summarize(value = sum(value, na.rm = T)) %>% 
-#     ungroup()
-#     
-#   type_sum <- data %>% 
-#     group_by(Country, Years, Group, Indicator) %>% 
-#     summarize(value = sum(value, na.rm = T)) %>% 
-#     ungroup() %>% 
-#     rename(Type = Group)
-#   
-#   data %<>% 
-#     select(-Group) %>% 
-#     bind_rows(type_sum)
-# }
-# 
-# footnotes_1837 <- function(data) {
-#   data
-# }
-# 
-# result_1837 <- process_emdat_indicator(
-#   indicator_id = 1837,
-#   data = emdat,
-#   dim_config = dim_config_1837,
-#   filter_fn = filter_1837,
-#   transform_fn = transform_1837,
-#   footnotes_fn = footnotes_1837,
-#   diagnostics = TRUE,
-#   export = TRUE
-# )
+# this indicator is no longer maintained
+indicator_id <- 1837
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_1837 <- tibble(
+  data_col = c("Country", "Years", "Type", "Indicator"),
+  dim_id = c("208", "29117", "21714", "21725"),
+  pub_col = c("208_name", "29117_name", "21714_name", "21725_name")
+)
+
+filter_1837 <- function(data) {
+  data %<>%
+    filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical")) %>%
+    filter(as.numeric(`Start Year`) >= 1990 & as.numeric(`Start Year`) <= max_year) %>%
+    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
+}
+
+transform_1837 <- function(data) {
+  data %<>%
+    select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`,
+           `Total Deaths`, `Total Affected`) %>%
+    mutate(Type = paste0(`Disaster Type`, "s")) %>%
+    mutate(Type = case_when(
+      Type == "Mass movement (wet)s" ~ "Wet mass displacement", # was "desplacement", fixed typo in CEPALSTAT admin
+      Type == "Volcanic activitys" ~ "Volcanic eruptions",
+      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
+      TRUE ~ Type
+    )) %>%
+    mutate(Group = case_when(
+      `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
+      `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
+      TRUE ~ NA_character_)) %>%
+    select(-`Disaster Subgroup`, -`Disaster Type`) %>%
+    mutate(`Number of events` = 1) %>%
+    select(-DisNo.) %>%
+    pivot_longer(cols = c(`Total Deaths`, `Total Affected`, `Number of events`), names_to = "Indicator") %>%
+    mutate(Indicator = case_when(
+      Indicator == "Total Deaths" ~ "Human deaths",
+      Indicator == "Total Affected" ~ "Directly affected persons",
+      TRUE ~ Indicator)) %>%
+    group_by(Country, Years, Group, Type, Indicator) %>%
+    summarize(value = sum(value, na.rm = T), .groups = "drop")
+
+  type_sum <- data %>%
+    group_by(Country, Years, Group, Indicator) %>%
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>%
+    rename(Type = Group)
+
+  data %<>%
+    select(-Group) %>%
+    bind_rows(type_sum)
+}
+
+footnotes_1837 <- function(data) {
+  data
+}
+
+result_1837 <- process_indicator(
+  indicator_id = 1837,
+  data = emdat,
+  dim_config = dim_config_1837,
+  filter_fn = filter_1837,
+  transform_fn = transform_1837,
+  footnotes_fn = footnotes_1837,
+  diagnostics = TRUE,
+  export = TRUE
+)
 
 
 ## ---- indicator 5647 - number of disasters ----
