@@ -352,7 +352,8 @@ match_cepalstat_labels <- function(pub) {
       left_join(this_dim_table, by = setNames(this_pub_col, this_pub_col))
   }
   
-  assert_no_na_cols(pub)
+  # Assert no NA values in dimension columns (NA values in 'value' column are legitimate missing data)
+  assert_no_na_cols(pub, !contains("value"))
   
   return(pub)
 }
