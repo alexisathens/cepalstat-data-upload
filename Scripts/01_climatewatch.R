@@ -352,9 +352,17 @@ prepare_emissions_with_denominators <- function(emissions_data,
     pivot_longer(cols = all_of(year_cols), names_to = "year", values_to = "emissions") %>%
     mutate(year = as.numeric(.data$year))
   
-  combined_long <- emissions_long %>%
-    left_join(pop_data, by = c("iso_code3", "year")) %>%
-    left_join(gdp_data, by = c("iso_code3", "year"))
+  combined_long <- emissions_long
+  
+  if (!is.null(pop_data)) {
+    combined_long <- combined_long %>%
+      left_join(pop_data, by = c("iso_code3", "year"))
+  }
+  
+  if (!is.null(gdp_data)) {
+    combined_long <- combined_long %>%
+      left_join(gdp_data, by = c("iso_code3", "year"))
+  }
   
   combined_long %>%
     mutate(year = as.numeric(.data$year)) %>%
@@ -487,6 +495,48 @@ indicator_2027 <- prepare_emissions_with_denominators(
 
 write.csv(indicator_2027, 
           file = file.path(output_dir, "2027_raw.csv"),
+          row.names = FALSE)
+
+
+## ---- indicator 5649 - carbon dioxide (co₂) emissions (per capita) ----
+
+indicator_5649_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_co2
+)
+
+# Append population and GDP denominators
+indicator_5649 <- prepare_emissions_with_denominators(
+  indicator_5649_raw,
+  include_population = TRUE,
+  include_gdp = FALSE
+)
+
+write.csv(indicator_5649, 
+          file = file.path(output_dir, "5649_raw.csv"),
+          row.names = FALSE)
+
+
+## ---- indicator 5650 - carbon dioxide (co₂) emissions (per gdp) ----
+
+indicator_5650_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_co2
+)
+
+# Append population and GDP denominators
+indicator_5650 <- prepare_emissions_with_denominators(
+  indicator_5650_raw,
+  include_population = FALSE,
+  include_gdp = TRUE
+)
+
+write.csv(indicator_5650, 
+          file = file.path(output_dir, "5650_raw.csv"),
           row.names = FALSE)
 
 
