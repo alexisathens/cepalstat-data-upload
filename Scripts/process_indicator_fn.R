@@ -31,7 +31,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     } else {
       # Default: simple sum
       eclac_totals <- df %>%
-        fitler(Country != "World") %>% 
+        filter(Country != "World") %>% 
         group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
         summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
         mutate(Country = "Latin America and the Caribbean")
