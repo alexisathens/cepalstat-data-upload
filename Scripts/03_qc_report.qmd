@@ -9,7 +9,7 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 4049
+  indicator_id: 3351
 execute:
   echo: false
   warning: false
@@ -17,7 +17,7 @@ execute:
 project:
   type: default
   output-dir: "QC Reports"
-output-file: "qc_report_4049.html"
+output-file: "qc_report_3351.html"
 ---
 
 ## Quality Check Report for Indicator `r params$indicator_id`
@@ -200,22 +200,13 @@ The visual below shows data coverage by country and year. Gaps or additions shou
 
 ```{r}
 all_combinations <- expand_grid(
-  country = unique(iso$std_name),
+  country = sort(unique(comp$dim_208_label)),
   year = as.character(min(comp$dim_29117_label):max(comp$dim_29117_label))
 )
 
 coverage_check <- all_combinations %>%
   left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>% 
   mutate(status = ifelse(is.na(status), "Missing in Both", status))
-
-# Remove sub-regions if not in data set ## CHANGE TO ASSOCIATES
-regional_status <- coverage_check$status[which(coverage_check$country %in% c("Latin America", "Caribbean", "South America", "Central America"))]
-
-if(all(regional_status == "Missing in Both")) {
-  coverage_check %<>%
-    filter(!country %in% c("Latin America", "Caribbean", "South America", "Central America"))
-}
-
 ```
 
 ```{r}
