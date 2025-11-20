@@ -36,10 +36,11 @@ iso %<>%
 cw_path <- here("Data/Raw/climate watch")
 
 data_2027 <- read_csv(paste0(cw_path, "/2027_raw.csv"))
-# data_3158 <- read_csv(paste0(cw_path, "/3158_raw.csv"))
+data_3158 <- read_csv(paste0(cw_path, "/3158_raw.csv"))
 data_3159 <- read_csv(paste0(cw_path, "/3159_raw.csv"))
 data_3351 <- read_csv(paste0(cw_path, "/3351_raw.csv"))
-
+data_5649 <- read_csv(paste0(cw_path, "/5649_raw.csv"))
+data_5650 <- read_csv(paste0(cw_path, "/5650_raw.csv"))
 
 ## ---- indicator 3159 - share of carbon dioxide (CO₂) emissions relative to the global total ----
 
@@ -245,8 +246,6 @@ footnotes_2027 <- function(data) {
     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
 }
 
-## Monday: export and review data
-
 result_2027 <- process_indicator(
   indicator_id = indicator_id,
   data = data_2027,
@@ -256,5 +255,214 @@ result_2027 <- process_indicator(
   footnotes_fn = footnotes_2027,
   regional_fn = regional_2027,
   diagnostics = TRUE,
-  export = FALSE
+  export = TRUE
+)
+
+
+## ---- indicator 3158 — carbon dioxide (CO₂) emissions (Total) ----
+
+indicator_id <- 3158 # co2 emissions
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_3158 <- tibble(
+  data_col = c("Country", "Years", "Calculation"),
+  dim_id = c("208", "29117", "26653"),
+  pub_col = c("208_name", "29117_name", "26653_name")
+)
+
+filter_3158 <- function(data) {
+  data %>%
+    rename(
+      Country = country,
+      Years = year,
+      Calculation = sector
+    ) %>% 
+    select(Country, Years, Calculation, value)
+}
+
+transform_3158 <- function(data) {
+  data %>% 
+    mutate(Calculation = ifelse(Calculation == "Total excluding LUCF",
+                                "Total, excluding land change use and forestry",
+                                Calculation))
+}
+
+regional_3158 <- function(data) {
+  # create eclac total
+  eclac_totals <- data %>%
+    filter(Country != "World") %>% 
+    group_by(Years, Calculation) %>%
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+    
+  data <- bind_rows(data, eclac_totals)
+  
+  return(data)
+}
+  
+
+footnotes_3158 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+}
+
+result_3158 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_3158,
+  dim_config = dim_config_3158,
+  filter_fn = filter_3158,
+  transform_fn = transform_3158,
+  footnotes_fn = footnotes_3158,
+  regional_fn = regional_3158,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 5649 — carbon dioxide (CO₂) emissions (per capita) ----
+
+indicator_id <- 5649 # co2 emissions
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_5649 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5649 <- function(data) {
+  data %>%
+    rename(
+      Country = country,
+      Years = year
+    ) %>% 
+    select(Country, Years, emissions, population)
+}
+
+transform_5649 <- function(data) {
+  data
+}
+
+regional_5649 <- function(data) {
+  # create eclac total
+  eclac_totals <- data %>%
+    filter(Country != "World") %>% 
+    group_by(Years) %>%
+    summarise(emissions = sum(emissions, na.rm = TRUE),
+              population = sum(population), 
+              .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals)
+  
+  # calculate per capita
+  data %<>% 
+    mutate(value = emissions/population * 1e6) %>% # transform into tonnes of CO2eq per capita
+    arrange(Country, Years) %>% 
+    select(Country, Years, value)
+  
+  return(data)
+}
+
+
+footnotes_5649 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+}
+
+source_5649 <- function() {
+  10621 # Cálculos realizados por la CEPAL en base a datos del Explorador de Datos Climáticos de la CAIT y datos de libre acceso del Banco Mundial 
+}
+
+result_5649 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_5649,
+  dim_config = dim_config_5649,
+  filter_fn = filter_5649,
+  transform_fn = transform_5649,
+  footnotes_fn = footnotes_5649,
+  regional_fn = regional_5649,
+  source_fn = source_5649,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 5650 — carbon dioxide (CO₂) emissions (per GDP) ----
+
+indicator_id <- 5650 # co2 emissions
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_5650 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5650 <- function(data) {
+  data %>%
+    rename(
+      Country = country,
+      Years = year,
+      gdp = gdp_constant_2015_usd
+    ) %>% 
+    select(Country, Years, emissions, gdp) %>% 
+    filter(!is.na(emissions) & !is.na(gdp)) # filter out countries that are missing emissions OR gdp data
+}
+
+transform_5650 <- function(data) {
+  data
+}
+
+regional_5650 <- function(data) {
+  # create eclac total
+  eclac_totals <- data %>%
+    filter(!Country %in% c("World")) %>%
+    group_by(Years) %>%
+    summarise(emissions = sum(emissions, na.rm = TRUE),
+              gdp = sum(gdp, na.rm = TRUE), 
+              .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals)
+  
+  # calculate per capita
+  data %<>% 
+    mutate(value = emissions/gdp * 1e12) %>% # transform into tonnes of CO2eq per millions of USD
+    arrange(Country, Years) %>% 
+    select(Country, Years, value)
+  
+  return(data)
+}
+
+
+footnotes_5650 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+}
+
+source_5650 <- function() {
+  10621 # Cálculos realizados por la CEPAL en base a datos del Explorador de Datos Climáticos de la CAIT y datos de libre acceso del Banco Mundial 
+}
+
+result_5650 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_5650,
+  dim_config = dim_config_5650,
+  filter_fn = filter_5650,
+  transform_fn = transform_5650,
+  footnotes_fn = footnotes_5650,
+  regional_fn = regional_5650,
+  source_fn = source_5650,
+  diagnostics = TRUE,
+  export = TRUE
 )
