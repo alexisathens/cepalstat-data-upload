@@ -125,6 +125,8 @@ To obtain this indicator, select:
 -   **Calculations:** *Total*\
 -   **Show data by:** *Countries*
 
+This will result in 8 different csv files.
+
 **Additional note:**\
 When generating the table, sum the four sectors to also obtain the total GHG emissions.
 
