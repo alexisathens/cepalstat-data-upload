@@ -306,16 +306,9 @@ message("\nMapping Results (first 20 rows):")
 print(head(mapping_results, 20))
 
 # Save results
-output_file <- here("CEPALSTAT Review", "Global Set", "cisat_cepalstat_fuzzy_mapping.xlsx")
-# writexl::write_xlsx(mapping_results, output_file) - print once as a helper file to final mapping
+output_file <- here("CEPALSTAT Review", "Global Set", "cisat_statistics_cepalstat_fuzzy_mapping.xlsx")
+writexl::write_xlsx(mapping_results, output_file)
 message(paste("\nResults saved to:", output_file))
-
-# Print general cisat results for manual mapping
-cisat_export <- cisat_clean %>% 
-  select(Area:Theme)
-
-output_file <- here("CEPALSTAT Review", "Global Set", "cisat_cepalstat_mapping.xlsx")
-# writexl::write_xlsx(cisat_export, output_file) - manually map
 
 # # Create summary statistics
 # summary_stats <- mapping_results %>%
