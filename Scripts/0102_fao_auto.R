@@ -62,6 +62,18 @@ rfn %<>% as_tibble()
 rp <- get_faostat_bulk(code = "RP")
 rp %<>% as_tibble()
 
+# MANUALLY download bulk data from fishstat / fish capture production
+# at https://www.fao.org/fishery/statistics-query/en/capture/capture_quantity
+fish_folder <- here("Data/Raw/fao fish and aqua//global capture production quantity 20-11-2025")
+fish <- read_csv(paste0(fish_folder, "/Capture_Quantity.csv"))
+fish_country_map <- read_csv(paste0(fish_folder, "/CL_FI_COUNTRY_GROUPS.csv"))
+fish_species_map <- read_csv(paste0(fish_folder, "/CL_FI_SPECIES_GROUPS.csv"))
+fish_water_map <- read_csv(paste0(fish_folder, "/CL_FI_WATERAREA_GROUPS.csv"))
+
+# MANUALLY download bulk data from fishstat / aquaculture production
+# at https://www.fao.org/fishery/statistics-query/en/aquaculture/aquaculture_quantity
+aqua_folder <- here("Data/Raw/fao fish and aqua/global aquaculture production quantity 20-11-2025")
+
 
 # ---- generic indicator processing function ----
 
@@ -705,6 +717,218 @@ result_3382 <- process_indicator(
   regional_fn = regional_3382,
   footnotes_fn = footnotes_3382,
   source_fn = source_3382,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# FAO FISH INDICATORS -----
+
+## ---- indicator 2019 - fish capture production ----
+indicator_id <- 2019
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2019 <- tibble(
+  data_col = c("Country", "Years", "Species"),
+  dim_id = c("208", "29117", "20720"),
+  pub_col = c("208_name", "29117_name", "20720_name")
+)
+
+## ** indicator specific data cleaning **
+
+fish_country_map %<>% select(UN_Code, Country = Name_En)
+fish_species_map %<>% select(`3A_Code`, Species = Name_En, Species_Group = ISSCAAP_Group_En)
+fish_water_map %<>% select(Code, Water = Name_En)
+
+
+fish %<>% 
+  left_join(fish_country_map, by = c("COUNTRY.UN_CODE" = "UN_Code")) %>% 
+  left_join(fish_species_map, by = c("SPECIES.ALPHA_3_CODE" = "3A_Code")) %>% 
+  left_join(fish_water_map, by = c("AREA.CODE" = "Code")) %>% 
+  select(-COUNTRY.UN_CODE, -SPECIES.ALPHA_3_CODE, - AREA.CODE)
+
+# ****************************************
+
+
+filter_2019 <- function(data) {
+  whales <- c("Blue-whales, fin-whales", "Sperm-whales, pilot-whales", "Eared seals, hair seals, walruses", "Miscellaneous aquatic mammals")
+  
+  data %>% 
+    filter(!Species_Group %in% whales) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years = PERIOD, Species, Species_Group, value = VALUE)
+}
+
+transform_2019 <- function(data) {
+  data %<>% 
+    mutate(
+      Species_Division = case_when(
+        # 1 Freshwater fishes
+        Species_Group %in% c(
+          "Carps, barbels and other cyprinids",
+          "Tilapias and other cichlids",
+          "Miscellaneous freshwater fishes"
+        ) ~ "Freshwater fishes",
+        
+        # 2 Diadromous fishes
+        Species_Group %in% c(
+          "Sturgeons, paddlefishes",
+          "River eels",
+          "Salmons, trouts, smelts",
+          "Shads",
+          "Miscellaneous diadromous fishes"
+        ) ~ "Diadromous fishes",
+        
+        # 3 Marine fishes
+        Species_Group %in% c(
+          "Flounders, halibuts, soles",
+          "Cods, hakes, haddocks",
+          "Miscellaneous coastal fishes",
+          "Miscellaneous demersal fishes",
+          "Herrings, sardines, anchovies",
+          "Tunas, bonitos, billfishes",
+          "Miscellaneous pelagic fishes",
+          "Sharks, rays, chimaeras",
+          "Marine fishes not identified"
+        ) ~ "Marine fishes",
+        
+        # 4 Crustaceans
+        Species_Group %in% c(
+          "Freshwater crustaceans",
+          "Crabs, sea-spiders",
+          "Lobsters, spiny-rock lobsters",
+          "King crabs, squat-lobsters",
+          "Shrimps, prawns",
+          "Krill, planktonic crustaceans",
+          "Miscellaneous marine crustaceans"
+        ) ~ "Crustaceans",
+        
+        # 5 Molluscs
+        Species_Group %in% c(
+          "Freshwater molluscs",
+          "Abalones, winkles, conchs",
+          "Oysters",
+          "Mussels",
+          "Scallops, pectens",
+          "Clams, cockles, arkshells",
+          "Squids, cuttlefishes, octopuses",
+          "Miscellaneous marine molluscs"
+        ) ~ "Molluscs",
+        
+        # 6 Whales, seals and other aquatic mammals
+        Species_Group %in% c(
+          "Blue-whales, fin-whales",
+          "Sperm-whales, pilot-whales",
+          "Eared seals, hair seals, walruses",
+          "Miscellaneous aquatic mammals"
+        ) ~ "Whales, seals and other aquatic mammals",
+        
+        # 7 Miscellaneous aquatic animals
+        Species_Group %in% c(
+          "Frogs and other amphibians",
+          "Turtles",
+          "Crocodiles and alligators",
+          "Sea-squirts and other tunicates",
+          "Horseshoe crabs and other arachnoids",
+          "Sea-urchins and other echinoderms",
+          "Miscellaneous aquatic invertebrates"
+        ) ~ "Miscellaneous aquatic animals",
+        
+        # 8 Miscellaneous aquatic animal products
+        Species_Group %in% c(
+          "Pearls, mother-of-pearl, shells",
+          "Corals",
+          "Sponges"
+        ) ~ "Miscellaneous aquatic animal products",
+        
+        # 9 Aquatic plants
+        Species_Group %in% c(
+          "Brown seaweeds",
+          "Red seaweeds",
+          "Green seaweeds",
+          "Miscellaneous aquatic plants"
+        ) ~ "Aquatic plants",
+        
+        TRUE ~ NA_character_
+      )
+    ) %>% 
+    select(-Species, -Species_Group) %>% 
+    # map to cepalstat labels
+    mutate(Species = case_when(
+      Species_Division %in% c("Freshwater fishes") ~ "Freshwater fish",
+      Species_Division %in% c("Marine fishes") ~ "Marine fish",
+      # keep Molluscs and Crustaceans and Aquatic plans as is
+      Species_Division %in% c("Diadromous fishes", "Miscellaneous aquatic animals", "Miscellaneous aquatic animal products") ~ "Other",
+      TRUE ~ Species_Division
+    )) %>% select(-Species_Division)
+  
+  data %<>% 
+    group_by(Country, Years, Species) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") 
+  
+  return(data)
+}
+
+regional_2019 <- function(data) {
+  # first create TOTAL category for Species
+  total <- data %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(Species = "TOTAL")
+  
+  data %<>% bind_rows(total)
+  
+  eclac_totals <- data %>%
+    group_by(Years, Species) %>%
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals) %>%
+    arrange(Country, Years)
+  
+  return(data)
+}
+
+footnotes_2019 <- function(data) {
+    data %>%
+      mutate(
+        footnotes_id = "6545", # applies to everyone
+        # 6545/ Incluye la captura en áreas marinas y en aguas continentales.
+        footnotes_id = if_else(
+          Country == "Latin America and the Caribbean",
+          paste(footnotes_id, "6970", sep = ","),
+          footnotes_id
+        ),
+        # 6970/ Calculado a partir de la información disponible de los países de la región.
+        footnotes_id = if_else(
+          Species == "TOTAL",
+          paste(footnotes_id, "7777", sep = ","),
+          footnotes_id
+        ),
+        # 7777/ El total no incluye ballenas, focas y otros mamíferos acuáticos
+        footnotes_id = if_else(
+          Species == "Other",
+          paste(footnotes_id, "5518", sep = ","),
+          footnotes_id
+        )
+        # 5518/ Incluye peces diádromos, varios animales acuáticos y varios productos de animales acuáticos.
+      )
+  }
+  
+
+result_2019 <- process_indicator(
+  indicator_id = 2019,
+  data = fish,
+  dim_config = dim_config_2019,
+  filter_fn = filter_2019,
+  transform_fn = transform_2019,
+  regional_fn = regional_2019,
+  footnotes_fn = footnotes_2019,
   diagnostics = TRUE,
   export = TRUE
 )
