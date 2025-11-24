@@ -121,16 +121,16 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 2022
-# data = rfn
-# dim_config = dim_config_2022
-# filter_fn = filter_2022
-# transform_fn = transform_2022
-# regional_fn = regional_2022
-# footnotes_fn = footnotes_2022
-# source_id = source_2022
-# diagnostics = TRUE
-# export = FALSE
+indicator_id = 2019
+data = fish
+dim_config = dim_config_2019
+filter_fn = filter_2019
+transform_fn = transform_2019
+regional_fn = regional_2019
+footnotes_fn = footnotes_2019
+source_id = source_2019
+diagnostics = TRUE
+export = FALSE
 
 ## Sample indicator processing code
 
