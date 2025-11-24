@@ -73,6 +73,11 @@ fish_water_map <- read_csv(paste0(fish_folder, "/CL_FI_WATERAREA_GROUPS.csv"))
 # MANUALLY download bulk data from fishstat / aquaculture production
 # at https://www.fao.org/fishery/statistics-query/en/aquaculture/aquaculture_quantity
 aqua_folder <- here("Data/Raw/fao fish and aqua/global aquaculture production quantity 20-11-2025")
+aqua <- read_csv(paste0(aqua_folder, "/Aquaculture_Quantity.csv"))
+aqua_country_map <- read_csv(paste0(aqua_folder, "/CL_FI_COUNTRY_GROUPS.csv"))
+aqua_species_map <- read_csv(paste0(aqua_folder, "/CL_FI_SPECIES_GROUPS.csv"))
+aqua_water_map <- read_csv(paste0(aqua_folder, "/CL_FI_WATERAREA_GROUPS.csv"))
+aqua_environment_map <- read_csv(paste0(aqua_folder, "/CL_FI_PRODENVIRONMENT.csv"))
 
 
 # ---- generic indicator processing function ----
@@ -929,6 +934,96 @@ result_2019 <- process_indicator(
   transform_fn = transform_2019,
   regional_fn = regional_2019,
   footnotes_fn = footnotes_2019,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 2020 - aquaculture production ----
+indicator_id <- 2020
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2020 <- tibble(
+  data_col = c("Country", "Years", "Area"),
+  dim_id = c("208", "29117", "26819"),
+  pub_col = c("208_name", "29117_name", "26819_name")
+)
+
+## ** indicator specific data cleaning **
+
+aqua_country_map %<>% select(UN_Code, Country = Name_En)
+aqua_water_map %<>% select(Code, Area = InlandMarine_Group_En) # accept all areas
+aqua_environment_map %<>% select(Code, Environment = Name_En)
+
+aqua %<>% 
+  left_join(aqua_country_map, by = c("COUNTRY.UN_CODE" = "UN_Code")) %>% 
+  left_join(aqua_water_map, by = c("AREA.CODE" = "Code")) %>% 
+  left_join(aqua_environment_map, by = c("ENVIRONMENT.ALPHA_2_CODE" = "Code")) %>% 
+  select(Country, Area, Environment, Years = PERIOD, value = VALUE)
+
+# ****************************************
+
+
+filter_2020 <- function(data) {
+  data %>% 
+    filter(Environment %in% c("Freshwater", "Marine")) %>% # remove "Brackishwater"
+    filter(Area %in% c("Inland waters", "Marine areas")) %>% # select all
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, Area, value)
+}
+
+transform_2020 <- function(data) {
+  data %>% 
+    group_by(Country, Years, Area) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+}
+
+regional_2020 <- function(data) {
+  # first create TOTAL category for Species
+  total <- data %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(Area = "Total")
+  
+  data %<>% bind_rows(total)
+  
+  eclac_totals <- data %>%
+    group_by(Years, Area) %>%
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals) %>%
+    arrange(Country, Years)
+  
+  return(data)
+}
+
+footnotes_2020 <- function(data) {
+  data %>%
+    mutate(
+      footnotes_id = "5899", # applies to everyone
+      # 5899/ Incluye la producción en áreas marinas y en aguas continentales.
+      footnotes_id = if_else(
+        Country == "Latin America and the Caribbean",
+        paste(footnotes_id, "6970", sep = ","),
+        footnotes_id
+      )
+    )
+}
+
+result_2020 <- process_indicator(
+  indicator_id = 2020,
+  data = aqua,
+  dim_config = dim_config_2020,
+  filter_fn = filter_2020,
+  transform_fn = transform_2020,
+  regional_fn = regional_2020,
+  footnotes_fn = footnotes_2020,
   diagnostics = TRUE,
   export = TRUE
 )
