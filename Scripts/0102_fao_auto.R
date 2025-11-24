@@ -79,6 +79,21 @@ aqua_species_map <- read_csv(paste0(aqua_folder, "/CL_FI_SPECIES_GROUPS.csv"))
 aqua_water_map <- read_csv(paste0(aqua_folder, "/CL_FI_WATERAREA_GROUPS.csv"))
 aqua_environment_map <- read_csv(paste0(aqua_folder, "/CL_FI_PRODENVIRONMENT.csv"))
 
+# MANUALLY download data from aquastat
+# at https://data.apps.fao.org/aquastat/?lang=en
+# making these selections:
+# Variable group: water use
+# Variable subgroup: water withdrawal by sector
+# Variable:
+# - agricultural water withdrawal as % of total water withdrawal (for 4185)
+# - industrial water withdrawal as % of total water withdrawal (for 4185)
+# - municipal water withdrawal as % of total water withdrawal (for 4185)
+# - agricultural water withdrawal (for 4186)
+# Regions: Select Americas
+# Years: Select 1990 through the most recent available year
+aquastat_folder <- here("Data/Raw/fao fish and aqua/aquastat")
+aquastat <- read_xlsx(paste0(aquastat_folder, "/AQUASTAT Dissemination System.xlsx"))
+
 
 # ---- generic indicator processing function ----
 
@@ -1024,6 +1039,126 @@ result_2020 <- process_indicator(
   transform_fn = transform_2020,
   regional_fn = regional_2020,
   footnotes_fn = footnotes_2020,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# FAO AQUA INDICATORS -----
+
+## ---- indicator 4185 - sectoral distribution of water extraction ----
+indicator_id <- 4185
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4185 <- tibble(
+  data_col = c("Country", "Years", "Sector"),
+  dim_id = c("208", "29117", "59252"),
+  pub_col = c("208_name", "29117_name", "59252_name")
+)
+
+filter_4185 <- function(data) {
+  data %>%
+    filter(str_detect(Variable, "as \\% of total")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
+    filter(!Area %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country = Area, Years = Year, Sector = Variable, value = Value)
+}
+
+transform_4185 <- function(data) {
+  bol_data <- data %>% filter(str_detect(Country, "Bolivia") & Years %in% c(2020, 2021))
+  
+  if(any(bol_data$value > 100)) { # fix data issue for years 2020/2021 where entries were seemingly reported in units rather than %
+    bol_data %<>% 
+      group_by(Years) %>% 
+      mutate(perc = value/sum(value) * 100) %>% 
+      ungroup() %>% 
+      select(-value, value = perc)
+    
+    data %<>% # remove old data and attach corrected
+      filter(!(str_detect(Country, "Bolivia") & Years %in% c(2020, 2021))) %>% 
+      bind_rows(bol_data)
+  }
+  
+  data %>% 
+    mutate(Sector = case_when(
+      str_detect(Sector, "Agricultural") ~ "Agricultural",
+      str_detect(Sector, "Industrial") ~ "Industrial",
+      str_detect(Sector, "Municipal") ~ "Municipal",
+      TRUE ~ Sector
+    ))
+}
+
+footnotes_4185 <- function(data) {
+  data
+}
+
+result_4185 <- process_indicator(
+  indicator_id = 4185,
+  data = aquastat,
+  dim_config = dim_config_4185,
+  filter_fn = filter_4185,
+  transform_fn = transform_4185,
+  regional_fn = FALSE, # no ECLAC average
+  footnotes_fn = footnotes_4185,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 4186 - water intensity of agriculture value added ----
+indicator_id <- 4186
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4186 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_4186 <- function(data) {
+  data %>% 
+    filter(Variable == "Agricultural water withdrawal") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
+    filter(!Area %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country = Area, Years = Year, value = Value)
+}
+
+transform_4186 <- function(data) {
+  # get annual GDP by economic activity from CEPALSTAT, in constant 2018 dollars
+  gdp <- CepalStatR::call.data(2216) %>% as_tibble()
+  
+  gdp %<>% 
+    rename(Sector = Rubro__Sector_Cuentas_nacionales_anuales) %>% 
+    filter(Sector %in% c("Agriculture, hunting, forestry and fishing")) %>% 
+    select(Country, Years, gdp = value)
+  
+  data %>% 
+    left_join(gdp, by = c("Country", "Years")) %>% 
+    filter(!is.na(gdp)) %>%
+    mutate(intensity = value / gdp * 1e3) %>% 
+    select(Country, Years, value = intensity)
+}
+
+footnotes_4186 <- function(data) {
+  data
+}
+
+result_4186 <- process_indicator(
+  indicator_id = 4186,
+  data = aquastat,
+  dim_config = dim_config_4186,
+  filter_fn = filter_4186,
+  transform_fn = transform_4186,
+  regional_fn = FALSE, # no ECLAC average
+  footnotes_fn = footnotes_4186,
   diagnostics = TRUE,
   export = TRUE
 )
