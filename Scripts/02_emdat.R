@@ -181,24 +181,38 @@ dim_config_4046 <- tibble(
 filter_4046 <- function(data) {
   data %>% 
     filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical")) %>%
-    filter(as.numeric(`Start Year`) >= 1970 & as.numeric(`Start Year`) < 2025) %>% 
+    filter(as.numeric(`Start Year`) >= 1970 & as.numeric(`Start Year`) <= max_year) %>% 
     filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
 }
 
 transform_4046 <- function(data) {
-  data %>% 
+  data %<>% 
+    mutate(value = ifelse(!is.na(`Total Damage, Adjusted ('000 US$)`), `Total Damage, Adjusted ('000 US$)`, `Total Damage ('000 US$)`)) %>%
+    select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`, value) %>% 
+    mutate(Type = paste0(`Disaster Type`, "s")) %>% 
     mutate(Type = case_when(
+      Type == "Mass movement (wet)s" ~ "Wet mass displacement",
+      Type == "Volcanic activitys" ~ "Volcanic eruptions",
+      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
+      TRUE ~ Type
+    )) %>% 
+    mutate(Group = case_when(
       `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
       `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
       TRUE ~ NA_character_)) %>%
-    mutate(Years = as.character(`Start Year`)) %>% 
-    # Current year data doesn't have CPI adjustment yet, so use that column if Adjusted is empty
-    mutate(value = ifelse(!is.na(`Total Damage, Adjusted ('000 US$)`), `Total Damage, Adjusted ('000 US$)`, `Total Damage ('000 US$)`)) %>%
-    mutate(value = replace_na(value, 0)) %>% 
-    group_by(Country, Years, Type) %>%
-    summarize(value = sum(value, na.rm = T)) %>% 
-    ungroup() %>% 
-    select(Country, Years, Type, value)
+    select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
+    #filter(!is.na(value)) %>% 
+    group_by(Country, Years, Group, Type) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  type_sum <- data %>% 
+    group_by(Country, Years, Group) %>% 
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+    rename(Type = Group)
+  
+  data %<>% 
+    select(-Group) %>% 
+    bind_rows(type_sum)
 }
 
 footnotes_4046 <- function(data) {
