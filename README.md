@@ -72,6 +72,7 @@ This repository contains scripts to download, clean, standardize, and quality-ch
     -   Statistical anomalies
 -   Generates visualizations and summary tables
 -   Reports saved to `QC Reports/` directory
+-   See `Docs/qc_report_good.qmd` and `Docs/qc_report_bad.qmd` for sample indicator QC reports
 
 ### Utility Scripts
 
