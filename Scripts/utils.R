@@ -62,6 +62,20 @@ fetch_cepalstat_json <- function(url) {
     fromJSON(flatten = TRUE)
 }
 
+# Helper function to append a footnote if it doesn't already exist
+append_footnote <- function(existing, new) {
+  case_when(
+    is.na(existing) | existing == "" ~ new,
+    !grepl(paste0("\\b", new, "\\b"), existing) ~ paste(existing, new, sep = ","),
+    TRUE ~ existing  # footnote already exists, don't duplicate
+  )
+}
+# Sample usage in indicator-specific footnotes_XXXX function:
+# data %>% 
+#   mutate(
+#     footnotes_id = if_else(Country == "Latin America and the Caribbean", append_footnote(footnotes_id, "6970"), footnotes_id),
+#     footnotes_id = if_else(Years == "2002", append_footnote(footnotes_id, "7177"), footnotes_id))
+
 # Get table of indicator footnotes for manual assignment
 get_indicator_footnotes <- function(indicator_id) {
   ## Get footnotes_id from CEPALSTAT
