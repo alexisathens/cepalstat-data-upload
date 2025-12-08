@@ -312,6 +312,69 @@ result_2530 <- process_indicator(
   export = TRUE
 )
 
+## ---- indicator 2531 - forest plantations proportion of total forest ----
+indicator_id <- 2531
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2531 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2531 <- function(data) {
+  data %>% 
+    filter(item %in% c("Forest land", "Planted Forest")) %>%
+    filter(element == "area") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "CuraÃ§ao", "Anguilla"))
+}
+
+transform_2531 <- function(data) {
+  data %>% 
+    select(area, item, year, value) %>% 
+    mutate(item = ifelse(item == "Forest land", "total", "planted")) %>% 
+    pivot_wider(names_from = item, values_from = value) %>% 
+    rename(Country = area, Years = year)
+}
+
+regional_2531 <- function(data) {
+  eclac_totals <- data %>%
+    group_by(Years) %>%
+    summarise(planted = sum(planted, na.rm = TRUE),
+              total = sum(total, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals) %>%
+    mutate(value = round(planted/total * 100, 1)) %>%
+    arrange(Country, Years) %>%
+    select(Country, Years, value)  %>% 
+    mutate(value = replace_na(value, 0)) # assume NAs to mean no planted forests (generally true)
+  
+  return(data)
+}
+
+footnotes_2531 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_2531 <- process_indicator(
+  indicator_id = 2531,
+  data = rl,
+  dim_config = dim_config_2531,
+  filter_fn = filter_2531,
+  transform_fn = transform_2531,
+  regional_fn = regional_2531,
+  footnotes_fn = footnotes_2531,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 
 
 ## ---- indicator 1869 - ag area by land type use ----
