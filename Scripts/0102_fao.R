@@ -110,7 +110,6 @@ result_cropland <- rl %>%
   select(Country, Years, area = value)
 
 
-
 ## ---- indicator 2035 - country area ----
 indicator_id <- 2035
 
@@ -127,7 +126,7 @@ dim_config_2035 <- tibble(
 filter_2035 <- function(data) {
   data %>% 
     filter(item %in% c("Country area", "Land area", "Inland waters")) %>% 
-  # filter out any countries too with inconsistent entries (to not impact LAC total)
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
     filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
 }
 
@@ -155,6 +154,50 @@ result_2035 <- process_fao_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+## ---- indicator 2054 - inland waters area ----
+indicator_id <- 2054
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2054 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2054 <- function(data) {
+  data %>% 
+    filter(item %in% c("Inland waters")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_2054 <- function(data) {
+  data %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_2054 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_2054 <- process_indicator(
+  indicator_id = 2054,
+  data = rl,
+  dim_config = dim_config_2054,
+  filter_fn = filter_2054,
+  transform_fn = transform_2054,
+  footnotes_fn = footnotes_2054,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 
 
 ## ---- indicator 1869 - ag area by land type use ----
