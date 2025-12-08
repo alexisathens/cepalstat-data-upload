@@ -144,7 +144,7 @@ footnotes_2035 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-result_2035 <- process_fao_indicator(
+result_2035 <- process_indicator(
   indicator_id = 2035,
   data = rl,
   dim_config = dim_config_2035,
@@ -248,13 +248,58 @@ footnotes_1869 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-result_1869 <- process_fao_indicator(
+result_1869 <- process_indicator(
   indicator_id = 1869,
   data = rl,
   dim_config = dim_config_1869,
   filter_fn = filter_1869,
   transform_fn = transform_1869,
   footnotes_fn = footnotes_1869,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 1739 - irrigated area ----
+indicator_id <- 1739
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_1739 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_1739 <- function(data) {
+  data %>% 
+    filter(item %in% c("Land area equipped for irrigation")) %>% 
+    filter(element == "area") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_1739 <- function(data) {
+  data %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_1739 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_1739 <- process_indicator(
+  indicator_id = 1739,
+  data = rl,
+  dim_config = dim_config_1739,
+  filter_fn = filter_1739,
+  transform_fn = transform_1739,
+  footnotes_fn = footnotes_1739,
   diagnostics = TRUE,
   export = TRUE
 )
@@ -587,6 +632,73 @@ result_2022 <- process_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+
+## ---- indicator 2038 - fertilizer consumption ----
+indicator_id <- 2038
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2038 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2038 <- function(data) {
+  data %>% 
+    filter(element == "agricultural_use") %>% 
+    filter(item %in% c("Nutrient nitrogen N (total)", "Nutrient phosphate P2O5 (total)", "Nutrient potash K2O (total)")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_2038 <- function(data) {
+  data %>% 
+    group_by(area, year) %>% # sum across fertilizer types (items)
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+# regional_2038 <- function(data) {
+#   eclac_totals <- data %>%
+#     group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
+#     summarise(value = sum(value, na.rm = TRUE),
+#               area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   data <- bind_rows(data, eclac_totals) %>%
+#     mutate(value = value/area) %>% 
+#     arrange(Country, Years) %>% 
+#     select(Country, Years, value)
+#   
+#   return(data)
+# }
+
+footnotes_2038 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = if_else(Country == "Latin America and the Caribbean", append_footnote(footnotes_id, "6970"), footnotes_id),
+           # 6970/ Calculado a partir de la información disponible de los países de la región.
+           footnotes_id = if_else(Years == "2002", append_footnote(footnotes_id, "7177"), footnotes_id)
+           # 7177/ La serie de datos de 1961 a 2001 y la serie de 2002 a la fecha deberán analizarse por separado y no en combinación a fin de crear series cronológicas más largas. Ello se debe a los cambios ocurridos desde 2002: modificaciónes en la metodología relativa a los datos sobre fertilizantes; el paso de una combinación de año civil y año de fertilizantes a la utilización del año civil; la clasificación revisada de los elementos fertilizantes; la adición de un parámetro relativo al uso no fertilizante en el balance de fertilizantes y la utilización de nuevas fuentes para algunos datos por parte de FAO.
+            )
+}
+
+result_2038 <- process_indicator(
+  indicator_id = 2038,
+  data = rfn,
+  dim_config = dim_config_2038,
+  filter_fn = filter_2038,
+  transform_fn = transform_2038,
+  footnotes_fn = footnotes_2038,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 
 
 # FAO PESTICIDES (RP) INDICATORS -----
