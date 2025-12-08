@@ -1,6 +1,6 @@
 # Generic CEPALSTAT indicator processing function
-script_version <- "v2025-11-06"  # bump manually when logic significantly changes
-script_notes <- "transition to centralized processing function"
+script_version <- "v2025-12-08"  # bump manually when logic significantly changes
+script_notes <- "add helper function for clean footnote ids"
 
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
@@ -121,16 +121,16 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-indicator_id = 2019
-data = fish
-dim_config = dim_config_2019
-filter_fn = filter_2019
-transform_fn = transform_2019
-regional_fn = regional_2019
-footnotes_fn = footnotes_2019
-source_id = source_2019
-diagnostics = TRUE
-export = FALSE
+# indicator_id = 2019
+# data = fish
+# dim_config = dim_config_2019
+# filter_fn = filter_2019
+# transform_fn = transform_2019
+# regional_fn = regional_2019
+# footnotes_fn = footnotes_2019
+# source_id = source_2019
+# diagnostics = TRUE
+# export = FALSE
 
 ## Sample indicator processing code
 
@@ -182,9 +182,10 @@ export = FALSE
 # }
 # 
 # footnotes_2022 <- function(data) {
-#   data %>% 
-#     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-#   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+# data %>% 
+#   mutate(
+#     footnotes_id = if_else(Country == "Latin America and the Caribbean", append_footnote(footnotes_id, "6970"), footnotes_id),
+#     footnotes_id = if_else(Years == "2002", append_footnote(footnotes_id, "7177"), footnotes_id))
 # }
 # 
 # source_2022 <- function() {
