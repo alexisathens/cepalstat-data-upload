@@ -97,7 +97,7 @@ aquastat <- read_xlsx(paste0(aquastat_folder, "/AQUASTAT Dissemination System.xl
 
 # FAO LAND USE (RL) INDICATORS -----
 
-## ---- dummy indicator - cropland area ----
+## ---- intermediate indicator - cropland area ----
 
 # this variable is used as the denominator for the pesticide and fertilizer use intensity variables
 
@@ -154,6 +154,57 @@ result_2035 <- process_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+## ---- indicator 2036 - forest area ----
+indicator_id <- 2036
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2036 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20722"),
+  pub_col = c("208_name", "29117_name", "20722_name")
+)
+
+filter_2036 <- function(data) {
+  data %>% 
+    filter(item %in% c("Forest land", "Naturally regenerating forest", "Planted Forest")) %>% 
+    filter(element == "area") %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "CuraÃ§ao"))
+}
+
+transform_2036 <- function(data) {
+  data %>% 
+    mutate(item = case_when(
+      item == "Forest land" ~ "Total forest",
+      item == "Naturally regenerating forest" ~ "Natural forest",
+      item == "Planted Forest" ~ "Forest plantations",
+      TRUE ~ item
+    )) %>% 
+    rename(Country = area, Years = year, Type = item) %>% 
+    select(Country, Years, Type, value)
+}
+
+footnotes_2036 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_2036 <- process_indicator(
+  indicator_id = 2036,
+  data = rl,
+  dim_config = dim_config_2036,
+  filter_fn = filter_2036,
+  transform_fn = transform_2036,
+  footnotes_fn = footnotes_2036,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 
 ## ---- indicator 2054 - inland waters area ----
 indicator_id <- 2054
