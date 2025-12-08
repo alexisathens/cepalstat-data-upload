@@ -41,7 +41,6 @@ fao_metadata <- FAOSTAT::search_dataset() %>% as_tibble()
 rl <- get_faostat_bulk(code = "RL")
 rl %<>% as_tibble()
 
-
 # download climate change (ET) data
 et <- get_faostat_bulk(code = "ET")
 et %<>% as_tibble()
@@ -155,6 +154,51 @@ result_2035 <- process_indicator(
   export = TRUE
 )
 
+
+## ---- indicator 2054 - inland waters area ----
+indicator_id <- 2054
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2054 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2054 <- function(data) {
+  data %>% 
+    filter(item %in% c("Inland waters")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_2054 <- function(data) {
+  data %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_2054 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_2054 <- process_indicator(
+  indicator_id = 2054,
+  data = rl,
+  dim_config = dim_config_2054,
+  filter_fn = filter_2054,
+  transform_fn = transform_2054,
+  footnotes_fn = footnotes_2054,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 ## ---- indicator 2036 - forest area ----
 indicator_id <- 2036
 
@@ -206,45 +250,64 @@ result_2036 <- process_indicator(
 )
 
 
-## ---- indicator 2054 - inland waters area ----
-indicator_id <- 2054
+## ---- indicator 2530 - natural forest proportion of total forest ----
+indicator_id <- 2530
 
 # Fill out dim config table by matching the following info:
 # get_indicator_dimensions(indicator_id)
 # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
 
-dim_config_2054 <- tibble(
+dim_config_2530 <- tibble(
   data_col = c("Country", "Years"),
   dim_id = c("208", "29117"),
   pub_col = c("208_name", "29117_name")
 )
 
-filter_2054 <- function(data) {
+filter_2530 <- function(data) {
   data %>% 
-    filter(item %in% c("Inland waters")) %>% 
+    filter(item %in% c("Forest land", "Naturally regenerating forest")) %>% #"Planted Forest"
+    filter(element == "area") %>% 
     # filter out any countries too with inconsistent entries (to not impact LAC total)
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "CuraÃ§ao", "Anguilla"))
 }
 
-transform_2054 <- function(data) {
+transform_2530 <- function(data) {
   data %>% 
-    rename(Country = area, Years = year) %>% 
-    select(Country, Years, value)
+    select(area, item, year, value) %>% 
+    mutate(item = ifelse(item == "Forest land", "total", "natural")) %>% 
+    pivot_wider(names_from = item, values_from = value) %>% 
+    rename(Country = area, Years = year)
 }
 
-footnotes_2054 <- function(data) {
+regional_2530 <- function(data) {
+  eclac_totals <- data %>%
+    group_by(Years) %>%
+    summarise(natural = sum(natural, na.rm = TRUE),
+              total = sum(total, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+
+  data <- bind_rows(data, eclac_totals) %>%
+    mutate(value = round(natural/total * 100, 1)) %>%
+    arrange(Country, Years) %>%
+    select(Country, Years, value)
+
+  return(data)
+}
+
+footnotes_2530 <- function(data) {
   data %>% 
     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-result_2054 <- process_indicator(
-  indicator_id = 2054,
+result_2530 <- process_indicator(
+  indicator_id = 2530,
   data = rl,
-  dim_config = dim_config_2054,
-  filter_fn = filter_2054,
-  transform_fn = transform_2054,
-  footnotes_fn = footnotes_2054,
+  dim_config = dim_config_2530,
+  filter_fn = filter_2530,
+  transform_fn = transform_2530,
+  regional_fn = regional_2530,
+  footnotes_fn = footnotes_2530,
   diagnostics = TRUE,
   export = TRUE
 )
