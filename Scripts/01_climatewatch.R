@@ -539,108 +539,84 @@ write.csv(indicator_5650,
           file = file.path(output_dir, "5650_raw.csv"),
           row.names = FALSE)
 
+## ---- indicator 4463 - greenhouse gas (ghg) emissions per gdp ----
 
-## end anuario exports, check the rest later
+indicator_4463_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_all_ghg
+)
+
+# Append population and GDP denominators
+indicator_4463 <- prepare_emissions_with_denominators(
+  indicator_4463_raw,
+  include_population = FALSE,
+  include_gdp = TRUE
+)
+
+write.csv(indicator_4463, 
+          file = file.path(output_dir, "4463_raw.csv"),
+          row.names = FALSE)
 
 
-# ## ---- indicator 4463 - greenhouse gas (ghg) emissions per gdp ----
-# 
-# indicator_4463 <- cw_get_data(
-#   source_ids = source_id_climate_watch,
-#   regions = regions_iso,
-#   sector_ids = sector_id_total_no_lucf,
-#   gas_ids = gas_id_all_ghg
-# )
-# 
-# # Calculate per GDP values
-# indicator_4463_per_gdp <- calculate_per_capita_gdp(indicator_4463, calculation_type = "per_gdp")
-# 
-# # Combine total and per GDP
-# indicator_4463 <- bind_rows(
-#   indicator_4463 %>% mutate(calculation = "Total"),
-#   indicator_4463_per_gdp %>% mutate(calculation = "Per GDP")
-# )
-# 
-# # Reshape and clean output
-# indicator_4463 <- format_indicator_output(indicator_4463)
-# 
-# write.csv(indicator_4463, 
-#           file = file.path(output_dir, "4463_raw.csv"),
-#           row.names = FALSE)
-# 
-# ## ---- indicator 4462 - greenhouse gas (ghg) emissions from the energy sector ----
-# 
-# # Find sector IDs for energy subsectors
-# sector_ids_energy <- sectors %>% 
-#   filter(str_detect(tolower(.data$name), "electricity|heat|manufacturing|construction|transport|fuel combustion|fugitive") &
-#          str_detect(tolower(.data$name), "energy")) %>% 
-#   pull(id)
-# 
-# # If no subsectors found, try finding "Energy" sector parent
-# if (length(sector_ids_energy) == 0) {
-#   sector_ids_energy <- sectors %>% 
-#     filter(str_detect(tolower(.data$name), "^energy$|^energy sector$")) %>% 
-#     pull(id) %>% 
-#     first()
-# }
-# 
-# indicator_4462 <- cw_get_data(
-#   source_ids = source_id_climate_watch,
-#   regions = regions_iso,
-#   sector_ids = sector_ids_energy,
-#   gas_ids = gas_id_all_ghg
-# )
-# 
-# # Reshape and clean output
-# indicator_4462 <- format_indicator_output(indicator_4462)
-# 
-# write.csv(indicator_4462, 
-#           file = file.path(output_dir, "4462_raw.csv"),
-#           row.names = FALSE)
-# 
-# ## ---- indicator 4461 - greenhouse gas (ghg) emissions per capita ----
-# 
-# indicator_4461 <- cw_get_data(
-#   source_ids = source_id_climate_watch,
-#   regions = regions_iso,
-#   sector_ids = sector_id_total_no_lucf,
-#   gas_ids = gas_id_all_ghg
-# )
-# 
-# # Calculate per capita values
-# indicator_4461_per_capita <- calculate_per_capita_gdp(indicator_4461, calculation_type = "per_capita")
-# 
-# # Combine total and per capita
-# indicator_4461 <- bind_rows(
-#   indicator_4461 %>% mutate(calculation = "Total"),
-#   indicator_4461_per_capita %>% mutate(calculation = "Per capita")
-# )
-# 
-# # Reshape and clean output
-# indicator_4461 <- format_indicator_output(indicator_4461)
-# 
-# write.csv(indicator_4461, 
-#           file = file.path(output_dir, "4461_raw.csv"),
-#           row.names = FALSE)
-# 
-# 
-# 
-# 
-# 
-# ## ---- indicator 3387 - share of greenhouse gas (ghg) emissions relative to the global total ----
-# 
-# indicator_3387 <- cw_get_data(
-#   source_ids = source_id_climate_watch,
-#   regions = regions_iso,
-#   sector_ids = sector_id_total_no_lucf,
-#   gas_ids = gas_id_all_ghg
-# )
-# 
-# # Reshape and clean output
-# indicator_3387 <- format_indicator_output(indicator_3387)
-# 
-# write.csv(indicator_3387, 
-#           file = file.path(output_dir, "3387_raw.csv"),
-#           row.names = FALSE)
+## ---- indicator 4462 - greenhouse gas (ghg) emissions from the energy sector ----
 
+# Find sector IDs for energy subsectors
+sector_ids_energy <- sectors %>%
+  filter(data_source_id == source_id_climate_watch) %>% 
+  #filter(str_detect(tolower(.data$name), "electricity|heat|manufacturing|construction|transport|fuel combustion|fugitive")) %>%
+  filter(name %in% c("Electricity/Heat", "Manufacturing/Construction", "Transportation", "Other Fuel Combustion", "Fugitive Emissions")) %>% 
+  pull(id)
+
+indicator_4462_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_ids_energy,
+  gas_ids = gas_id_all_ghg
+)
+
+# Reshape and clean output
+indicator_4462 <- format_indicator_output(indicator_4462_raw)
+
+write.csv(indicator_4462, 
+          file = file.path(output_dir, "4462_raw.csv"),
+          row.names = FALSE)
+
+
+## ---- indicator 4461 - greenhouse gas (ghg) emissions per capita ----
+
+indicator_4461_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_all_ghg
+)
+
+# Append population and GDP denominators
+indicator_4461 <- prepare_emissions_with_denominators(
+  indicator_4461_raw,
+  include_population = TRUE,
+  include_gdp = FALSE
+)
+
+write.csv(indicator_4461, 
+          file = file.path(output_dir, "4461_raw.csv"),
+          row.names = FALSE)
+
+## ---- indicator 3387 - share of greenhouse gas (ghg) emissions relative to the global total ----
+
+indicator_3387_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_all_ghg
+)
+
+# Reshape and clean output
+indicator_3387 <- format_indicator_output(indicator_3387_raw)
+
+write.csv(indicator_3387,
+          file = file.path(output_dir, "3387_raw.csv"),
+          row.names = FALSE)
 
