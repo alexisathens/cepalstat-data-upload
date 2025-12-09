@@ -8,6 +8,9 @@ library(readxl)
 library(here)
 library(magrittr)
 
+
+## ---- define global variables ----
+
 utils::globalVariables(c(
   "emissions", "year", "value",
   "iso3", "wb_iso_code3", "wb_iso3",
@@ -56,6 +59,9 @@ gases <- request(paste0(base, "/gases")) %>%
   resp_body_json(simplifyVector = TRUE) %>%
   pluck("data") %>%
   as_tibble()
+
+
+## ---- download from climate watch api function ----
 
 # Helper function to download data with filters
 # Note: The API is paginated, so we may need to handle multiple pages
@@ -199,27 +205,26 @@ cw_get_data <- function(source_ids = NULL,
   }
 }
 
+
+## ---- define ids for common climate watch filters ----
+
 # Find IDs for common filters
 source_id_climate_watch <- data_sources %>% 
-  filter(.data$name == "Climate Watch") %>% 
-  pull(id) %>% 
-  first()
+  filter(name == "Climate Watch") %>% 
+  pull(id)
 
 gas_id_all_ghg <- gases %>% 
-  filter(str_detect(tolower(.data$name), "all ghg|all greenhouse")) %>% 
-  pull(id) %>% 
-  first()
+  filter(name == "All GHG") %>% 
+  pull(id)
 
 gas_id_co2 <- gases %>% 
-  filter(str_detect(tolower(.data$name), "^co2$|carbon dioxide")) %>% 
-  pull(id) %>% 
-  first()
+  filter(name == "CO2") %>% 
+  pull(id)
 
 sector_id_total_no_lucf <- sectors %>% 
   filter(data_source_id == source_id_climate_watch) %>% 
-  filter(str_detect(tolower(.data$name), "total excluding lucf")) %>% 
-  pull(id) %>% 
-  first()
+  filter(name == "Total excluding LUCF") %>% 
+  pull(id)
 
 # Create output directory if it doesn't exist
 output_dir <- "Data/Raw/climate watch"
@@ -227,9 +232,8 @@ if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }
 
-# ============================================================================
-# World Bank Data Functions for Population and GDP
-# ============================================================================
+
+## ---- access world bank population and gdp function ----
 
 # Function to download World Bank data
 # Indicators: SP.POP.TOTL (population), NY.GDP.MKTP.KD (GDP constant 2015 US$)
@@ -413,28 +417,33 @@ format_indicator_output <- function(data) {
   data
 }
 
+
 ## ---- indicator 3351 - greenhouse gas (ghg) emissions by sector ----
 
 # Find sector IDs
 sector_id_energy <- sectors %>% 
-  filter(str_detect(tolower(.data$name), "^energy$|^energy sector$")) %>% 
-  pull(id) %>% 
-  first()
+  filter(data_source_id == source_id_climate_watch) %>% 
+  #filter(str_detect(tolower(.data$name), "^energy$|^energy sector$")) %>% 
+  filter(name == "Energy") %>% 
+  pull(id)
 
 sector_id_industrial <- sectors %>% 
-  filter(str_detect(tolower(.data$name), "industrial process")) %>% 
-  pull(id) %>% 
-  first()
+  filter(data_source_id == source_id_climate_watch) %>% 
+  #filter(str_detect(tolower(.data$name), "industrial process")) %>% 
+  filter(name == "Industrial Processes") %>% 
+  pull(id)
 
 sector_id_agriculture <- sectors %>% 
-  filter(str_detect(tolower(.data$name), "^agriculture$|agricultural")) %>% 
-  pull(id) %>% 
-  first()
+  filter(data_source_id == source_id_climate_watch) %>% 
+  #filter(str_detect(tolower(.data$name), "^agriculture$|agricultural")) %>% 
+  filter(name == "Agriculture") %>% 
+  pull(id)
 
 sector_id_waste <- sectors %>% 
-  filter(str_detect(tolower(.data$name), "^waste$")) %>% 
-  pull(id) %>% 
-  first()
+  filter(data_source_id == source_id_climate_watch) %>% 
+  #filter(str_detect(tolower(.data$name), "^waste$")) %>% 
+  filter(name == "Waste") %>% 
+  pull(id)
 
 sector_ids_3351 <- c(sector_id_energy, sector_id_industrial, sector_id_agriculture, sector_id_waste)
 
@@ -452,6 +461,7 @@ write.csv(indicator_3351,
           file = file.path(output_dir, "3351_raw.csv"),
           row.names = FALSE)
 
+
 ## ---- indicator 3158 - carbon dioxide (co₂) emissions, total excluding land-use change and forestry (lucf) ----
 
 indicator_3158_raw <- cw_get_data(
@@ -468,6 +478,7 @@ write.csv(indicator_3158,
           file = file.path(output_dir, "3158_raw.csv"),
           row.names = FALSE)
 
+
 ## ---- indicator 3159 - share of carbon dioxide (co₂) emissions relative to the global total ----
 
 # Use same data as 3158
@@ -476,6 +487,7 @@ indicator_3159 <- format_indicator_output(indicator_3158_raw)
 write.csv(indicator_3159, 
           file = file.path(output_dir, "3159_raw.csv"),
           row.names = FALSE)
+
 
 ## ---- indicator 2027 - carbon dioxide (co₂) emissions (total, per capita, and per gdp) ----
 
@@ -538,6 +550,7 @@ indicator_5650 <- prepare_emissions_with_denominators(
 write.csv(indicator_5650, 
           file = file.path(output_dir, "5650_raw.csv"),
           row.names = FALSE)
+
 
 ## ---- indicator 4463 - greenhouse gas (ghg) emissions per gdp ----
 
@@ -603,6 +616,7 @@ indicator_4461 <- prepare_emissions_with_denominators(
 write.csv(indicator_4461, 
           file = file.path(output_dir, "4461_raw.csv"),
           row.names = FALSE)
+
 
 ## ---- indicator 3387 - share of greenhouse gas (ghg) emissions relative to the global total ----
 
