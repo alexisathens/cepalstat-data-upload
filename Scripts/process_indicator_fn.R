@@ -116,19 +116,19 @@ process_indicator <- function(indicator_id, data, dim_config,
     update_indicator_metadata(indicator_id, ind_notes)
   }
   
-  return(list(clean = df_f, comp = comp, comp_sum = comp_sum))
+  return(list(clean = df, formatted = df_f, comp = comp, comp_sum = comp_sum))
   
 }
 
 ## Debugging
-# indicator_id = 2019
-# data = fish
-# dim_config = dim_config_2019
-# filter_fn = filter_2019
-# transform_fn = transform_2019
-# regional_fn = regional_2019
-# footnotes_fn = footnotes_2019
-# source_id = source_2019
+# indicator_id = 2021
+# data = rl
+# dim_config = dim_config_2021
+# filter_fn = filter_2021
+# transform_fn = transform_2021
+# regional_fn = regional_2021
+# footnotes_fn = footnotes_2021
+# source_fn = NULL
 # diagnostics = TRUE
 # export = FALSE
 
