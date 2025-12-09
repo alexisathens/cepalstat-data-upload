@@ -376,6 +376,86 @@ result_2531 <- process_indicator(
 )
 
 
+## ---- indicator 2021 - proportion of forest area ----
+indicator_id <- 2021
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2021 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20722"),
+  pub_col = c("208_name", "29117_name", "20722_name")
+)
+
+filter_2021 <- function(data) {
+  data %<>% 
+    filter(item %in% c("Forest land", "Naturally regenerating forest", "Planted Forest", "Land area")) %>% 
+    filter(element == "area") %>% 
+    filter(as.numeric(year) >= 1990) %>% # Filter on data 1990 and beyond - this is when more detailed forest data began
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "CuraÃ§ao"))
+}
+
+transform_2021 <- function(data) {
+  data %<>% 
+    mutate(item = case_when(
+      item == "Forest land" ~ "Total forest",
+      item == "Naturally regenerating forest" ~ "Natural forest",
+      item == "Planted Forest" ~ "Forest plantations",
+      TRUE ~ item
+    )) %>% 
+    rename(Country = area, Years = year, Type = item) %>% 
+    select(Country, Years, Type, value)
+  
+  # filter on country-year combinations that have denominator land area
+  data %<>% 
+    group_by(Country, Years) %>% 
+    filter(any(Type == "Land area")) %>%  # Keep only groups that have "Land area"
+    ungroup()
+  
+  return(data)
+}
+
+regional_2021 <- function(data) {
+  eclac_totals <- data %>%
+    group_by(Years, Type) %>%
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  data <- bind_rows(data, eclac_totals) %>%
+    group_by(Country, Years) %>%
+    mutate(
+      land_area = value[Type == "Land area"],   # pull the denominator for that Country-Year
+      prop = ifelse(Type != "Land area", value / land_area, NA_real_), .groups = "drop") %>% 
+    ungroup() %>% 
+    filter(Type != "Land area") %>% 
+    mutate(prop = round(prop * 100, 1)) %>% 
+    select(Country, Years, Type, value = prop)
+  
+  return(data)
+}
+
+footnotes_2021 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_2021 <- process_indicator(
+  indicator_id = 2021,
+  data = rl,
+  dim_config = dim_config_2021,
+  filter_fn = filter_2021,
+  transform_fn = transform_2021,
+  regional_fn = regional_2021,
+  footnotes_fn = footnotes_2021,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 
 ## ---- indicator 1869 - ag area by land type use ----
 indicator_id <- 1869
