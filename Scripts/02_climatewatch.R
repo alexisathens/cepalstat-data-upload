@@ -9,7 +9,6 @@ library(here)
 library(assertthat)
 library(quarto)
 library(CepalStatR)
-library(FAOSTAT)
 
 # This script cleans and standardizes the CAIT-WRI / Climate Watch indicators
 
@@ -35,62 +34,19 @@ iso %<>%
 # ---- read downloaded files ----
 cw_path <- here("Data/Raw/climate watch")
 
-data_2027 <- read_csv(paste0(cw_path, "/2027_raw.csv"))
+#data_2027 <- read_csv(paste0(cw_path, "/2027_raw.csv")) # note this indicator is HIDDEN in CEPALSTAT and will become deprecated once profiles are linked to new indicators
 data_3158 <- read_csv(paste0(cw_path, "/3158_raw.csv"))
 data_3159 <- read_csv(paste0(cw_path, "/3159_raw.csv"))
 data_3351 <- read_csv(paste0(cw_path, "/3351_raw.csv"))
 data_5649 <- read_csv(paste0(cw_path, "/5649_raw.csv"))
 data_5650 <- read_csv(paste0(cw_path, "/5650_raw.csv"))
+data_4463 <- read_csv(paste0(cw_path, "/4463_raw.csv"))
+data_4461 <- read_csv(paste0(cw_path, "/4461_raw.csv"))
+data_4462 <- read_csv(paste0(cw_path, "/4462_raw.csv"))
+data_3387 <- read_csv(paste0(cw_path, "/3387_raw.csv"))
 
-## ---- indicator 3159 - share of carbon dioxide (CO₂) emissions relative to the global total ----
 
-indicator_id <- 3159 # share of co2
 
-# Fill out dim config table by matching the following info:
-# get_indicator_dimensions(indicator_id)
-# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
-
-dim_config_3159 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_3159 <- function(data) {
-  data %>% 
-    rename(Country = country, Years = year) %>% 
-    select(Country, Years, value)
-}
-
-transform_3159 <- function(data) {
-  world <- data %>% 
-    filter(Country == "World")
-  
-  data %>% 
-    filter(Country != "World") %>% 
-    left_join(world, by = "Years", suffix = c("", ".wld")) %>% 
-    mutate(prop = value/value.wld*100) %>% 
-    select(Country, Years, value = prop)
-}
-
-footnotes_3159 <- function(data) {
-  data %>%
-    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
-}
-
-result_3159 <- process_indicator(
-  indicator_id = 3159,
-  data = data_3159,
-  dim_config = dim_config_3159,
-  filter_fn = filter_3159,
-  transform_fn = transform_3159,
-  # regional_fn = regional_3159, # default to sum of lac
-  footnotes_fn = footnotes_3159,
-  # source_fn = source_3159,
-  diagnostics = TRUE,
-  export = TRUE
-)
 
 
 ## ---- indicator 3351 — greenhouse gas (GHG) emissions by sector ----
@@ -142,118 +98,6 @@ result_3351 <- process_indicator(
   # regional_fn = regional_3351, # default to sum of lac
   footnotes_fn = footnotes_3351,
   # source_fn = source_3351,
-  diagnostics = TRUE,
-  export = TRUE
-)
-
-
-## ---- indicator 2027 — carbon dioxide (CO₂) emissions (Total, per capita, and per GDP) ----
-
-indicator_id <- 2027 # co2 emissions
-
-# Fill out dim config table by matching the following info:
-# get_indicator_dimensions(indicator_id)
-# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
-
-dim_config_2027 <- tibble(
-  data_col = c("Country", "Years", "Calculation"),
-  dim_id = c("208", "29117", "26653"),
-  pub_col = c("208_name", "29117_name", "26653_name")
-)
-
-filter_2027 <- function(data) {
-  data %>%
-    rename(
-      Country = country,
-      Years = year
-    ) %>%
-    mutate(
-      total_emissions = as.numeric(emissions),
-      population = as.numeric(population),
-      gdp_constant_2015_usd = as.numeric(gdp_constant_2015_usd)
-    ) %>%
-    select(
-      Country, Years, unit,
-      Total = total_emissions, Pop = population, GDP = gdp_constant_2015_usd
-    )
-}
-
-transform_2027 <- function(data) {
-  data
-}
-
-regional_2027 <- function(data) {
-  # create eclac total
-  eclac_totals <- data %>%
-    filter(Country != "World") %>% 
-    group_by(Years) %>%
-    summarise(Total = sum(Total, na.rm = TRUE),
-              Pop = sum(Pop, na.rm = TRUE),
-              GDP = sum(GDP, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-  
-  # manually subtract out venezuela with missing GDP data
-  missing_vz_gdp <- (nrow(data %>% filter(Country == "Venezuela" & is.na(GDP))) > 0)
-  
-  if(missing_vz_gdp) {
-    eclac_totals_gdp_adj <- data %>%
-      filter(Country != "World",
-             Country != "Venezuela") %>%          # exclude only here
-      group_by(Years) %>%
-      summarise(
-        Total_noVEN = sum(Total, na.rm = TRUE),      # emissions excluding VEN
-        GDP_noVEN = sum(GDP, na.rm = TRUE),       # GDP excluding VEN
-        .groups = "drop"
-      ) %>%
-      mutate(
-        Country = "Latin America and the Caribbean"
-      )
-    
-    eclac_totals %<>%
-      left_join(eclac_totals_gdp_adj, by = c("Years", "Country"))
-  }
-    
-  # join together
-  data <- bind_rows(data, eclac_totals) 
-  
-  # create calculation columns
-  data %<>% 
-    mutate(`Total, excluding land change use and forestry` = Total,
-           `Per capita` = Total / Pop * 1e6,
-           `By gross domestic product` = Total / GDP * 1e12) %>% 
-    select(-unit)
-  
-  if(missing_vz_gdp) {
-    data %<>% 
-      mutate(`By gross domestic product` = ifelse(Country == "Latin America and the Caribbean",
-                                                         Total_noVEN / GDP_noVEN * 1e12,
-                                                         `By gross domestic product`)) %>% 
-      select(-Total_noVEN, -GDP_noVEN)
-  }
-  
-  # clean df
-  data %<>% 
-    select(-Total, -Pop, -GDP) %>% 
-    pivot_longer(cols = c("Total, excluding land change use and forestry", "Per capita", "By gross domestic product"),
-                 names_to = "Calculation") %>% 
-    filter(!is.na(value)) # remove venezuela total per GDP data
-  
-  return(data)
-}
-
-footnotes_2027 <- function(data) {
-  data %>%
-    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-}
-
-result_2027 <- process_indicator(
-  indicator_id = indicator_id,
-  data = data_2027,
-  dim_config = dim_config_2027,
-  filter_fn = filter_2027,
-  transform_fn = transform_2027,
-  footnotes_fn = footnotes_2027,
-  regional_fn = regional_2027,
   diagnostics = TRUE,
   export = TRUE
 )
@@ -466,3 +310,165 @@ result_5650 <- process_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+## ---- indicator 3159 - share of carbon dioxide (CO₂) emissions relative to the global total ----
+
+indicator_id <- 3159 # share of co2
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_3159 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3159 <- function(data) {
+  data %>% 
+    rename(Country = country, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+transform_3159 <- function(data) {
+  world <- data %>% 
+    filter(Country == "World")
+  
+  data %>% 
+    filter(Country != "World") %>% 
+    left_join(world, by = "Years", suffix = c("", ".wld")) %>% 
+    mutate(prop = value/value.wld*100) %>% 
+    select(Country, Years, value = prop)
+}
+
+footnotes_3159 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_3159 <- process_indicator(
+  indicator_id = 3159,
+  data = data_3159,
+  dim_config = dim_config_3159,
+  filter_fn = filter_3159,
+  transform_fn = transform_3159,
+  # regional_fn = regional_3159, # default to sum of lac
+  footnotes_fn = footnotes_3159,
+  # source_fn = source_3159,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 2027 — carbon dioxide (CO₂) emissions (Total, per capita, and per GDP)[DEPRECATED] ----
+# # this composite indicator was deprecated with the creation of separate total, GDP and per capita indicators for co2 emissions
+# indicator_id <- 2027 # co2 emissions
+# 
+# # Fill out dim config table by matching the following info:
+# # get_indicator_dimensions(indicator_id)
+# # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+# 
+# dim_config_2027 <- tibble(
+#   data_col = c("Country", "Years", "Calculation"),
+#   dim_id = c("208", "29117", "26653"),
+#   pub_col = c("208_name", "29117_name", "26653_name")
+# )
+# 
+# filter_2027 <- function(data) {
+#   data %>%
+#     rename(
+#       Country = country,
+#       Years = year
+#     ) %>%
+#     mutate(
+#       total_emissions = as.numeric(emissions),
+#       population = as.numeric(population),
+#       gdp_constant_2015_usd = as.numeric(gdp_constant_2015_usd)
+#     ) %>%
+#     select(
+#       Country, Years, unit,
+#       Total = total_emissions, Pop = population, GDP = gdp_constant_2015_usd
+#     )
+# }
+# 
+# transform_2027 <- function(data) {
+#   data
+# }
+# 
+# regional_2027 <- function(data) {
+#   # create eclac total
+#   eclac_totals <- data %>%
+#     filter(Country != "World") %>% 
+#     group_by(Years) %>%
+#     summarise(Total = sum(Total, na.rm = TRUE),
+#               Pop = sum(Pop, na.rm = TRUE),
+#               GDP = sum(GDP, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   # manually subtract out venezuela with missing GDP data
+#   missing_vz_gdp <- (nrow(data %>% filter(Country == "Venezuela" & is.na(GDP))) > 0)
+#   
+#   if(missing_vz_gdp) {
+#     eclac_totals_gdp_adj <- data %>%
+#       filter(Country != "World",
+#              Country != "Venezuela") %>%          # exclude only here
+#       group_by(Years) %>%
+#       summarise(
+#         Total_noVEN = sum(Total, na.rm = TRUE),      # emissions excluding VEN
+#         GDP_noVEN = sum(GDP, na.rm = TRUE),       # GDP excluding VEN
+#         .groups = "drop"
+#       ) %>%
+#       mutate(
+#         Country = "Latin America and the Caribbean"
+#       )
+#     
+#     eclac_totals %<>%
+#       left_join(eclac_totals_gdp_adj, by = c("Years", "Country"))
+#   }
+#   
+#   # join together
+#   data <- bind_rows(data, eclac_totals) 
+#   
+#   # create calculation columns
+#   data %<>% 
+#     mutate(`Total, excluding land change use and forestry` = Total,
+#            `Per capita` = Total / Pop * 1e6,
+#            `By gross domestic product` = Total / GDP * 1e12) %>% 
+#     select(-unit)
+#   
+#   if(missing_vz_gdp) {
+#     data %<>% 
+#       mutate(`By gross domestic product` = ifelse(Country == "Latin America and the Caribbean",
+#                                                   Total_noVEN / GDP_noVEN * 1e12,
+#                                                   `By gross domestic product`)) %>% 
+#       select(-Total_noVEN, -GDP_noVEN)
+#   }
+#   
+#   # clean df
+#   data %<>% 
+#     select(-Total, -Pop, -GDP) %>% 
+#     pivot_longer(cols = c("Total, excluding land change use and forestry", "Per capita", "By gross domestic product"),
+#                  names_to = "Calculation") %>% 
+#     filter(!is.na(value)) # remove venezuela total per GDP data
+#   
+#   return(data)
+# }
+# 
+# footnotes_2027 <- function(data) {
+#   data %>%
+#     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+# }
+# 
+# result_2027 <- process_indicator(
+#   indicator_id = indicator_id,
+#   data = data_2027,
+#   dim_config = dim_config_2027,
+#   filter_fn = filter_2027,
+#   transform_fn = transform_2027,
+#   footnotes_fn = footnotes_2027,
+#   regional_fn = regional_2027,
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
