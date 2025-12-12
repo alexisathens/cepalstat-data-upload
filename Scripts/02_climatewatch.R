@@ -248,6 +248,111 @@ result_3351 <- process_indicator(
 )
 
 
+## ---- indicator 4462 — greenhouse gas (GHG) emissions of the energy sector ----
+
+indicator_id <- 4462 # ghg emissions
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4462 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "84302"),
+  pub_col = c("208_name", "29117_name", "84302_name")
+)
+
+filter_4462 <- function(data) {
+  data %>% 
+    rename(Country = country, Type = sector, Years = year) %>% 
+    select(Country, Type, Years, value) %>%
+    mutate(Type = case_when(
+      Type == "Transportation" ~ "Transport",
+      TRUE ~ Type
+    )) %>% filter(!is.na(value))
+}
+
+transform_4462 <- function(data) {
+  total <- data %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+    mutate(Type = "Total")
+  
+  data %>% 
+    bind_rows(total)
+}
+
+footnotes_4462 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_4462 <- process_indicator(
+  indicator_id = 4462,
+  data = data_4462,
+  dim_config = dim_config_4462,
+  filter_fn = filter_4462,
+  transform_fn = transform_4462,
+  # regional_fn = regional_4462, # default to sum of lac
+  footnotes_fn = footnotes_4462,
+  # source_fn = source_4462,
+  diagnostics = TRUE,
+  export = FALSE
+)
+
+
+## ---- indicator 3387 - share of greenhouse gas (GHG) emissions relative to the global total ----
+
+indicator_id <- 3387
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_3387 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3387 <- function(data) {
+  data %>% 
+    rename(Country = country, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+transform_3387 <- function(data) {
+  world <- data %>% 
+    filter(Country == "World")
+  
+  data %>% 
+    filter(Country != "World") %>% 
+    left_join(world, by = "Years", suffix = c("", ".wld")) %>% 
+    mutate(prop = value/value.wld*100) %>% 
+    select(Country, Years, value = prop)
+}
+
+footnotes_3387 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+result_3387 <- process_indicator(
+  indicator_id = 3387,
+  data = data_3387,
+  dim_config = dim_config_3387,
+  filter_fn = filter_3387,
+  transform_fn = transform_3387,
+  # regional_fn = regional_3387, # default to sum of lac
+  footnotes_fn = footnotes_3387,
+  # source_fn = source_3387,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 ## ---- indicator 3158 — carbon dioxide (CO₂) emissions (Total) ----
 
 indicator_id <- 3158 # co2 emissions
