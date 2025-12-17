@@ -143,10 +143,37 @@ env <- env %>%
   )
 
 
-## 7. Export master metadata table ----
+## 7. Add regional/country profile fields
+
+prof <- read_xlsx(here("Data/profile_data.xlsx"))
+
+# check if there are any ids in prof that don't match to env -- change this with Alberto/Andrés
+# prof %>% 
+#   left_join(env, by = c("Indicator" = "id")) %>%
+#   filter(is.na(indicator)) %>% 
+#   filter(!str_detect(Notes, "Econ") | is.na(Notes)) %>% View()
+
+# get list of indicators that are present in profiles
+prof_list <- prof %>% distinct(Indicator) %>% mutate(profile = "Y")
+
+# join prof list to env
+env %<>% left_join(prof_list, by = c("id" = "Indicator"))
+
+# update anuario tag
+env %<>% mutate(anuario = ifelse(!is.na(anuario_entrega), "Y", anuario_entrega))
+
+# organize indicators
+env %<>% 
+  relocate(anuario, .before = deprecated) %>% 
+  relocate(profile, .before = deprecated) %>%
+  select(-anuario_entrega) # remove this field bc was only applicable for 2025
+
+
+## 8. Export master metadata table ----
+
 
 # write_xlsx(env, here("Data/indicator_metadata.xlsx"))
-
+# env <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
 
 #### UPDATE CEPALSTAT METADATA ----------
