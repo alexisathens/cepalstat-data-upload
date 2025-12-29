@@ -120,78 +120,76 @@ result_4461 <- process_indicator(
 
 ## ---- indicator 4463 — greenhouse gas (GHG) emissions (per GDP) ----
 
-# figure out how to delete extra dimension before proceeding ***
+indicator_id <- 4463
 
-# indicator_id <- 4463
-# 
-# # Fill out dim config table by matching the following info:
-# # get_indicator_dimensions(indicator_id)
-# # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
-# 
-# dim_config_4463 <- tibble(
-#   data_col = c("Country", "Years"),
-#   dim_id = c("208", "29117"),
-#   pub_col = c("208_name", "29117_name")
-# )
-# 
-# filter_4463 <- function(data) {
-#   data %>%
-#     rename(
-#       Country = country,
-#       Years = year,
-#       gdp = gdp_constant_2015_usd
-#     ) %>% 
-#     select(Country, Years, emissions, gdp) %>% 
-#     filter(!is.na(emissions) & !is.na(gdp)) # filter out countries that are missing emissions OR gdp data
-# }
-# 
-# transform_4463 <- function(data) {
-#   data
-# }
-# 
-# regional_4463 <- function(data) {
-#   # create eclac total
-#   eclac_totals <- data %>%
-#     filter(!Country %in% c("World")) %>%
-#     group_by(Years) %>%
-#     summarise(emissions = sum(emissions, na.rm = TRUE),
-#               gdp = sum(gdp, na.rm = TRUE), 
-#               .groups = "drop") %>%
-#     mutate(Country = "Latin America and the Caribbean")
-#   
-#   data <- bind_rows(data, eclac_totals)
-#   
-#   # calculate per capita
-#   data %<>% 
-#     mutate(value = emissions/gdp * 1e12) %>% # transform into tonnes of CO2eq per millions of USD
-#     arrange(Country, Years) %>% 
-#     select(Country, Years, value)
-#   
-#   return(data)
-# }
-# 
-# 
-# footnotes_4463 <- function(data) {
-#   data %>%
-#     mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-# }
-# 
-# source_4463 <- function() {
-#   10621 # Cálculos realizados por la CEPAL en base a datos del Explorador de Datos Climáticos de la CAIT y datos de libre acceso del Banco Mundial 
-# }
-# 
-# result_4463 <- process_indicator(
-#   indicator_id = indicator_id,
-#   data = data_4463,
-#   dim_config = dim_config_4463,
-#   filter_fn = filter_4463,
-#   transform_fn = transform_4463,
-#   footnotes_fn = footnotes_4463,
-#   regional_fn = regional_4463,
-#   source_fn = source_4463,
-#   diagnostics = TRUE,
-#   export = TRUE
-# )
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4463 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_4463 <- function(data) {
+  data %>%
+    rename(
+      Country = country,
+      Years = year,
+      gdp = gdp_constant_2015_usd
+    ) %>%
+    select(Country, Years, emissions, gdp) %>%
+    filter(!is.na(emissions) & !is.na(gdp)) # filter out countries that are missing emissions OR gdp data
+}
+
+transform_4463 <- function(data) {
+  data
+}
+
+regional_4463 <- function(data) {
+  # create eclac total
+  eclac_totals <- data %>%
+    filter(!Country %in% c("World")) %>%
+    group_by(Years) %>%
+    summarise(emissions = sum(emissions, na.rm = TRUE),
+              gdp = sum(gdp, na.rm = TRUE),
+              .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+
+  data <- bind_rows(data, eclac_totals)
+
+  # calculate per capita
+  data %<>%
+    mutate(value = emissions/gdp * 1e12) %>% # transform into tonnes of CO2eq per millions of USD
+    arrange(Country, Years) %>%
+    select(Country, Years, value)
+
+  return(data)
+}
+
+
+footnotes_4463 <- function(data) {
+  data %>%
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+}
+
+source_4463 <- function() {
+  10621 # Cálculos realizados por la CEPAL en base a datos del Explorador de Datos Climáticos de la CAIT y datos de libre acceso del Banco Mundial
+}
+
+result_4463 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_4463,
+  dim_config = dim_config_4463,
+  filter_fn = filter_4463,
+  transform_fn = transform_4463,
+  footnotes_fn = footnotes_4463,
+  regional_fn = regional_4463,
+  source_fn = source_4463,
+  diagnostics = FALSE,
+  export = FALSE
+)
 
 
 ## ---- indicator 3351 — greenhouse gas (GHG) emissions by sector ----
