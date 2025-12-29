@@ -14,6 +14,16 @@ library(CepalStatR)
 ### transition data download instructions from: ***
 # See data cleaning notes at: cepalstat-data-upload\Data\Raw\olade\energy_indicators_overview.xlsx
 
+input_path <- here("Data/Raw/olade")
+output_path <- here("Data/Raw/olade")
+
+# read in ISO with cepalstat ids
+iso <- read_xlsx(here("Data/iso_codes.xlsx"))
+
+iso %<>%
+  filter(ECLACa == "Y") %>%
+  select(cepalstat, name, std_name)
+
 # ---- cleaning helpers ----
 
 remove_headers <- function(df, header_row, unit_row) {
@@ -91,4 +101,6 @@ grupo4 %<>%
 
 grupo4
 
-rm(header_row, unit_row)
+write.csv(grupo4,
+          file = file.path(output_path, "grupo4_raw.csv"),
+          row.names = FALSE)
