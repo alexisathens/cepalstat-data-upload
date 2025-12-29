@@ -362,33 +362,29 @@ indicator_id <- 3158 # co2 emissions
 # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
 
 dim_config_3158 <- tibble(
-  data_col = c("Country", "Years", "Calculation"),
-  dim_id = c("208", "29117", "26653"),
-  pub_col = c("208_name", "29117_name", "26653_name")
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
 )
 
 filter_3158 <- function(data) {
   data %>%
     rename(
       Country = country,
-      Years = year,
-      Calculation = sector
+      Years = year
     ) %>% 
-    select(Country, Years, Calculation, value)
+    select(Country, Years, value)
 }
 
 transform_3158 <- function(data) {
-  data %>% 
-    mutate(Calculation = ifelse(Calculation == "Total excluding LUCF",
-                                "Total, excluding land change use and forestry",
-                                Calculation))
+  data
 }
 
 regional_3158 <- function(data) {
   # create eclac total
   eclac_totals <- data %>%
     filter(Country != "World") %>% 
-    group_by(Years, Calculation) %>%
+    group_by(Years) %>%
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
     mutate(Country = "Latin America and the Caribbean")
     
@@ -412,8 +408,16 @@ result_3158 <- process_indicator(
   footnotes_fn = footnotes_3158,
   regional_fn = regional_3158,
   diagnostics = TRUE,
-  export = TRUE
+  export = FALSE
 )
+
+# internal_file <- "C:/Users/aathens/OneDrive - United Nations/Documentos/CEPALSTAT Data Process/cepalstat-data-upload/Data/Cleaned/id3158_2025-11-19T163441.xlsx"
+# update <- read_excel(internal_file)
+# 
+# update %<>% 
+#   mutate(members_id = str_remove(members_id, ",85390"))
+# 
+# write_xlsx(update, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
 
 
 ## ---- indicator 5649 — carbon dioxide (CO₂) emissions (per capita) ----
