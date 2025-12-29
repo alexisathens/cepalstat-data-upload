@@ -75,9 +75,8 @@ result_1754 <- process_indicator(
   dim_config = dim_config_1754,
   filter_fn = filter_1754,
   transform_fn = transform_1754,
-  # regional_fn = TRUE, # defaults to sum
   footnotes_fn = footnotes_1754,
-  #source_fn = source_1754,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -113,6 +112,7 @@ result_2023 <- process_indicator(
   filter_fn = filter_2023,
   transform_fn = transform_2023,
   footnotes_fn = footnotes_2023,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -149,6 +149,7 @@ result_4235 <- process_indicator(
   filter_fn = filter_4235,
   transform_fn = transform_4235,
   footnotes_fn = footnotes_4235,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -200,6 +201,7 @@ result_2041 <- process_indicator(
   filter_fn = filter_2041,
   transform_fn = transform_2041,
   footnotes_fn = footnotes_2041,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -252,6 +254,7 @@ result_3154 <- process_indicator(
   filter_fn = filter_3154,
   transform_fn = transform_3154,
   footnotes_fn = footnotes_3154,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -303,6 +306,7 @@ result_2487 <- process_indicator(
   filter_fn = filter_2487,
   transform_fn = transform_2487,
   footnotes_fn = footnotes_2487,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -350,6 +354,7 @@ result_4150 <- process_indicator(
   filter_fn = filter_4150,
   transform_fn = transform_4150,
   footnotes_fn = footnotes_4150,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -404,6 +409,7 @@ result_2040 <- process_indicator(
   filter_fn = filter_2040,
   transform_fn = transform_2040,
   footnotes_fn = footnotes_2040,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -477,6 +483,7 @@ result_2486 <- process_indicator(
   filter_fn = filter_2486,
   transform_fn = transform_2486,
   footnotes_fn = footnotes_2486,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -528,6 +535,7 @@ result_4236 <- process_indicator(
   filter_fn = filter_4236,
   transform_fn = transform_4236,
   footnotes_fn = footnotes_4236,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
@@ -578,6 +586,7 @@ result_4174 <- process_indicator(
   filter_fn = filter_4174,
   transform_fn = transform_4174,
   footnotes_fn = footnotes_4174,
+  remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
