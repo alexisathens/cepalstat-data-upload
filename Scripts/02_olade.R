@@ -87,6 +87,10 @@ result_1754 <- process_indicator(
 
 indicator_id <- 2023
 
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
 dim_config_2023 <- tibble(
   data_col = c("Country", "Years"),
   dim_id = c("208", "29117"),
