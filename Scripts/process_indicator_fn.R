@@ -121,13 +121,13 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 2021
-# data = rl
-# dim_config = dim_config_2021
-# filter_fn = filter_2021
-# transform_fn = transform_2021
-# regional_fn = regional_2021
-# footnotes_fn = footnotes_2021
+# indicator_id = 4463
+# data = data_4463
+# dim_config = dim_config_4463
+# filter_fn = filter_4463
+# transform_fn = transform_4463
+# regional_fn = regional_4463
+# footnotes_fn = footnotes_4463
 # source_fn = NULL
 # diagnostics = TRUE
 # export = FALSE
