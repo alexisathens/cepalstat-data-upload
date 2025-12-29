@@ -1,29 +1,45 @@
 # Generic CEPALSTAT indicator processing function
-script_version <- "v2025-12-08"  # bump manually when logic significantly changes
-script_notes <- "add helper function for clean footnote ids"
+script_version <- "v2025-12-29"  # bump manually when logic significantly changes
+script_notes <- "add remove_lac parameter to preserve source LAC data"
 
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
                               regional_fn = NULL, # NULL = default sum, FALSE = skip, function = custom
                               source_fn = NULL,
+                              remove_lac = TRUE, # TRUE = remove and recalculate LAC, FALSE = keep source LAC
                               diagnostics = TRUE, export = TRUE,
                               ind_notes = NULL) {
   message(glue("▶ Processing indicator {indicator_id}..."))
-  
+
   ## 1. Filter and transform raw data
   df <- data %>% filter_fn() %>% transform_fn()
-  
+
   ## 2. Standardize country names and filter to LAC
   df %<>%
     left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
     mutate(Country = coalesce(std_name, Country)) %>%
     select(-std_name) %>%
-    filter(Country %in% iso$name) %>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean", 
-                           "Latin America and the Caribbean", "Latin America")) %>%
-    mutate(Years = as.character(Years))
-  
-  ## 3. Create ECLAC regional total
+    filter(Country %in% iso$name)
+
+  # Conditionally remove LAC regional groupings
+  if (remove_lac) {
+    df %<>%
+      filter(!Country %in% c("South America", "Central America", "Caribbean",
+                             "Latin America and the Caribbean", "Latin America"))
+  } else {
+    # If keeping source LAC, only filter out sub-regions
+    df %<>%
+      filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America"))
+  }
+
+  df %<>% mutate(Years = as.character(Years))
+
+  ## 3. Create ECLAC regional total (automatically skip if remove_lac = FALSE)
+  if (!remove_lac) {
+    # Override regional_fn to FALSE when keeping source LAC data
+    regional_fn <- FALSE
+  }
+
   if (!isFALSE(regional_fn)) {
     if (is.function(regional_fn)) {
       # Use custom aggregation function
@@ -31,11 +47,11 @@ process_indicator <- function(indicator_id, data, dim_config,
     } else {
       # Default: simple sum
       eclac_totals <- df %>%
-        filter(Country != "World") %>% 
+        filter(Country != "World") %>%
         group_by(across(all_of(setdiff(names(df), c("Country", "value"))))) %>%
         summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
         mutate(Country = "Latin America and the Caribbean")
-      
+
       df <- bind_rows(df, eclac_totals) %>%
         arrange(Country, Years)
     }
