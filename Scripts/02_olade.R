@@ -27,7 +27,13 @@ iso %<>%
   select(cepalstat, name, std_name)
 
 # read in indicator metadata
-meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+# meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+
+
+# ---- read downloaded files ----
+olade_path <- here("Data/Raw/olade")
+
+data_g4 <- read_csv(paste0(olade_path, "/grupo4_raw.csv"))
 
 
 # ---- indicator 1754 — Consumption of electric power ----
@@ -57,18 +63,15 @@ footnotes_1754 <- function(data) {
   data # keep footnotes_id as empty
 }
 
-source_1754 <- function() {
-  NULL # use default source
-}
-
 result_1754 <- process_indicator(
   indicator_id = indicator_id,
-  data = grupo4,
+  data = data_g4,
   dim_config = dim_config_1754,
   filter_fn = filter_1754,
   transform_fn = transform_1754,
+  # regional_fn = TRUE, # defaults to sum
   footnotes_fn = footnotes_1754,
-  source_fn = source_1754,
+  #source_fn = source_1754,
   diagnostics = TRUE,
-  export = FALSE  # set to TRUE when ready to export
+  export = TRUE
 )
