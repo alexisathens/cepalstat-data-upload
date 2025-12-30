@@ -29,6 +29,8 @@ iso %<>%
 # read in indicator metadata
 # meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
+max_year <- 2023 # define most recent year with full data
+
 
 # ---- read downloaded files ----
 olade_path <- here("Data/Raw/olade")
@@ -75,8 +77,8 @@ result_1754 <- process_indicator(
   dim_config = dim_config_1754,
   filter_fn = filter_1754,
   transform_fn = transform_1754,
-  footnotes_fn = footnotes_1754,
   remove_lac = FALSE, # keep source LAC data from OLADE
+  footnotes_fn = footnotes_1754,
   diagnostics = TRUE,
   export = TRUE
 )
@@ -98,7 +100,7 @@ dim_config_2023 <- tibble(
 
 filter_2023 <- function(data) {
   data %>%
-    filter(Years != "2024") # remove most recent year with only LatAm
+    filter(Years <= max_year) # remove most recent year with only LatAm
 }
 
 transform_2023 <- function(data) {
@@ -134,7 +136,7 @@ dim_config_4235 <- tibble(
 
 filter_4235 <- function(data) {
   data %>%
-    filter(Years != "2024") # remove most recent year with only LatAm
+    filter(Years <= max_year) # remove most recent year with only LatAm
 }
 
 transform_4235 <- function(data) {
@@ -185,13 +187,13 @@ filter_2041 <- function(data) {
       TRUE ~ Type
     )) %>%
     filter(Type %in% c("PRIMARIA", "SECUNDARIA")) %>%
-    group_by(Country, Years, Type) %>%
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    filter(Years != 2024) # remove LatAm only entry for 2024
+    filter(Years <= max_year) # remove LatAm only entry for 2024
 }
 
 transform_2041 <- function(data) {
-  data # no transformations needed
+  data %>%
+    group_by(Country, Years, Type) %>%
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
 }
 
 footnotes_2041 <- function(data) {
@@ -275,6 +277,10 @@ dim_config_2487 <- tibble(
 )
 
 filter_2487 <- function(data) {
+  data 
+}
+
+transform_2487 <- function(data) {
   data %>%
     mutate(Type = case_when(
       Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
@@ -288,10 +294,6 @@ filter_2487 <- function(data) {
     )) %>%
     group_by(Country, Years, Type) %>%
     summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
-}
-
-transform_2487 <- function(data) {
-  data # no transformations needed
 }
 
 footnotes_2487 <- function(data) {
@@ -334,7 +336,7 @@ filter_4150 <- function(data) {
       Type == "Térmica renovable (combustión)" ~ "Térmica renovable",
       TRUE ~ Type
     )) %>%
-    filter(Years != 2024) # remove LatAm only entry for 2024
+    filter(Years <= max_year) # remove LatAm only entry for 2024
 }
 
 transform_4150 <- function(data) {
@@ -374,8 +376,30 @@ dim_config_2040 <- tibble(
   pub_col = c("208_name", "29117_name", "20726_name_es")
 )
 
+# ** fix these later to match indicator 2478 (dim 44966) - this is the duplicate dimension
+
 filter_2040 <- function(data) {
-  # Harmonize type labels
+  data %>%
+    filter(Years <= max_year)
+}
+
+transform_2040 <- function(data) {
+  ## data-specific issue: ** noticed that the total rows aren't always accurate for Brazil and this data source specifically, so recalculate manually
+  primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña",
+                 "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
+
+  secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel",
+                   "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
+
+  data %<>%
+    filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
+    bind_rows(
+      data %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
+      data %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
+      data %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
+    ) %>%
+    arrange(Country, Years, Type)
+  
   data %>%
     mutate(Type = case_when(
       Type == "Bagazo de caña" ~ "Productos de caña",
@@ -391,15 +415,9 @@ filter_2040 <- function(data) {
       TRUE ~ Type
     )) %>%
     group_by(Country, Years, Type) %>%
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
     # Drop new categories to avoid duplication
-    filter(!Type %in% c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total")) %>%
-    # Remove LatAm entry for 2024, keep up to 2023
-    filter(Years != 2024)
-}
-
-transform_2040 <- function(data) {
-  data # no transformations needed
+    filter(!Type %in% c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total"))
 }
 
 footnotes_2040 <- function(data) {
@@ -434,13 +452,14 @@ filter_2486 <- function(data) {
   data %>%
     mutate(Type = case_when(
       Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
+      Type == "Otras primarias" ~ "Otras limpias", # ** changed for 2025 anuario
       TRUE ~ Type
     ))
 }
 
 transform_2486 <- function(data) {
   # Define energy type categories
-  clean_renew_types <- c("Hidroenergía", "Geotermia", "Otras primarias", "Eólica", "Solar")
+  clean_renew_types <- c("Hidroenergía", "Geotermia", "Otras limpias", "Eólica", "Solar")
   nonclean_renew_types <- c("Leña", "Caña de azúcar y derivados", "Etanol", "Otra biomasa", "Biodiésel", "Biogás")
   nonrenew_types <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear")
 
@@ -507,13 +526,14 @@ filter_4236 <- function(data) {
   data %>%
     mutate(Type = case_when(
       Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
+      Type == "Otras primarias" ~ "Otras limpias", # ** changed for 2025 anuario
       TRUE ~ Type
     ))
 }
 
 transform_4236 <- function(data) {
   # Keep only renewable types
-  renew <- c("Hidroenergía", "Geotermia", "Otras primarias", "Eólica", "Solar",
+  renew <- c("Hidroenergía", "Geotermia", "Otras limpias", "Eólica", "Solar",
              "Leña", "Caña de azúcar y derivados", "Etanol", "Otra biomasa", "Biodiésel", "Biogás")
 
   data %>%
@@ -566,7 +586,7 @@ transform_4174 <- function(data) {
   pib <- call.data(id.indicator = 2204) %>% as_tibble()
 
   pib %<>%
-    mutate(Years = as.character(Years)) %>%
+    mutate(Years = as.numeric(Years)) %>%
     select(Country, Years, pib = value)
 
   # Join PIB data and calculate energy intensity
