@@ -153,6 +153,10 @@ clean_grupo_years_as_cols <- function(input_file, output_file, filter_pattern = 
 }
 
 
+# ---- GRUPO 1 ----
+
+grupo1 <- clean_grupo_standard("olade_grupo1.xlsx", "grupo1_raw.csv")
+
 # ---- GRUPO 2 ----
 
 # Custom structure: Activities as rows, countries as columns
@@ -219,11 +223,6 @@ grupo3 <- clean_grupo_standard("olade_grupo3.xlsx", "grupo3_raw.csv")
 # ---- GRUPO 4 ----
 
 grupo4 <- clean_grupo_standard("olade_grupo4.xlsx", "grupo4_raw.csv")
-
-
-# ---- GRUPO 1 ----
-
-grupo1 <- clean_grupo_standard("olade_grupo1.xlsx", "grupo1_raw.csv")
 
 
 # ---- GRUPO 5 ----
