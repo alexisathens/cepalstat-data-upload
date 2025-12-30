@@ -48,3 +48,150 @@ For the filters, select:
 
 Save as: olade_grupo2.xlsx
 
+
+## Grupo 3: electricity losses, in barrels of oil equivalent (bep)
+
+**Data source:** Series de oferta y demanda\
+https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** energético\
+-   **Unidades:** 10^3 bep\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Actividad:** perdidas\
+-   **Energético:** electricidad\
+
+Save as: olade_grupo3.xlsx
+
+
+
+## Grupo 4: electricity consumption, in GwH
+
+**Data source:** Series de oferta y demanda\
+https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** energético\
+-   **Unidades:** unidad de origen\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Actividad:** consumo energético\
+-   **Energético:** electricidad\
+
+Save as: olade_grupo4.xlsx
+
+
+## Grupo 5: total energy production, in barrels of oil equivalent (bep)
+
+**Data source:** Series de oferta y demanda\
+https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** energético\
+-   **Unidades:** 10^3 bep\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Actividad:** producción\
+-   **Energético:** -\
+
+Save as: olade_grupo5.xlsx
+
+
+## Grupo 6: total energy consumption, in barrels of oil equivalent (bep)
+
+**Data source:** Series de oferta y demanda\
+https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** energético\
+-   **Unidades:** 10^3 bep\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Actividad:** consumo energético\
+-   **Energético:** -\
+
+Save as: olade_grupo6.xlsx
+
+
+
+## Grupo 7: energy intensity per GDP
+
+**Data source:** Indicadores/ económico - energético
+https://sielac.olade.org/WebForms/Reportes/ReporteIndicadores.aspx?tipo=5&or=510&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** tiempo\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Indicador:** intensidad energética final PIB nominal\
+
+Save as: olade_grupo7.xlsx
+
+
+
+## Grupo 8: share of energy losses of total energy supply
+
+**Data source:** Indicadores / energético
+https://sielac.olade.org/WebForms/Reportes/ReporteIndicadores.aspx?tipo=4&or=509&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** tiempo\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Indicador:** relación pérdidas de electricidad / oferta total de electricidad\
+
+Save as: olade_grupo8.xlsx
+
+
+
+## Grupo 9: installed capacity, in MW
+
+**Data source:** Infraestructura / eléctrico / capacidad instalada por fuente
+https://sielac.olade.org/WebForms/Reportes/ReporteDato7.aspx?oc=181&or=392&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** clasificador\
+-   **Columnas:** unidad de información\
+-   **Unidades:** unidad de origen\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Energético:** electricidad\
+-   **Clasificador:** nuclear; térmica no renovable; térmica renovable; hidro, geotermia, eólica, solar (estas ultimas cuatro estan dentro de fuentes renovables)\
+-   **Variable:** capacidad instalada\
+
+Save as: olade_grupo9.xlsx
