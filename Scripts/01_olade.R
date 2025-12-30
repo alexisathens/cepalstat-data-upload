@@ -72,10 +72,10 @@ clean_grupo_standard <- function(input_file, output_file) {
     select(-std_name)
 
   # Check which countries don't match to iso
-  data %>%
-    filter(!Country %in% iso$name) %>%
-    distinct(Country) %>%
-    print()
+  # data %>%
+  #   filter(!Country %in% iso$name) %>%
+  #   distinct(Country) %>%
+  #   print()
 
   # Filter to LAC countries only
   data %<>%
@@ -129,10 +129,10 @@ clean_grupo_years_as_cols <- function(input_file, output_file, filter_pattern = 
     select(-std_name)
 
   # Check which countries don't match to iso
-  data %>%
-    filter(!Country %in% iso$name) %>%
-    distinct(Country) %>%
-    print()
+  # data %>%
+  #   filter(!Country %in% iso$name) %>%
+  #   distinct(Country) %>%
+  #   print()
 
   # Filter to LAC countries only
   data %<>%
@@ -165,6 +165,7 @@ grupo1 <- clean_grupo_standard("olade_grupo1.xlsx", "grupo1_raw.csv")
 
 # ---- GRUPO 5 ----
 
+## *** this is the excel file with the incorrect Brazil data - manually fix for now
 grupo5 <- clean_grupo_standard("olade_grupo5.xlsx", "grupo5_raw.csv")
 
 
@@ -232,7 +233,7 @@ grupo9 %<>%
   filter(!is.na(value))
 
 # Check unmatched countries
-grupo9 %>% filter(!Country %in% iso$name) %>% distinct(Country) %>% print()
+# grupo9 %>% filter(!Country %in% iso$name) %>% distinct(Country) %>% print()
 
 # Export
 write.csv(grupo9, file = file.path(output_path, "grupo9_raw.csv"), row.names = FALSE)
