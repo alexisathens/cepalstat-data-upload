@@ -153,6 +153,69 @@ clean_grupo_years_as_cols <- function(input_file, output_file, filter_pattern = 
 }
 
 
+# ---- GRUPO 2 ----
+
+# Custom structure: Activities as rows, countries as columns
+file_path_g2 <- paste0(input_path, "/olade_grupo2.xlsx")
+data_g2 <- read_excel(file_path_g2, col_names = FALSE)
+
+# Extract header and unit rows
+header_row_g2 <- data_g2[3,]
+unit_row_g2 <- data_g2[4,]
+
+# Remove header rows
+data_g2 %<>% remove_headers(header_row_g2, unit_row_g2)
+
+# Format header row
+colnames(data_g2) <- standardize_headers(header_row_g2)
+
+# Create year field
+data_g2 %<>%
+  mutate(Years = str_extract(Country, "\\b\\d{4}$")) %>%
+  fill(Years, .direction = "down") %>%
+  select(Country, Years, everything())
+
+# Remove year header rows
+data_g2 %<>%
+  filter(!str_detect(Country, "\\b\\d{4}$")) %>%
+  filter(Country != "Series de oferta y demanda")
+
+# The "Country" column actually contains activities - rename it
+data_g2 %<>%
+  rename(Activity = Country)
+
+# Pivot to long format: Activities to rows, countries to columns → need to pivot countries
+data_g2 %<>%
+  pivot_longer(cols = -c(Activity, Years), names_to = "Country", values_to = "value") %>%
+  mutate(value = as.numeric(value)) %>%
+  filter(!is.na(value))
+
+# Standardize country names
+data_g2 %<>%
+  left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
+  mutate(Country = coalesce(std_name, Country)) %>%
+  select(-std_name)
+
+# Filter to LAC countries only
+data_g2 %<>%
+  filter(Country %in% iso$name) %>%
+  filter(!Country %in% c("Central America", "South America", "Caribbean"))
+
+# Reorder columns
+data_g2 %<>%
+  select(Country, Years, Activity, value)
+
+# Export
+write.csv(data_g2, file = file.path(output_path, "grupo2_raw.csv"), row.names = FALSE)
+
+message(glue("✓ Exported grupo2_raw.csv"))
+
+
+# ---- GRUPO 3 ----
+
+grupo3 <- clean_grupo_standard("olade_grupo3.xlsx", "grupo3_raw.csv")
+
+
 # ---- GRUPO 4 ----
 
 grupo4 <- clean_grupo_standard("olade_grupo4.xlsx", "grupo4_raw.csv")
