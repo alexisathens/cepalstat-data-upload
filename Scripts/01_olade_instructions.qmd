@@ -6,3 +6,45 @@ editor: visual
 
 # OLADE Indicator Groups
 
+## Grupo 1: total energy supply, in barrels of oil equivalent (bep)
+
+**Data source:** Series de oferta y demanda\
+https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** unidad\
+-   **Columnas:** energético\
+-   **Unidades:** 10^3 bep\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Actividad:** oferta total\
+-   **Energético:** -\
+
+Save as: olade_grupo1.xlsx
+
+
+
+## Grupo 2: energy use by economic sector, in tonnes of oil equivalent (tep)
+
+**Data source:** Series de oferta y demanda\
+https://sielac.olade.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1
+
+For the report, select:
+
+-   **Filas:** actividad\
+-   **Columnas:** unidad\
+-   **Unidades:** tep\
+
+For the filters, select:
+
+-   **Unidad de información:** -\
+-   **Tiempo:** -\
+-   **Actividad:** transporte; industrial; comercial, servicios, público; y agro, pesca, minería
+-   **Energético:** total\
+
+Save as: olade_grupo2.xlsx
+
