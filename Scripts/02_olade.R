@@ -29,13 +29,15 @@ iso %<>%
 # read in indicator metadata
 # meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
-max_year <- 2023 # define most recent year with full data
+max_year <- 2024 # define most recent year with full data
 
 
 # ---- read downloaded files ----
 olade_path <- here("Data/Raw/olade")
 
 data_g1 <- read_csv(paste0(olade_path, "/grupo1_raw.csv"))
+data_g2 <- read_csv(paste0(olade_path, "/grupo2_raw.csv"))
+data_g3 <- read_csv(paste0(olade_path, "/grupo3_raw.csv"))
 data_g4 <- read_csv(paste0(olade_path, "/grupo4_raw.csv"))
 data_g5 <- read_csv(paste0(olade_path, "/grupo5_raw.csv"))
 data_g6 <- read_csv(paste0(olade_path, "/grupo6_raw.csv"))
