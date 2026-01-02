@@ -654,108 +654,6 @@ result_4234 <- process_indicator(
   export = TRUE
 )
 
-
-# ---- indicator 3155 — Renewable proportion that does not require combustion of primary energy supply ----
-
-indicator_id <- 3155
-
-dim_config_3155 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_3155 <- function(data) {
-  data %>%
-    mutate(Type = case_when(
-      Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
-      TRUE ~ Type
-    ))
-}
-
-transform_3155 <- function(data) {
-  # Renewable sources that do NOT require combustion
-  clean_renew <- c("Hidroenergía", "Geotermia", "Otras primarias", "Eólica", "Solar")
-
-  data %>%
-    filter(Type %in% clean_renew | Type == "Total primarias") %>%
-    mutate(Renewable = ifelse(Type %in% clean_renew, "Renew", "Total")) %>%
-    group_by(Country, Years, Renewable) %>%
-    summarize(value = sum_or_na(value), .groups = "drop") %>%
-    pivot_wider(names_from = Renewable) %>%
-    mutate(value = Renew / Total * 100) %>%
-    select(Country, Years, value) %>%
-    filter(!is.na(value))
-}
-
-footnotes_3155 <- function(data) {
-  data # keep footnotes_id as empty
-}
-
-result_3155 <- process_indicator(
-  indicator_id = indicator_id,
-  data = data_g1,
-  dim_config = dim_config_3155,
-  filter_fn = filter_3155,
-  transform_fn = transform_3155,
-  footnotes_fn = footnotes_3155,
-  remove_lac = FALSE, # keep source LAC data from OLADE
-  diagnostics = TRUE,
-  export = TRUE
-)
-
-
-# ---- indicator 2024 — Renewable proportion of total energy supply ----
-
-indicator_id <- 2024
-
-dim_config_2024 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_2024 <- function(data) {
-  data %>%
-    mutate(Type = case_when(
-      Type == "Bagazo de caña" ~ "Caña de azúcar y derivados",
-      TRUE ~ Type
-    ))
-}
-
-transform_2024 <- function(data) {
-  renew <- c("Hidroenergía", "Geotermia", "Otras primarias", "Eólica", "Solar",
-             "Leña", "Caña de azúcar y derivados", "Etanol", "Otra biomasa", "Biodiésel", "Biogás")
-
-  data %>%
-    # Filter only on renewables and total supply (not total primarias)
-    filter(Type %in% renew | Type == "Total") %>%
-    mutate(Renewable = ifelse(Type %in% renew, "Renew", "Total")) %>%
-    group_by(Country, Years, Renewable) %>%
-    summarize(value = sum_or_na(value), .groups = "drop") %>%
-    pivot_wider(names_from = Renewable) %>%
-    mutate(value = Renew / Total * 100) %>%
-    select(Country, Years, value) %>%
-    filter(!is.na(value))
-}
-
-footnotes_2024 <- function(data) {
-  data # keep footnotes_id as empty
-}
-
-result_2024 <- process_indicator(
-  indicator_id = indicator_id,
-  data = data_g1,
-  dim_config = dim_config_2024,
-  filter_fn = filter_2024,
-  transform_fn = transform_2024,
-  footnotes_fn = footnotes_2024,
-  remove_lac = FALSE, # keep source LAC data from OLADE
-  diagnostics = TRUE,
-  export = TRUE
-)
-
-
 # ---- indicator 4243 — Energy intensity by economic activity (constant 2018 dollars) ----
 
 indicator_id <- 4243
@@ -774,21 +672,27 @@ filter_4243 <- function(data) {
 transform_4243 <- function(data) {
   # Obtain GDP by economic activity from CEPALSTAT (indicator 2216)
   gdp_by_activity <- call.data(id.indicator = 2216) %>% as_tibble()
-
+  
+  # 2216 - Annual Gross Domestic Product (GDP) by activity at constant prices in dollars (Millions of dollars)
+  # technical note shows that the constant prices are in 2018$
+  
+  get_indicator_dimensions(4243)
+  get_ind_dimension_table(2216, 21004) %>% filter(parent == 21004) %>% distinct(name)
+  
+  get_ind_dimension_table(4243, 78134) %>% distinct(name)
+  
   # Standardize activity names to match between OLADE and CEPALSTAT
-  data %<>%
-    mutate(Activity = case_when(
-      str_detect(Activity, "(?i)transporte") ~ "Transporte",
-      str_detect(Activity, "(?i)industrial") ~ "Industria",
-      str_detect(Activity, "(?i)comercial|servicios") ~ "Comercio",
-      str_detect(Activity, "(?i)agro|pesca|minería") ~ "Agricultura",
-      TRUE ~ Activity
-    ))
-
-  gdp_by_activity %<>%
+  gdp_by_activity %>%
+    rename(Activity = Rubro__Sector_Cuentas_nacionales_anuales) %>% 
     mutate(
       Years = as.numeric(Years),
       Activity = case_when(
+        Activity == "Agriculture, hunting, forestry and fishing" ~ "Agriculture, fishing and mining",
+        Acitivty == "Mining and quarrying" ~ "Agriculture, fishing and mining",
+        
+        ## continue when I have more details on what GDP categories to use...
+        
+        
         str_detect(Activity, "(?i)transporte") ~ "Transporte",
         str_detect(Activity, "(?i)industria") ~ "Industria",
         str_detect(Activity, "(?i)comercio") ~ "Comercio",
@@ -797,6 +701,22 @@ transform_4243 <- function(data) {
       )
     ) %>%
     select(Country, Years, Activity, gdp = value)
+  
+  
+  data %>%
+    mutate()
+    mutate(Activity = case_when(
+      
+      
+      
+      str_detect(Activity, "(?i)transporte") ~ "Transporte",
+      str_detect(Activity, "(?i)industrial") ~ "Industria",
+      str_detect(Activity, "(?i)comercial|servicios") ~ "Comercio",
+      str_detect(Activity, "(?i)agro|pesca|minería") ~ "Agricultura",
+      TRUE ~ Activity
+    ))
+
+  
 
   # Join GDP data and calculate energy intensity
   data %>%
@@ -824,203 +744,203 @@ result_4243 <- process_indicator(
 )
 
 
-# ---- indicator 4242 — Energy intensity by economic activity (PPP) ----
-
-indicator_id <- 4242
-
-dim_config_4242 <- tibble(
-  data_col = c("Country", "Years", "Activity"),
-  dim_id = c("208", "29117", "20723"),
-  pub_col = c("208_name", "29117_name", "20723_name_es")
-)
-
-filter_4242 <- function(data) {
-  data %>%
-    filter(Years <= max_year) # remove most recent year with only LatAm
-}
-
-transform_4242 <- function(data) {
-  # Obtain GDP by economic activity from CEPALSTAT (indicator 2216) - constant dollars
-  gdp_by_activity <- call.data(id.indicator = 2216) %>% as_tibble()
-
-  # Obtain total GDP in PPP (need to identify the correct indicator)
-  # Assuming GDP PPP indicator - will need to verify correct indicator ID
-  # For now using 2204 (GDP constant prices) as placeholder - user may need to update
-  gdp_ppp <- call.data(id.indicator = 2204) %>%
-    as_tibble() %>%
-    mutate(Years = as.numeric(Years)) %>%
-    select(Country, Years, gdp_ppp = value)
-
-  # Standardize activity names to match between OLADE and CEPALSTAT
-  data %<>%
-    mutate(Activity = case_when(
-      str_detect(Activity, "(?i)transporte") ~ "Transporte",
-      str_detect(Activity, "(?i)industrial") ~ "Industria",
-      str_detect(Activity, "(?i)comercial|servicios") ~ "Comercio",
-      str_detect(Activity, "(?i)agro|pesca|minería") ~ "Agricultura",
-      TRUE ~ Activity
-    ))
-
-  gdp_by_activity %<>%
-    mutate(
-      Years = as.numeric(Years),
-      Activity = case_when(
-        str_detect(Activity, "(?i)transporte") ~ "Transporte",
-        str_detect(Activity, "(?i)industria") ~ "Industria",
-        str_detect(Activity, "(?i)comercio") ~ "Comercio",
-        str_detect(Activity, "(?i)agricultura|agropecuario") ~ "Agricultura",
-        TRUE ~ Activity
-      )
-    ) %>%
-    select(Country, Years, Activity, gdp_activity = value)
-
-  # Calculate total GDP by activity for each country-year
-  gdp_total_by_activity <- gdp_by_activity %>%
-    group_by(Country, Years) %>%
-    summarize(gdp_total = sum(gdp_activity, na.rm = TRUE), .groups = "drop")
-
-  # Calculate ponderations (activity GDP / total GDP)
-  gdp_with_pond <- gdp_by_activity %>%
-    left_join(gdp_total_by_activity, by = c("Country", "Years")) %>%
-    mutate(ponderation = gdp_activity / gdp_total)
-
-  # Join with PPP GDP and calculate adjusted GDP by activity
-  gdp_adjusted <- gdp_with_pond %>%
-    left_join(gdp_ppp, by = c("Country", "Years")) %>%
-    mutate(gdp_activity_ppp = ponderation * gdp_ppp) %>%
-    select(Country, Years, Activity, gdp = gdp_activity_ppp)
-
-  # Join with energy data and calculate intensity
-  data %>%
-    left_join(gdp_adjusted, by = c("Country", "Years", "Activity")) %>%
-    rename(energy = value) %>%
-    mutate(value = energy / gdp) %>%
-    select(Country, Years, Activity, value) %>%
-    filter(!is.na(value))
-}
-
-footnotes_4242 <- function(data) {
-  data # keep footnotes_id as empty
-}
-
-result_4242 <- process_indicator(
-  indicator_id = indicator_id,
-  data = data_g2,
-  dim_config = dim_config_4242,
-  filter_fn = filter_4242,
-  transform_fn = transform_4242,
-  footnotes_fn = footnotes_4242,
-  remove_lac = FALSE, # keep source LAC data from OLADE
-  diagnostics = TRUE,
-  export = TRUE
-)
-
-
-# ---- indicator 4183 — Variation rate of GDP energy intensity (primary energy supply) ----
-
-indicator_id <- 4183
-
-dim_config_4183 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_4183 <- function(data) {
-  data %>%
-    filter(Type == "Total primarias") %>%
-    select(-Type)
-}
-
-transform_4183 <- function(data) {
-  # Obtain GDP data from CEPALSTAT (indicator 2204)
-  pib <- call.data(id.indicator = 2204) %>% as_tibble()
-
-  pib %<>%
-    mutate(Years = as.numeric(Years)) %>%
-    select(Country, Years, pib = value)
-
-  # Join GDP data and calculate energy intensity
-  intensity <- data %>%
-    left_join(pib, by = c("Country", "Years")) %>%
-    filter(as.numeric(Years) >= 1990) %>%
-    rename(supply = value) %>%
-    mutate(intensity = supply / pib) %>%
-    select(Country, Years, intensity) %>%
-    filter(!is.na(intensity))
-
-  # Calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
-  intensity %>%
-    arrange(Country, Years) %>%
-    group_by(Country) %>%
-    mutate(
-      intensity_prev = lag(intensity),
-      value = ((intensity - intensity_prev) / intensity_prev) * 100
-    ) %>%
-    ungroup() %>%
-    select(Country, Years, value) %>%
-    filter(!is.na(value))
-}
-
-footnotes_4183 <- function(data) {
-  data # keep footnotes_id as empty
-}
-
-result_4183 <- process_indicator(
-  indicator_id = indicator_id,
-  data = data_g1,
-  dim_config = dim_config_4183,
-  filter_fn = filter_4183,
-  transform_fn = transform_4183,
-  footnotes_fn = footnotes_4183,
-  remove_lac = FALSE, # keep source LAC data from OLADE
-  diagnostics = TRUE,
-  export = TRUE
-)
-
-
-# ---- indicator 4184 — Variation rate of GDP energy intensity (final energy consumption) ----
-
-indicator_id <- 4184
-
-dim_config_4184 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_4184 <- function(data) {
-  data %>%
-    filter(Years <= max_year) # remove most recent year with only LatAm
-}
-
-transform_4184 <- function(data) {
-  # Data already contains energy intensity (from Grupo 7)
-  # Just need to calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
-  data %>%
-    arrange(Country, Years) %>%
-    group_by(Country) %>%
-    mutate(
-      intensity_prev = lag(value),
-      value = ((value - intensity_prev) / intensity_prev) * 100
-    ) %>%
-    ungroup() %>%
-    select(Country, Years, value) %>%
-    filter(!is.na(value))
-}
-
-footnotes_4184 <- function(data) {
-  data # keep footnotes_id as empty
-}
-
-result_4184 <- process_indicator(
-  indicator_id = indicator_id,
-  data = data_g7,
-  dim_config = dim_config_4184,
-  filter_fn = filter_4184,
-  transform_fn = transform_4184,
-  footnotes_fn = footnotes_4184,
-  remove_lac = FALSE, # keep source LAC data from OLADE
-  diagnostics = TRUE,
-  export = TRUE
-)
+# # ---- indicator 4242 — Energy intensity by economic activity (PPP) ----
+# 
+# indicator_id <- 4242
+# 
+# dim_config_4242 <- tibble(
+#   data_col = c("Country", "Years", "Activity"),
+#   dim_id = c("208", "29117", "20723"),
+#   pub_col = c("208_name", "29117_name", "20723_name_es")
+# )
+# 
+# filter_4242 <- function(data) {
+#   data %>%
+#     filter(Years <= max_year) # remove most recent year with only LatAm
+# }
+# 
+# transform_4242 <- function(data) {
+#   # Obtain GDP by economic activity from CEPALSTAT (indicator 2216) - constant dollars
+#   gdp_by_activity <- call.data(id.indicator = 2216) %>% as_tibble()
+# 
+#   # Obtain total GDP in PPP (need to identify the correct indicator)
+#   # Assuming GDP PPP indicator - will need to verify correct indicator ID
+#   # For now using 2204 (GDP constant prices) as placeholder - user may need to update
+#   gdp_ppp <- call.data(id.indicator = 2204) %>%
+#     as_tibble() %>%
+#     mutate(Years = as.numeric(Years)) %>%
+#     select(Country, Years, gdp_ppp = value)
+# 
+#   # Standardize activity names to match between OLADE and CEPALSTAT
+#   data %<>%
+#     mutate(Activity = case_when(
+#       str_detect(Activity, "(?i)transporte") ~ "Transporte",
+#       str_detect(Activity, "(?i)industrial") ~ "Industria",
+#       str_detect(Activity, "(?i)comercial|servicios") ~ "Comercio",
+#       str_detect(Activity, "(?i)agro|pesca|minería") ~ "Agricultura",
+#       TRUE ~ Activity
+#     ))
+# 
+#   gdp_by_activity %<>%
+#     mutate(
+#       Years = as.numeric(Years),
+#       Activity = case_when(
+#         str_detect(Activity, "(?i)transporte") ~ "Transporte",
+#         str_detect(Activity, "(?i)industria") ~ "Industria",
+#         str_detect(Activity, "(?i)comercio") ~ "Comercio",
+#         str_detect(Activity, "(?i)agricultura|agropecuario") ~ "Agricultura",
+#         TRUE ~ Activity
+#       )
+#     ) %>%
+#     select(Country, Years, Activity, gdp_activity = value)
+# 
+#   # Calculate total GDP by activity for each country-year
+#   gdp_total_by_activity <- gdp_by_activity %>%
+#     group_by(Country, Years) %>%
+#     summarize(gdp_total = sum(gdp_activity, na.rm = TRUE), .groups = "drop")
+# 
+#   # Calculate ponderations (activity GDP / total GDP)
+#   gdp_with_pond <- gdp_by_activity %>%
+#     left_join(gdp_total_by_activity, by = c("Country", "Years")) %>%
+#     mutate(ponderation = gdp_activity / gdp_total)
+# 
+#   # Join with PPP GDP and calculate adjusted GDP by activity
+#   gdp_adjusted <- gdp_with_pond %>%
+#     left_join(gdp_ppp, by = c("Country", "Years")) %>%
+#     mutate(gdp_activity_ppp = ponderation * gdp_ppp) %>%
+#     select(Country, Years, Activity, gdp = gdp_activity_ppp)
+# 
+#   # Join with energy data and calculate intensity
+#   data %>%
+#     left_join(gdp_adjusted, by = c("Country", "Years", "Activity")) %>%
+#     rename(energy = value) %>%
+#     mutate(value = energy / gdp) %>%
+#     select(Country, Years, Activity, value) %>%
+#     filter(!is.na(value))
+# }
+# 
+# footnotes_4242 <- function(data) {
+#   data # keep footnotes_id as empty
+# }
+# 
+# result_4242 <- process_indicator(
+#   indicator_id = indicator_id,
+#   data = data_g2,
+#   dim_config = dim_config_4242,
+#   filter_fn = filter_4242,
+#   transform_fn = transform_4242,
+#   footnotes_fn = footnotes_4242,
+#   remove_lac = FALSE, # keep source LAC data from OLADE
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
+# 
+# 
+# # ---- indicator 4183 — Variation rate of GDP energy intensity (primary energy supply) ----
+# 
+# indicator_id <- 4183
+# 
+# dim_config_4183 <- tibble(
+#   data_col = c("Country", "Years"),
+#   dim_id = c("208", "29117"),
+#   pub_col = c("208_name", "29117_name")
+# )
+# 
+# filter_4183 <- function(data) {
+#   data %>%
+#     filter(Type == "Total primarias") %>%
+#     select(-Type)
+# }
+# 
+# transform_4183 <- function(data) {
+#   # Obtain GDP data from CEPALSTAT (indicator 2204)
+#   pib <- call.data(id.indicator = 2204) %>% as_tibble()
+# 
+#   pib %<>%
+#     mutate(Years = as.numeric(Years)) %>%
+#     select(Country, Years, pib = value)
+# 
+#   # Join GDP data and calculate energy intensity
+#   intensity <- data %>%
+#     left_join(pib, by = c("Country", "Years")) %>%
+#     filter(as.numeric(Years) >= 1990) %>%
+#     rename(supply = value) %>%
+#     mutate(intensity = supply / pib) %>%
+#     select(Country, Years, intensity) %>%
+#     filter(!is.na(intensity))
+# 
+#   # Calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
+#   intensity %>%
+#     arrange(Country, Years) %>%
+#     group_by(Country) %>%
+#     mutate(
+#       intensity_prev = lag(intensity),
+#       value = ((intensity - intensity_prev) / intensity_prev) * 100
+#     ) %>%
+#     ungroup() %>%
+#     select(Country, Years, value) %>%
+#     filter(!is.na(value))
+# }
+# 
+# footnotes_4183 <- function(data) {
+#   data # keep footnotes_id as empty
+# }
+# 
+# result_4183 <- process_indicator(
+#   indicator_id = indicator_id,
+#   data = data_g1,
+#   dim_config = dim_config_4183,
+#   filter_fn = filter_4183,
+#   transform_fn = transform_4183,
+#   footnotes_fn = footnotes_4183,
+#   remove_lac = FALSE, # keep source LAC data from OLADE
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
+# 
+# 
+# # ---- indicator 4184 — Variation rate of GDP energy intensity (final energy consumption) ----
+# 
+# indicator_id <- 4184
+# 
+# dim_config_4184 <- tibble(
+#   data_col = c("Country", "Years"),
+#   dim_id = c("208", "29117"),
+#   pub_col = c("208_name", "29117_name")
+# )
+# 
+# filter_4184 <- function(data) {
+#   data %>%
+#     filter(Years <= max_year) # remove most recent year with only LatAm
+# }
+# 
+# transform_4184 <- function(data) {
+#   # Data already contains energy intensity (from Grupo 7)
+#   # Just need to calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
+#   data %>%
+#     arrange(Country, Years) %>%
+#     group_by(Country) %>%
+#     mutate(
+#       intensity_prev = lag(value),
+#       value = ((value - intensity_prev) / intensity_prev) * 100
+#     ) %>%
+#     ungroup() %>%
+#     select(Country, Years, value) %>%
+#     filter(!is.na(value))
+# }
+# 
+# footnotes_4184 <- function(data) {
+#   data # keep footnotes_id as empty
+# }
+# 
+# result_4184 <- process_indicator(
+#   indicator_id = indicator_id,
+#   data = data_g7,
+#   dim_config = dim_config_4184,
+#   filter_fn = filter_4184,
+#   transform_fn = transform_4184,
+#   footnotes_fn = footnotes_4184,
+#   remove_lac = FALSE, # keep source LAC data from OLADE
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
