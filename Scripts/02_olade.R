@@ -175,6 +175,11 @@ dim_config_2041 <- tibble(
 
 filter_2041 <- function(data) {
   data %>%
+    filter(Years <= max_year)
+}
+
+transform_2041 <- function(data) {
+  data %>%
     mutate(Type = case_when(
       Type == "Bagazo de caña" ~ "Productos de caña",
       Type == "Diésel oil con biodiésel" ~ "Diesel oil",
@@ -188,14 +193,10 @@ filter_2041 <- function(data) {
       Type == "Total secundarias" ~ "SECUNDARIA",
       TRUE ~ Type
     )) %>%
-    filter(Type %in% c("PRIMARIA", "SECUNDARIA")) %>%
-    filter(Years <= max_year) # remove LatAm only entry for 2024
-}
-
-transform_2041 <- function(data) {
-  data %>%
     group_by(Country, Years, Type) %>%
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    # Drop new categories to avoid duplication
+    filter(!Type %in% c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total"))
 }
 
 footnotes_2041 <- function(data) {
