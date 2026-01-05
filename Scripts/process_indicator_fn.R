@@ -216,7 +216,7 @@ process_indicator <- function(indicator_id, data, dim_config,
 #   transform_fn = transform_2022,
 #   regional_fn = regional_2022,
 #   footnotes_fn = footnotes_2022,
-#   source_id = source_2022,
+#   source_fn = source_2022,
 #   diagnostics = TRUE,
 #   export = TRUE
 # )
