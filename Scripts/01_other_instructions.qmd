@@ -4,23 +4,21 @@ format: html
 editor: visual
 ---
 
-## Quarto
+# Indicators from "Other" sources
 
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
+## International Renewable Energy Agency (IRENA)
+*Indicator 4244 - Public investment trends in renewable energy*
 
-## Running Code
+**Data source:** IRENA/Data/Finance and Investment/Renewable Energy Finance Flows
 
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
+Website: [https://www.irena.org/Statistics/View-Data-by-Topic/Finance-and-Investment/Renewable-Energy-Finance-Flows](https://www.irena.org/Statistics/View-Data-by-Topic/Finance-and-Investment/Renewable-Energy-Finance-Flows)
 
-```{r}
-1 + 1
-```
+For the report, select:
 
-You can add options to executable code like this
+- In the Tableau dashboard, navigate to the tab "Project Details"
+- Select: Region [all], Country [all], Technology [all], Year [all]
+- Click the "Bulk Download" link
+- Download a copy of the xlsx file
 
-```{r}
-#| echo: false
-2 * 2
-```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+Save as: Data/Raw/other/**irena_raw.xlsx**
