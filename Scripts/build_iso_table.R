@@ -100,7 +100,9 @@ manual_entries <- tribble(
   "Trinidad & Tobago",        "Trinidad and Tobago",
   "Sint Maarten",             "Sint Maarten (Dutch part)",
   "Bermuda",                  "Bermudas",
-  "CuraÃ§ao",                 "Curaçao"
+  "CuraÃ§ao",                 "Curaçao",
+  "Dominican Republic (the)", "Dominican Republic",
+  "Bahamas (the)",            "Bahamas"
 )
 
 # Add manual entries and fill CEPALSTAT ids
