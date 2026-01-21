@@ -20,6 +20,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     mutate(Country = coalesce(std_name, Country)) %>%
     select(-std_name) %>%
     filter(Country %in% iso$name)
+  # if this is dropping LAC countries, manually add the country names as they're represented in the data source in the build_iso_table.R file
 
   # Conditionally remove LAC regional groupings
   if (remove_lac) {
@@ -137,13 +138,14 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 4463
-# data = data_4463
-# dim_config = dim_config_4463
-# filter_fn = filter_4463
-# transform_fn = transform_4463
-# regional_fn = regional_4463
-# footnotes_fn = footnotes_4463
+# indicator_id = 4462
+# data = data_4462
+# dim_config = dim_config_4462
+# filter_fn = filter_4462
+# transform_fn = transform_4462
+# remove_lac = TRUE
+# regional_fn = regional_4462
+# footnotes_fn = footnotes_4462
 # source_fn = NULL
 # diagnostics = TRUE
 # export = FALSE
