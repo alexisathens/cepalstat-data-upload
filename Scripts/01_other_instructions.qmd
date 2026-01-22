@@ -7,18 +7,35 @@ editor: visual
 # Indicators from "Other" sources
 
 ## International Renewable Energy Agency (IRENA)
+
 *Indicator 4244 - Public investment trends in renewable energy*
 
 **Data source:** IRENA/Data/Finance and Investment/Renewable Energy Finance Flows
 
-Website: [https://www.irena.org/Statistics/View-Data-by-Topic/Finance-and-Investment/Renewable-Energy-Finance-Flows](https://www.irena.org/Statistics/View-Data-by-Topic/Finance-and-Investment/Renewable-Energy-Finance-Flows)
+Website: <https://www.irena.org/Statistics/View-Data-by-Topic/Finance-and-Investment/Renewable-Energy-Finance-Flows>
 
 For the report, select:
 
-- In the Tableau dashboard, navigate to the tab "Project Details"
-- Select: Region [all], Country [all], Technology [all], Year [all]
-- Click the "Bulk Download" link
-- Download a copy of the xlsx file
-
+-   In the Tableau dashboard, navigate to the tab "Project Details"
+-   Select: Region \[all\], Country \[all\], Technology \[all\], Year \[all\]
+-   Click the "Bulk Download" link
+-   Download a copy of the xlsx file
 
 Save as: Data/Raw/other/**irena_raw.xlsx**
+
+## International Accreditation Forum (IAF) - ISO Survey
+
+*Indicator 1763 - ISO 14001-certified enterprises* 
+*Indicator 2030 - ISO 14001-certified enterprises by economic activities* (this indicator is to be removed)
+*Indicator ISO 14001-certified enterprises per billion dollars of GDP*
+
+**Data source:** IAF/Market Intelligence (ISO Survey)/ISO Survey Data
+
+Website: <https://www.iafcertsearch.org/analytics/iso-survey>
+Note that you'll need to create a free account to access this data.
+
+For the report, select the latest year of data:
+
+-   Download the file with the title "1. ISO Survey 2024 results - number of certificates and sites per country and the number of sectors overall"
+
+Save as: Data/Raw/other/**iso_raw.xlsx**
