@@ -23,6 +23,7 @@ For the report, select:
 
 Save as: Data/Raw/other/**irena_raw.xlsx**
 
+
 ## International Accreditation Forum (IAF) - ISO Survey
 
 *Indicator 1763 - ISO 14001-certified enterprises* 
@@ -39,3 +40,28 @@ For the report, select the latest year of data:
 -   Download the file with the title "1. ISO Survey 2024 results - number of certificates and sites per country and the number of sectors overall"
 
 Save as: Data/Raw/other/**iso_raw.xlsx**
+
+
+## UN Environment Programme (UNEP)
+
+*2037 - Consumption of ozone depleting substances (ODS)*
+
+**Data source:** UNEP/Country Data/Data Centre/Consumption of Controlled Substances
+
+Website: <https://ozone.unep.org/countries/data>
+
+For the report, select:
+
+-   Choose "Data in Tables" to obtain data at a more detailed level
+-   Output units: ODP tonnes or in CO2-eq tonnes
+-   Party: keep as "choose some options" (keep the default select-all option)
+-   Select radio button "Show individual parties"
+-   Group of parties: select "Latin America and the Caribbean"
+-   Annex Group: select chlorofluorocarbons (CFCs), halons, other fully halogenated CFCs, carbon tetrachloride (CTC), methyl chloroform (TCA), hydrochlorofluorocarbons (HCFCs), hydrobromofluorocarbons (HBFCs), bromochloromethane (BCM), and methyl bromide (MB). Note that this is all the substances in the list EXCEPT hydrofluorocarbons (HFCs), which are not ozone depleting.
+-   Period: choose all years
+-   More filters: leave these un-selected
+-   Group by: select radio button "Group output by Annex group"
+-   Download the Excel file for EACH annex group (substance). The result should be 9 xlsx files.
+-   Rename each xlsx file in the format as follows: ods_cfc_raw.xlsx or ods_mb_raw.xlsx
+
+Save as: Data/Raw/other/**ods_hcfc_raw.xlsx** (in this pattern, x9 files)
