@@ -29,7 +29,7 @@ iso %<>%
 # read in indicator metadata
 # meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
-# max_year <- 2024 # define most recent year with full data
+max_year <- 2024 # define most recent year with full data
 
 
 # ---- read downloaded files ----
@@ -51,6 +51,8 @@ data_iso_2021 <- read_xlsx(paste0(input_path, "/iso_2021_raw.xlsx"), sheet = "IS
 # data_odp_hcfc <- read_xlsx(paste0(input_path, "/odp_hcfc_raw.xlsx"), skip = 1)
 # data_odp_mb <- read_xlsx(paste0(input_path, "/odp_mb_raw.xlsx"), skip = 1)
 # data_odp_tca <- read_xlsx(paste0(input_path, "/odp_tca_raw.xlsx"), skip = 1)
+
+data_ramsar <- read_xlsx(paste0(input_path, "/ramsar_raw.xlsx"))
 
 
 # ---- indicator 4244 — Public investment trends in renewable energy ----
@@ -358,3 +360,55 @@ result_2037 <- process_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+
+# ---- indicator 2016 - Surface area of Ramsar designated wetlands ----
+
+indicator_id <- 2016
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2016 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2016 <- function(data) {
+  data %>% 
+    select(Country, Date = `Designation date`, value = `Area (ha)`)
+}
+
+transform_2016 <- function(data) {
+  data %>% 
+    # expend year data since data source only lists the start year it was designated
+    mutate(start_year = year(Date)) %>% 
+    rowwise() %>%
+    mutate(Years = list(seq(start_year, max_year))) %>%
+    ungroup() %>%
+    unnest(Years) %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+}
+
+footnotes_2016 <- function(data) {
+  data %>%
+    mutate(
+      footnotes_id = if_else(Country == "Latin America and the Caribbean", append_footnote(footnotes_id, "12417"), footnotes_id))
+  # 12417/ Valor total calculado por CEPAL en base a la información disponible en la fuente.
+}
+
+result_2016 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_ramsar,
+  dim_config = dim_config_2016,
+  filter_fn = filter_2016,
+  transform_fn = transform_2016,
+  remove_lac = TRUE, # remove and recalculate LAC as simple sum
+  footnotes_fn = footnotes_2016,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
