@@ -65,3 +65,20 @@ For the report, select:
 -   Rename each xlsx file in the format as follows: ods_cfc_raw.xlsx or ods_mb_raw.xlsx
 
 Save as: Data/Raw/other/**ods_hcfc_raw.xlsx** (in this pattern, x9 files)
+
+
+## Ramsar
+
+*Indicator 2016 - Surface area of Ramsar designated wetlands*
+
+**Data source:** Ramsar/Explore Sites
+
+Website: <https://rsis.ramsar.org/#exports>
+
+For the report, select:
+
+-   Within the Ramsar site area, select the tab "Exports"
+-   Select the default format as "Microsoft Excel file"
+-   Enter your email for the results to be sent
+
+Save as: Data/Raw/other/**ramsar_raw.xlsx**
