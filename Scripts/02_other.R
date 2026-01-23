@@ -35,10 +35,22 @@ iso %<>%
 # ---- read downloaded files ----
 
 data_irena <- read_xlsx(paste0(input_path, "/irena_raw.xlsx"))
+
 data_iso_2024 <- read_xlsx(paste0(input_path, "/iso_2024_raw.xlsx"), sheet = "ISO 14001", skip = 1) # in future years, we'll only need to download one year at a time
 data_iso_2023 <- read_xlsx(paste0(input_path, "/iso_2023_raw.xlsx"), sheet = "ISO 14001", skip = 1)
 data_iso_2022 <- read_xlsx(paste0(input_path, "/iso_2022_raw.xlsx"), sheet = "ISO 14001", skip = 1)
 data_iso_2021 <- read_xlsx(paste0(input_path, "/iso_2021_raw.xlsx"), sheet = "ISO 14001", skip = 1)
+
+## read these in instead in indicator 2037 code with function
+# data_odp_bcm <- read_xlsx(paste0(input_path, "/odp_bcm_raw.xlsx"), skip = 1)
+# data_odp_cfc <- read_xlsx(paste0(input_path, "/odp_cfc_raw.xlsx"), skip = 1)
+# data_odp_ctc <- read_xlsx(paste0(input_path, "/odp_ctc_raw.xlsx"), skip = 1)
+# data_odp_halcfc <- read_xlsx(paste0(input_path, "/odp_halcfc_raw.xlsx"), skip = 1)
+# data_odp_halons <- read_xlsx(paste0(input_path, "/odp_halons_raw.xlsx"), skip = 1)
+# data_odp_hbfc <- read_xlsx(paste0(input_path, "/odp_hbfc_raw.xlsx"), skip = 1)
+# data_odp_hcfc <- read_xlsx(paste0(input_path, "/odp_hcfc_raw.xlsx"), skip = 1)
+# data_odp_mb <- read_xlsx(paste0(input_path, "/odp_mb_raw.xlsx"), skip = 1)
+# data_odp_tca <- read_xlsx(paste0(input_path, "/odp_tca_raw.xlsx"), skip = 1)
 
 
 # ---- indicator 4244 — Public investment trends in renewable energy ----
@@ -253,6 +265,96 @@ result_2029 <- process_indicator(
   remove_lac = TRUE, # remove and recalculate LAC with custom function
   regional_fn = regional_2029,
   footnotes_fn = footnotes_2029,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# ---- indicator 2037 - Consumption of ozone depleting substances (ODS) ----
+
+indicator_id <- 2037
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2037 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "26657"),
+  pub_col = c("208_name", "29117_name", "26657_name")
+)
+
+# --- data cleaning/compilation
+ods_files <- c(
+  "Chlorofluorocarbons (CFCs)"      = "odp_cfc_raw.xlsx",
+  "Halons"                          = "odp_halons_raw.xlsx",
+  "Other fully halogenated CFCs"    = "odp_halcfc_raw.xlsx",
+  "Carbon tetrachloride"            = "odp_ctc_raw.xlsx",
+  "Methyl chloroform"            = "odp_tca_raw.xlsx", # methyl cloroform / Trichloroethane (TCA) are the same
+  "Hydrochlorofluorocarbons (HCFCs)"= "odp_hcfc_raw.xlsx",
+  "Hydrobromofluorocarbons (HBFCs)" = "odp_hbfc_raw.xlsx",
+  "Bromochloromethane"              = "odp_bcm_raw.xlsx",
+  "Methyl bromide"                  = "odp_mb_raw.xlsx"
+)
+
+clean_ods_data <- function(data, substance) {
+  data %>%
+    select(
+      Country,
+      matches("^\\d{4}$")   # only 4-digit year column names
+    ) %>% 
+    pivot_longer(
+      cols      = -Country,
+      names_to  = "Years",
+      values_to = "value"
+    ) %>%
+    mutate(
+      Type = substance,
+      Years = as.integer(Years)
+    ) %>% 
+    select(Country, Years, Type, value)
+}
+
+data_ods <- imap_dfr(
+  ods_files,
+  ~ read_xlsx(file.path(input_path, .x), skip = 1) %>%
+    clean_ods_data(substance = .y)
+)
+# ---
+
+filter_2037 <- function(data) {
+  data %>% 
+    filter(!is.na(value)) %>% 
+    filter(Years >= 1989)
+}
+
+transform_2037 <- function(data) {
+  total <- data %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(Type = "Total")
+  
+  data %>% 
+    bind_rows(total) %>% 
+    arrange(Country, Years, Type)
+}
+
+footnotes_2037 <- function(data) {
+  data %>%
+    mutate(
+      footnotes_id = if_else(Country == "Latin America and the Caribbean", append_footnote(footnotes_id, "6970"), footnotes_id),
+      footnotes_id = if_else(Type == "Total", append_footnote(footnotes_id, "5792"), footnotes_id), # 5792/ Incluye todas las sustancias controladas por el Protocolo de Montreal.
+      )
+}
+
+result_2037 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_ods,
+  dim_config = dim_config_2037,
+  filter_fn = filter_2037,
+  transform_fn = transform_2037,
+  remove_lac = TRUE, # remove and recalculate LAC as simple sum
+  footnotes_fn = footnotes_2037,
   diagnostics = TRUE,
   export = TRUE
 )
