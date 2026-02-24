@@ -1,0 +1,100 @@
+---
+title: "01_informea"
+format: html
+---
+
+This script downloads data from the InforMEA website
+
+## Get treaties list from API
+
+```{r}
+library(httr)
+library(jsonlite)
+library(dplyr)
+library(tibble)
+library(purrr)
+```
+
+```{r}
+treaties_url <- "https://odata.informea.org/informea.svc/Treaties"
+
+resp <- GET(treaties_url, add_headers(Accept = "application/json"))
+flat <- fromJSON(content(resp, as = "text", encoding = "UTF-8"), flatten = TRUE)
+
+
+mea <- as_tibble(flat$d$results)
+```
+
+## Scrape parties and dates from web
+
+```{r}
+library(reticulate)
+
+# Setup chunk for Quarto / R Markdown
+knitr::opts_knit$set(root.dir = "C:/Users/aathens/OneDrive - United Nations/Documentos/CEPALSTAT Data Process/cepalstat-data-upload")
+
+# Force use of known working path
+use_python("C:/Users/aathens/AppData/Local/anaconda3/python.exe", required = TRUE)
+
+# Double check config
+py_config()
+```
+
+Set up Playwright session
+
+```{python}
+from playwright.sync_api import sync_playwright
+p = sync_playwright().start()
+browser = p.chromium.launch(headless=False)
+context = browser.new_context(accept_downloads=True)
+page = context.new_page()
+```
+
+Navigate to InforMEA website
+
+```{python}
+import pandas as pd
+mea = r.mea
+
+# mea.columns.tolist()
+url = mea[["url"]].iloc[1].item()
+```
+
+
+```{python}
+page.goto(url)
+
+page.click("treaty-parties")
+```
+
+```{python}
+page.wait_for_selector("table")
+
+# Extract all rows from the table
+rows = page.query_selector_all("table tbody tr")
+
+data = []
+for row in rows:
+    cells = row.query_selector_all("td")
+    data.append([cell.inner_text() for cell in cells])
+
+# Keep only entries with 4 or 5 columns (drop declaration text)    
+data = [row for row in data if len(row) == 5]
+# include 4 to keep non-parties (Haiti, US)
+    
+# Pull column headers
+headers = ['Party', 'Signature', 'Ratification', 'Status', 'Additional information']
+
+parties = pd.DataFrame(data, columns=headers)
+```
+
+Intermediate checks for what's being pulled from tables
+```{python}
+# for row in data:
+#     print(row)
+```
+
+```{r}
+parties <- as_tibble(py$parties)
+```
+
