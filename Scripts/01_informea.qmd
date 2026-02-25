@@ -50,7 +50,72 @@ context = browser.new_context(accept_downloads=True)
 page = context.new_page()
 ```
 
-Navigate to InforMEA website
+Navigate to InforMEA website and scrape parties
+
+```{python}
+import pandas as pd
+import time
+
+mea_full = r.mea
+all_parties = []
+
+# while testing, use a shorter version of df
+mea = mea_full.head(6)
+
+# row_id, row = next(mea.iterrows()) # for testing index = 0
+
+for row_id, row in mea.iterrows():
+  url = row["url"]
+  treaty_id = row["id"]
+  
+  try:
+      page.goto(url + "/treaty-parties")
+      page.wait_for_load_state("networkidle")
+      page.wait_for_selector("table", timeout=10000)
+      
+      ## Get headers
+      # Scrape headers dynamically from the first table (active party members only, excluding non-parties)
+      headers = [th.inner_text() for th in page.query_selector_all("table:first-of-type thead th")] 
+      
+      # De-duplicate headers by appending a counter to any duplicates
+      from collections import Counter
+      counts = Counter()
+      unique_headers = []
+      for h in headers:
+        counts[h] += 1
+        if counts[h] > 1:
+            unique_headers.append(f"{h}_{counts[h]}")
+        else:
+            unique_headers.append(h)
+      
+      ## Get row data
+      rows = page.query_selector_all("table:first-of-type tbody tr") # extract all rows from the first table
+      data = []
+      for row in rows:
+          cells = row.query_selector_all("td") # extract references to html nodes
+          data.append([cell.inner_text() for cell in cells]) # extract node values (table text)
+      
+      # Keep only rows that match the number of headers
+      data = [row for row in data if len(row) == len(headers)]
+      # note this will drop non-parties and declarations/footnotes
+      
+      parties = pd.DataFrame(data, columns=unique_headers)
+      
+      # Tag each row with its source treaty URL
+      parties["treaty_id"] = treaty_id
+      all_parties.append(parties)
+      
+      print(f"Party data scraped for {row_id + 1}/{len(mea)}")
+      time.sleep(2)
+      
+  except Exception as e:
+      print(f"Failed for {url}: {e}")
+  
+
+all_parties_df = pd.concat(all_parties, ignore_index=True)
+```
+
+
 
 ```{python}
 import pandas as pd
@@ -75,8 +140,8 @@ rows = page.query_selector_all("table tbody tr")
 
 data = []
 for row in rows:
-    cells = row.query_selector_all("td")
-    data.append([cell.inner_text() for cell in cells])
+    cells = row.query_selector_all("td") # extract references to html nodes
+    data.append([cell.inner_text() for cell in cells]) # extract node values
 
 # Keep only entries with 4 or 5 columns (drop declaration text)    
 data = [row for row in data if len(row) == 5]
@@ -94,7 +159,17 @@ Intermediate checks for what's being pulled from tables
 #     print(row)
 ```
 
+Read back into R
 ```{r}
-parties <- as_tibble(py$parties)
+parties <- as_tibble(py$all_parties_df)
 ```
+
+```{r}
+treaty_ids <- parties %>% distinct(treaty_id)
+
+mea %>% 
+  left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
+  select(id, url, pres)
+```
+
 
