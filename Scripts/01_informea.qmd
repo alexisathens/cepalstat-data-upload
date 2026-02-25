@@ -33,9 +33,9 @@ Filter on ECLAC-relevant treaties
 #              "kyoto", "rotterdam", "cartagena", "stockholm", "paris-unfccc", "minimata", "escazu")
 
 # make any slight modifications for matches to work better
-# shorten to paris, fix minamata spelling
+# shorten to paris, fix minamata spelling, add cartagena-conv
 alberto_mod <- c("ramsar", "heritage", "cites", "cms", "law of the sea", "vienna", "montreal", "basel", "biological diversity", "climate change", "desertification", 
-             "kyoto", "rotterdam", "cartagena", "stockholm", "paris", "minamata", "escazu")
+             "kyoto", "rotterdam", "cartagena", "stockholm", "paris", "minamata", "escazu", "cartagena-conv")
 
 # add cepalstat keyword to df
 mea %<>%
@@ -60,11 +60,11 @@ mea %<>%
 # manually check whether the other treaties are relevant to the region
 # mea %>% filter(is.na(matched_keyword)) %>% View()
 
-mea %<>% 
-  mutate(matched_keyword = case_when(
-    id == "cartagena-conv" ~ "cartagena-conv", # for wider caribbean region
-    TRUE ~ matched_keyword
-  ))
+# mea %<>% 
+#   mutate(matched_keyword = case_when(
+#     id == "cartagena-conv" ~ "cartagena-conv", # for wider caribbean region
+#     TRUE ~ matched_keyword
+#   ))
 
 # drop all other treaties, not regionally important
 mea %<>% 
@@ -116,7 +116,7 @@ for row_id, row in mea.iterrows():
   try:
       page.goto(url + "/treaty-parties")
       page.wait_for_load_state("networkidle")
-      page.wait_for_selector("table", timeout=10000)
+      page.wait_for_selector("table", timeout=20000)
       
       ## Get headers
       # Scrape headers dynamically from the first table (active party members only, excluding non-parties)
@@ -150,7 +150,7 @@ for row_id, row in mea.iterrows():
       parties["treaty_id"] = treaty_id
       all_parties.append(parties)
       
-      print(f"Party data scraped for {row_id + 1}/{len(mea)}")
+      print(f"Party data scraped for {row_id + 1}/{len(mea)} treaties")
       time.sleep(2)
       
   except Exception as e:
@@ -160,16 +160,25 @@ for row_id, row in mea.iterrows():
 all_parties_df = pd.concat(all_parties, ignore_index=True)
 ```
 
+Check for missing treaties
+```{python}
+all_parties_df["treaty_id"].unique().tolist()
+
+# check which treaty parties weren't found
+set(r.mea["id"].tolist()) - set(all_parties_df["treaty_id"].unique().tolist())
+# ok to be missing: heritage (no parties)
+```
+
 ## Scrape treaty metadata from web
 ```{python}
 import pandas as pd
 import time
 
-mea_full = r.mea
+mea = r.mea
 all_treaties = []
 
 # while testing, use a shorter version of df
-mea = mea_full.head(6)
+# mea = mea_full.head(6)
 
 # row_id, row = next(mea.iterrows()) # for testing index = 0
 
@@ -199,7 +208,7 @@ for row_id, row in mea.iterrows():
       treaty_info["treaty_id"] = treaty_id
       all_treaties.append(treaty_info)
       
-      print(f"Treaty data scraped for {row_id + 1}/{len(mea)}")
+      print(f"Treaty data scraped for {row_id + 1}/{len(mea)} treaties")
       time.sleep(2)
       
   except Exception as e:
@@ -207,6 +216,15 @@ for row_id, row in mea.iterrows():
   
 
 all_treaties_df = pd.concat(all_treaties, ignore_index=True)
+```
+
+Check for missing treaties
+```{python}
+# all_treaties_df["treaty_id"].unique().tolist()
+
+# check which treaty parties weren't found
+set(r.mea["id"].tolist()) - set(all_treaties_df["treaty_id"].unique().tolist())
+# ok to be missing: heritage (no parties)
 ```
 
 ## Clean party data
