@@ -3,7 +3,7 @@ title: "01_informea"
 format: html
 ---
 
-This script downloads data from the InforMEA website
+This script downloads environmental treaty data from the InforMEA website
 
 ## Get treaties list from API
 
@@ -22,11 +22,58 @@ resp <- GET(treaties_url, add_headers(Accept = "application/json"))
 flat <- fromJSON(content(resp, as = "text", encoding = "UTF-8"), flatten = TRUE)
 
 
-mea <- as_tibble(flat$d$results)
+mea_full <- as_tibble(flat$d$results)
+mea <- mea_full
 ```
 
-## Scrape parties and dates from web
+Filter on ECLAC-relevant treaties
+```{r}
+# get names of treaties currently in CEPALSTAT
+# alberto <- c("ramsar", "heritage", "cites", "cms", "law of the sea", "vienna", "montreal", "basel", "biological diversity", "climate change", "desertification", 
+#              "kyoto", "rotterdam", "cartagena", "stockholm", "paris-unfccc", "minimata", "escazu")
 
+# make any slight modifications for matches to work better
+# shorten to paris, fix minamata spelling
+alberto_mod <- c("ramsar", "heritage", "cites", "cms", "law of the sea", "vienna", "montreal", "basel", "biological diversity", "climate change", "desertification", 
+             "kyoto", "rotterdam", "cartagena", "stockholm", "paris", "minamata", "escazu")
+
+# add cepalstat keyword to df
+mea %<>%
+  mutate(
+    matched_keyword = coalesce(
+      str_extract(str_to_lower(officialNameEnglish), str_c(alberto_mod, collapse = "|")),
+      if_else(id %in% alberto_mod, id, NA_character_)
+    )
+  ) %>% 
+  relocate(matched_keyword, .after = id)
+
+# check if any keywords didn't match to mea
+# alberto_mod[which(!alberto_mod %in% unique(mea$matched_keyword))]
+
+# check for duplicates
+# mea %>% group_by(matched_keyword) %>% count() %>% filter(n>1)
+
+# fix duplicates
+mea %<>% 
+  mutate(matched_keyword = ifelse(id %in% c("basel-protocol-liability", "nagoya", "barc-spa", "NKL", "bbnj"), NA_character_, matched_keyword))
+
+# manually check whether the other treaties are relevant to the region
+# mea %>% filter(is.na(matched_keyword)) %>% View()
+
+mea %<>% 
+  mutate(matched_keyword = case_when(
+    id == "cartagena-conv" ~ "cartagena-conv", # for wider caribbean region
+    TRUE ~ matched_keyword
+  ))
+
+# drop all other treaties, not regionally important
+mea %<>% 
+  filter(!is.na(matched_keyword)) %>% 
+  rename(keyword = matched_keyword)
+```
+
+
+## Setup
 ```{r}
 library(reticulate)
 
@@ -41,7 +88,6 @@ py_config()
 ```
 
 Set up Playwright session
-
 ```{python}
 from playwright.sync_api import sync_playwright
 p = sync_playwright().start()
@@ -50,17 +96,16 @@ context = browser.new_context(accept_downloads=True)
 page = context.new_page()
 ```
 
-Navigate to InforMEA website and scrape parties
-
+## Scrape party data from web
 ```{python}
 import pandas as pd
 import time
 
-mea_full = r.mea
+mea = r.mea
 all_parties = []
 
 # while testing, use a shorter version of df
-mea = mea_full.head(6)
+# mea = mea_full.head(6)
 
 # row_id, row = next(mea.iterrows()) # for testing index = 0
 
@@ -115,64 +160,7 @@ for row_id, row in mea.iterrows():
 all_parties_df = pd.concat(all_parties, ignore_index=True)
 ```
 
-
-
-```{python}
-import pandas as pd
-mea = r.mea
-
-# mea.columns.tolist()
-url = mea[["url"]].iloc[1].item()
-```
-
-
-```{python}
-page.goto(url)
-
-page.click("treaty-parties")
-```
-
-```{python}
-page.wait_for_selector("table")
-
-# Extract all rows from the table
-rows = page.query_selector_all("table tbody tr")
-
-data = []
-for row in rows:
-    cells = row.query_selector_all("td") # extract references to html nodes
-    data.append([cell.inner_text() for cell in cells]) # extract node values
-
-# Keep only entries with 4 or 5 columns (drop declaration text)    
-data = [row for row in data if len(row) == 5]
-# include 4 to keep non-parties (Haiti, US)
-    
-# Pull column headers
-headers = ['Party', 'Signature', 'Ratification', 'Status', 'Additional information']
-
-parties = pd.DataFrame(data, columns=headers)
-```
-
-Intermediate checks for what's being pulled from tables
-```{python}
-# for row in data:
-#     print(row)
-```
-
-Read back into R
-```{r}
-parties <- as_tibble(py$all_parties_df)
-```
-
-```{r}
-treaty_ids <- parties %>% distinct(treaty_id)
-
-mea %>% 
-  left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
-  select(id, url, pres)
-```
-
-Scrape treaty metadata
+## Scrape treaty metadata from web
 ```{python}
 import pandas as pd
 import time
@@ -221,6 +209,21 @@ for row_id, row in mea.iterrows():
 all_treaties_df = pd.concat(all_treaties, ignore_index=True)
 ```
 
+## Clean party data
+Read back into R
+```{r}
+parties <- as_tibble(py$all_parties_df)
+```
+
+```{r}
+treaty_ids <- parties %>% distinct(treaty_id)
+
+mea %>% 
+  left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
+  select(id, url, pres)
+```
+
+## Clean treaty data
 Read back into R
 ```{r}
 treaties <- as_tibble(py$all_treaties_df)
@@ -233,3 +236,5 @@ mea %>%
   left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
   select(id, url, pres)
 ```
+
+## Export flat files
