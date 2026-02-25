@@ -172,4 +172,64 @@ mea %>%
   select(id, url, pres)
 ```
 
+Scrape treaty metadata
+```{python}
+import pandas as pd
+import time
 
+mea_full = r.mea
+all_treaties = []
+
+# while testing, use a shorter version of df
+mea = mea_full.head(6)
+
+# row_id, row = next(mea.iterrows()) # for testing index = 0
+
+for row_id, row in mea.iterrows():
+  url = row["url"]
+  treaty_id = row["id"]
+  
+  try:
+      page.goto(url)
+      page.wait_for_load_state("networkidle")
+      
+      # Get fields from main page
+      fields = {}
+      field_divs = page.query_selector_all(".field.d-flex")
+      
+      for div in field_divs:
+          label = div.query_selector(".field__label")
+          value = div.query_selector(".field__item")
+          if label and value:
+              key = label.inner_text().replace(":", "").strip()
+              fields[key] = value.inner_text().strip()
+      
+      # Add summary at top of page
+      fields["Summary"] = page.inner_text(".treaty__body").strip()
+      
+      treaty_info = pd.DataFrame([fields])
+      treaty_info["treaty_id"] = treaty_id
+      all_treaties.append(treaty_info)
+      
+      print(f"Treaty data scraped for {row_id + 1}/{len(mea)}")
+      time.sleep(2)
+      
+  except Exception as e:
+      print(f"Failed for {url}: {e}")
+  
+
+all_treaties_df = pd.concat(all_treaties, ignore_index=True)
+```
+
+Read back into R
+```{r}
+treaties <- as_tibble(py$all_treaties_df)
+```
+
+```{r}
+treaty_ids <- treaties %>% distinct(treaty_id)
+
+mea %>% 
+  left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
+  select(id, url, pres)
+```
