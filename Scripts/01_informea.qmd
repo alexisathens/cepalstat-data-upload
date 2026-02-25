@@ -234,17 +234,38 @@ parties <- as_tibble(py$all_parties_df)
 ```
 
 ```{r}
-treaty_ids <- parties %>% distinct(treaty_id)
+# clean strings
+parties %<>% 
+  mutate(Party = str_trim(Party), Signature = str_trim(Signature)) %>% 
+  mutate(across(where(is.character), ~ na_if(., "")))
 
-mea %>% 
-  left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
-  select(id, url, pres)
+# clean columns
+parties %<>% 
+  relocate(treaty_id, .before = "Party") %>% 
+  select(-`Additional information`) %>% 
+  rename(Force = Party_2) %>% 
+  relocate(Status, .after = Party)
+
+# clean dates
+parties %<>% 
+  mutate(across(c(Signature, Ratification, Force), ~ as.numeric(str_extract(., "\\d{4}"))))
+```
+
+Join MEA info
+```{r}
+parties %<>% 
+  left_join(mea, by = c("treaty_id" = "id")) %>%
+  select(treaty_id:titleEnglish) %>% 
+  rename(mea_id = treaty_id, cs_id = keyword, # distinguish between the key in InforMEA and Cepalstat
+         title = titleEnglish, title_full = officialNameEnglish) %>% 
+  relocate(title_full, .after = title)
 ```
 
 ## Clean treaty data
 Read back into R
 ```{r}
-treaties <- as_tibble(py$all_treaties_df)
+treaties_raw <- as_tibble(py$all_treaties_df)
+treaties <- treaties_raw
 ```
 
 ```{r}
