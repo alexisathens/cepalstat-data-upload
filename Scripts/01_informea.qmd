@@ -13,6 +13,7 @@ library(jsonlite)
 library(dplyr)
 library(tibble)
 library(purrr)
+library(here)
 ```
 
 ```{r}
@@ -264,16 +265,22 @@ parties %<>%
 ## Clean treaty data
 Read back into R
 ```{r}
-treaties_raw <- as_tibble(py$all_treaties_df)
-treaties <- treaties_raw
+treaties <- as_tibble(py$all_treaties_df)
 ```
 
 ```{r}
-treaty_ids <- treaties %>% distinct(treaty_id)
-
-mea %>% 
-  left_join(treaty_ids %>% mutate(pres = 1), by = c("id" = "treaty_id")) %>% 
-  select(id, url, pres)
+treaties %<>% 
+  select(treaty_id, Keywords, Region, Parties = `Number of parties`, Summary, Force = `Entry into force`, Parent = `Parent treaty (first level)`) %>% 
+  left_join(mea, by = c("treaty_id" = "id")) %>%
+  rename(mea_id = treaty_id, cs_id = keyword, # distinguish between the key in InforMEA and Cepalstat
+         title = titleEnglish, title_full = officialNameEnglish) %>%
+  mutate(across(c(Force), ~ as.numeric(str_extract(., "\\d{4}")))) %>% 
+  select(mea_id, cs_id, title, title_full, Keywords, Region, Parties, Force, Parent, Summary)
 ```
 
 ## Export flat files
+```{r}
+write_csv(parties, here("Data/Raw/informea/parties_raw.csv"))
+write_csv(treaties, here("Data/Raw/informea/treaties_raw.csv"))
+```
+
