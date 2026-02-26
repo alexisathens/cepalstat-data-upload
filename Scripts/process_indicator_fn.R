@@ -1,6 +1,6 @@
 # Generic CEPALSTAT indicator processing function
 script_version <- "v2025-12-29"  # bump manually when logic significantly changes
-script_notes <- "add remove_lac parameter to preserve source LAC data"
+script_notes <- "add if-statement around Years type change for indicators without Years field"
 
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
@@ -32,8 +32,11 @@ process_indicator <- function(indicator_id, data, dim_config,
     df %<>%
       filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America"))
   }
-
-  df %<>% mutate(Years = as.character(Years))
+  
+  # change type, for all indicators but those missing the years field
+  if(!indicator_id %in% c(2031)) { # MEA indicator
+    df %<>% mutate(Years = as.character(Years))
+  }
 
   ## 3. Create ECLAC regional total (automatically skip if remove_lac = FALSE)
   if (!remove_lac) {
