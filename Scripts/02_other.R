@@ -54,6 +54,9 @@ data_iso_2021 <- read_xlsx(paste0(input_path, "/iso_2021_raw.xlsx"), sheet = "IS
 
 data_ramsar <- read_xlsx(paste0(input_path, "/ramsar_raw.xlsx"))
 
+data_mea <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
+data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
+
 
 # ---- indicator 4244 — Public investment trends in renewable energy ----
 
@@ -411,4 +414,101 @@ result_2016 <- process_indicator(
   diagnostics = TRUE,
   export = TRUE
 )
+
+
+# ---- indicator 2031 - Multilateral environmental agreements ----
+
+indicator_id <- 2031
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2031 <- tibble(
+  data_col = c("Country", "MEA", "Phase"),
+  dim_id = c("208", "26667", "26689"),
+  pub_col = c("208_name", "26667_name", "26689_name")
+)
+
+filter_2031 <- function(data) {
+  data %>% 
+    pivot_longer(cols = c(Signature, Ratification, Force), names_to = "Phase") %>% 
+    select(Country = Party, cs_id, title, Phase, value)
+}
+
+transform_2031 <- function(data) {
+  data %>% 
+    mutate(cs_id = str_to_title(cs_id)) %>% 
+    mutate(MEA = case_when(
+      cs_id == "Cites" ~ "CITES",
+      cs_id == "Cms" ~ "CMS",
+      cs_id == "Law Of The Sea" ~ "Law of the Sea",
+      cs_id == "Biological Diversity" ~ "Biological diversity",
+      cs_id == "Paris" ~ "Paris-UNFCCC",
+      cs_id == "Cartagena-Conv" ~ "Marine Environment",
+      TRUE ~ cs_id
+    )) %>% 
+    mutate(Phase = case_when(
+      Phase == "Signature" ~ "Year of signature",
+      Phase == "Ratification" ~ "Year of ratification, acceptance, approval or adhesion",
+      Phase == "Force" ~ "Year of entry into force",
+      TRUE ~ Phase
+    )) %>% 
+    select(Country, MEA, Phase, value) %>% 
+    filter(!is.na(value))
+}
+
+footnotes_2031 <- function(data) {
+  data %>%
+      mutate(
+        footnotes_id = if_else(MEA == "Biological diversity", append_footnote(footnotes_id, "5496"), footnotes_id), # 5496/ Convenio sobre la Diversidad Biológica (1992).
+        footnotes_id = if_else(MEA == "Basel", append_footnote(footnotes_id, "5495"), footnotes_id), # 5495/ Convenio de Basilea sobre el Control de los Movimientos Transfronterizos de los Desechos Peligrosos y su Eliminación (1989).
+        footnotes_id = if_else(MEA == "CITES", append_footnote(footnotes_id, "5490"), footnotes_id), # 5490/ Convención sobre el Comercio Internacional de Especies Amenazadas de Fauna y Flora Silvestres (1973).
+        footnotes_id = if_else(MEA == "CMS", append_footnote(footnotes_id, "5491"), footnotes_id), # 5491/ Convención sobre la conservación de las especies migratorias de animales silvestres (1979).
+        footnotes_id = if_else(MEA == "Stockholm", append_footnote(footnotes_id, "5502"), footnotes_id), # 5502/ Convenio de Estocolmo sobre Contaminantes Orgánicos Persistentes (2001).
+        footnotes_id = if_else(MEA == "Vienna", append_footnote(footnotes_id, "5493"), footnotes_id), # 5493/ Convenio de Viena para la Protección de la Capa de Ozono (1985).
+        footnotes_id = if_else(MEA == "Montreal", append_footnote(footnotes_id, "5494"), footnotes_id), # 5494/ Protocolo de Montreal relativo a las Sustancias que Agotan la Capa de Ozono (1987).
+        footnotes_id = if_else(MEA == "Cartagena", append_footnote(footnotes_id, ""), footnotes_id), # 5501/ Protocolo de Cartagena sobre Seguridad de la Biotecnología (2000).
+        footnotes_id = if_else(MEA == "Climate Change", append_footnote(footnotes_id, "5497"), footnotes_id), # 5497/ Convención Marco de las Naciones Unidas sobre el Cambio Climático (1992).
+        footnotes_id = if_else(MEA == "Kyoto", append_footnote(footnotes_id, "5499"), footnotes_id), # 5499/ Protocolo de Kyoto de la Convención Marco de las Naciones Unidas sobre el Cambio Climático (1997).
+        footnotes_id = if_else(MEA == "Ramsar", append_footnote(footnotes_id, "5488"), footnotes_id), # 5488/ Convención Relativa a los Humedales de Importancia Internacional, Especialmente como Hábitat de Aves Acuáticas (1971).
+        footnotes_id = if_else(MEA == "Desertification", append_footnote(footnotes_id, "5498"), footnotes_id), # 5498/ Convención de las Naciones Unidas de lucha contra la Desertificación en los Países Afectados por Sequía Grave o Desertificación, en particular en África (1994).
+        footnotes_id = if_else(MEA == "Rotterdam", append_footnote(footnotes_id, "5500"), footnotes_id), # 5500/ Convenio de Rotterdam sobre el Procedimiento de Consentimiento Fundamentado Previo Aplicable a Ciertos Plaguicidas y Productos Químicos Peligrosos Objeto de Comercio Internacional (1998).
+        footnotes_id = if_else(MEA == "Marine Environment", append_footnote(footnotes_id, "16773"), footnotes_id), # [16773]Convenio para la protección y el desarrollo del medio marino en la región del Gran Caribe (1983)
+        footnotes_id = if_else(MEA == "Minamata", append_footnote(footnotes_id, "8788"), footnotes_id), # 8788/ Convenio de Minamata sobre el Mercurio (2013)
+        footnotes_id = if_else(MEA == "Paris-UNFCCC", append_footnote(footnotes_id, "7780"), footnotes_id), # 7780/ Acuerdo de París en el marco de la Convención Marco de de las Naciones Unidas sobre el Cambio Climático (UNFCCC) (2015)
+        footnotes_id = if_else(MEA == "Escazu", append_footnote(footnotes_id, "8789"), footnotes_id), # 8789/ Acuerdo Regional (Escazú) sobre el Acceso a la Información, la Participación Pública y el Acceso a la Justicia en Asuntos Ambientales en América Latina y el Caribe (2018)
+        footnotes_id = if_else(MEA == "Law of the Sea", append_footnote(footnotes_id, "5492"), footnotes_id), # 5492/ Convención de las Naciones Unidas sobre el Derecho del Mar (1982).
+        footnotes_id = if_else(MEA == "Heritage", append_footnote(footnotes_id, "5489"), footnotes_id) # 5489/ Convenio sobre la Protección del Patrimonio Mundial, Cultural y Natural (1972).
+        )
+}
+
+result_2031 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_mea,
+  dim_config = dim_config_2031,
+  filter_fn = filter_2031,
+  transform_fn = transform_2031,
+  regional_fn = FALSE,
+  footnotes_fn = footnotes_2031,
+  diagnostics = TRUE,
+  export = FALSE
+)
+
+# export csv to do self checks -- meas don't have the year field and don't work with the qc_checks script -- do just this one manually instead
+self <- result_2031$clean
+
+self %<>%
+  mutate(Phase = factor(Phase, levels = c(
+    "Year of signature",
+    "Year of ratification, acceptance, approval or adhesion",
+    "Year of entry into force"
+  ))) %>%
+  pivot_wider(
+    names_from = c(MEA, Phase),
+    values_from = value,
+    names_sep = "_"
+  )
+
+write_csv(self, here("QC Reports/qc_table_2031.csv"))  
 
