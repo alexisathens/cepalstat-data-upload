@@ -161,16 +161,72 @@ for row_id, row in mea.iterrows():
 all_parties_df = pd.concat(all_parties, ignore_index=True)
 ```
 
+Custom scraping for World Heritage Convention -- this lives outside of the InforMEA website
+```{python}
+import pandas as pd
+import time
+
+mea = r.mea
+
+row = mea[mea["id"] == "whc"].iloc[0]
+
+url = "https://whc.unesco.org/en/statesparties" # define custom url outside of inforMEA website
+treaty_id = row["id"]
+
+try:
+  page.goto(url)
+  page.wait_for_load_state("networkidle")
+  page.wait_for_selector("table", timeout=20000)
+  
+  ## Get headers
+  # Scrape headers dynamically from the first table (active party members only, excluding non-parties)
+  headers = [th.inner_text() for th in page.query_selector_all("table:first-of-type thead th")] 
+  
+  # De-duplicate headers by appending a counter to any duplicates
+  from collections import Counter
+  counts = Counter()
+  unique_headers = []
+  for h in headers:
+    counts[h] += 1
+    if counts[h] > 1:
+        unique_headers.append(f"{h}_{counts[h]}")
+    else:
+        unique_headers.append(h)
+  
+  ## Get row data
+  rows = page.query_selector_all("table:first-of-type tbody tr") # extract all rows from the first table
+  data = []
+  for row in rows:
+      cells = row.query_selector_all("td") # extract references to html nodes
+      data.append([cell.inner_text() for cell in cells]) # extract node values (table text)
+  
+  # Keep only rows that match the number of headers
+  data = [row for row in data if len(row) == len(headers)]
+  # note this will drop non-parties and declarations/footnotes
+  
+  heritage = pd.DataFrame(data, columns=headers)
+  
+  # Tag each row with its source treaty URL
+  heritage["treaty_id"] = treaty_id
+  
+except Exception as e:
+  print(f"Failed for {url}: {e}")
+
+#all_parties_df = pd.concat(all_parties, ignore_index=True)
+# Manually add after R cleaning to rest of treaties
+```
+
 Check for missing treaties
 ```{python}
 all_parties_df["treaty_id"].unique().tolist()
 
 # check which treaty parties weren't found
 set(r.mea["id"].tolist()) - set(all_parties_df["treaty_id"].unique().tolist())
-# ok to be missing: heritage (no parties)
+# ok to be missing: heritage
 ```
 
 ## Scrape treaty metadata from web
+***Note this doesn't need to be done annually - this data will stay consistent over time
 ```{python}
 import pandas as pd
 import time
@@ -261,6 +317,39 @@ parties %<>%
          title = titleEnglish, title_full = officialNameEnglish) %>% 
   relocate(title_full, .after = title)
 ```
+
+Clean and join Heritage treaty info
+```{r}
+parties <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
+heritage <- py$heritage
+
+# Clean heritage file to match parties
+heritage %<>% select(`State Party`:treaty_id) %>% as_tibble()
+
+heritage %<>% 
+  rename(Party = `State Party`, Instrument = `Type of instrument`) %>% 
+  mutate(Instrument = case_when(
+    Instrument == "R" ~ "Ratification",
+    Instrument == "Ac" ~ "Acceptance",
+    Instrument == "S" ~ "Succession",
+    Instrument == "A" ~ "Accession",
+    TRUE ~ Instrument
+  )) %>% 
+  mutate(across(c(Date), ~ as.numeric(str_extract(., "\\d{4}")))) %>% 
+  rename(Ratification = Date, Status = Instrument)
+
+# match parties
+heritage %<>% 
+  rename(mea_id = treaty_id) %>% 
+  mutate(Signature = NA_integer_, Force = NA_integer_, cs_id = "Heritage",
+         title = "World Heritage Convention", title_full = "Convention Concerning the Protection of the World Cultural and Natural Heritage") %>% 
+  select(mea_id, Party, Status, Signature, Ratification, Force, cs_id, title, title_full)
+
+# join
+parties %<>% 
+  bind_rows(heritage)
+```
+
 
 ## Clean treaty data
 Read back into R
