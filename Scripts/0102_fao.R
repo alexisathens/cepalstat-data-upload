@@ -61,6 +61,26 @@ rfn %<>% as_tibble()
 rp <- get_faostat_bulk(code = "RP")
 rp %<>% as_tibble()
 
+## temp fix: bulk download while API is being updated (needs authentication now and R package hasn't caught up)
+library(tidyverse)
+
+# Direct bulk download — no authentication required
+url <- "https://bulks-faostat.fao.org/production/Inputs_Pesticides_Use_E_All_Data_(Normalized).zip"
+tmp <- tempfile(fileext = ".zip")
+
+download.file(url, tmp, mode = "wb")
+unzip(tmp, exdir = tempdir())
+
+rp <- read_csv(
+  file.path(tempdir(), "Inputs_Pesticides_Use_E_All_Data_(Normalized).csv"),
+  locale = locale(encoding = "latin1")
+)
+
+rp %<>% as_tibble()
+# match old formatting...
+rp %<>% rename(item = Item, element = Element, area = Area, year = Year, value = Value)
+rp %<>% mutate(element = ifelse(element == "Agricultural Use", "agricultural_use", element))
+
 # MANUALLY download bulk data from fishstat / fish capture production
 # at https://www.fao.org/fishery/statistics-query/en/capture/capture_quantity
 fish_folder <- here("Data/Raw/fao fish and aqua//global capture production quantity 20-11-2025")
@@ -1026,6 +1046,79 @@ result_3382 <- process_indicator(
   regional_fn = regional_3382,
   footnotes_fn = footnotes_3382,
   source_fn = source_3382,
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+## ---- indicator 2039 - pesticide consumption ----
+indicator_id <- 2039
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2039 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "20723"),
+  pub_col = c("208_name", "29117_name", "20723_name")
+)
+
+filter_2039 <- function(data) {
+  data %<>% 
+    filter(element == "agricultural_use") %>% 
+    filter(item %in% c("Insecticides", "Herbicides", "Fungicides and Bactericides")) %>% 
+    # filter out any countries too with inconsistent entries (to not impact LAC total)
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
+    select(Country = area, Years = year, Type = item, value)
+}
+
+transform_2039 <- function(data) {
+  data %<>% 
+    mutate(Type = ifelse(Type == "Fungicides and Bactericides", "Fungicides and bactericides", Type))
+  
+  pest_totals <- data %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(Type = "Total")
+  
+  data %<>% 
+    bind_rows(pest_totals)
+}
+
+# regional_2039 <- function(data) {
+#   eclac_totals <- data %>%
+#     group_by(year, item) %>% 
+#     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   data <- bind_rows(data, eclac_totals) %>%
+#     mutate(value = value/area) %>% 
+#     arrange(Country, Years) %>% 
+#     select(Country, Years, value)
+#   
+#   return(data)
+# }
+
+footnotes_2039 <- function(data) {
+  data %>% 
+    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+source_2039 <- function() {
+  1827 # Calculations made based on pesticide consumption data and agriculture area data from online statistical database (FAOSTAT) to Food and Agriculture Organization of the United Nations (FAO). 
+}
+
+result_2039 <- process_indicator(
+  indicator_id = 2039,
+  data = rp,
+  dim_config = dim_config_2039,
+  filter_fn = filter_2039,
+  transform_fn = transform_2039,
+  #regional_fn = regional_2039,
+  footnotes_fn = footnotes_2039,
+  source_fn = source_2039,
   diagnostics = TRUE,
   export = TRUE
 )
