@@ -449,25 +449,20 @@ create_comparison_checks <- function(comp, dim_config) {
 update_indicator_metadata <- function(indicator_id, ind_notes = NULL) {
   
   # Load metadata
-  meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+  meta <- read_xlsx(here("Data/indicator_metadata.xlsx"), sheet = "metadata")
   
   # Convert ind_notes to empty string if null
   if (is.null(ind_notes)) ind_notes <- NA_character_
   
   meta <- meta %>%
     mutate(
-      last_run = lubridate::ymd(last_run, quiet = TRUE),
-      last_update = lubridate::ymd(last_update, quiet = TRUE)) %>% 
+      last_run = lubridate::ymd(last_run, quiet = TRUE)) %>% 
     mutate(
-      script_version = if_else(id == indicator_id, .env$script_version, script_version),
-      last_run = if_else(id == indicator_id, Sys.Date(), as.Date(last_run)),
-      script_notes = if_else(id == indicator_id, .env$script_notes, script_notes),
-      indicator_notes = if_else(id == indicator_id, ind_notes, indicator_notes), 
       automated = if_else(id == indicator_id, "Y", automated),
-      last_update = as.Date(last_update)
+      last_run = if_else(id == indicator_id, as.Date(Sys.Date()), as.Date(last_run)),
+      notes = if_else(id == indicator_id, ind_notes, notes)
     )
   
   # Write back
-  writexl::write_xlsx(meta, here("Data/indicator_metadata.xlsx"))
-
+  writexl::write_xlsx(list(metadata = meta), here("Data/indicator_metadata.xlsx"))
 }

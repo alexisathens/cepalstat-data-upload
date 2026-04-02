@@ -1,7 +1,4 @@
 # Generic CEPALSTAT indicator processing function
-script_version <- "v2025-12-29"  # bump manually when logic significantly changes
-script_notes <- "add if-statement around Years type change for indicators without Years field"
-
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
                               regional_fn = NULL, # NULL = default sum, FALSE = skip, function = custom
