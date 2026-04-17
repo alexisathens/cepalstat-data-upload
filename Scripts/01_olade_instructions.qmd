@@ -85,9 +85,9 @@ Download excel and save as "energy_consumption.xlsx".
 
 **Report:**
 
--   Rows: Activity
+-   Rows: Information unit
 
--   Columns: Information unit
+-   Columns: Activity
 
 -   Units: J
 
