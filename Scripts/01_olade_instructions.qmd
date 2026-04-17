@@ -1,10 +1,109 @@
 ---
 title: "OLADE Data Download"
 format: html
-editor: visual
 ---
 
-# OLADE Indicator Groups
+# OLADE Energy Data Download Instructions
+
+Navigate to the [OLADE website](SIE) and create an account and log in to access all years of energy data.
+
+## Total energy production
+
+**Data source:** [OLADE supply and demand series](https://sielac.olacde.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1)
+
+**Report:**
+
+-   Rows: Information unit
+
+-   Columns: Energy source
+
+-   Units: J
+
+**Filters:**
+
+-   Information unit: -
+
+-   Time: -
+
+-   Activity: Production
+
+-   Energy sources: -
+
+Download excel and save as "energy_production.xlsx".
+
+## Total energy supply
+
+**Data source:** [OLADE supply and demand series](https://sielac.olacde.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1)
+
+**Report:**
+
+-   Rows: Information unit
+
+-   Columns: Energy source
+
+-   Units: J
+
+**Filters:**
+
+-   Information unit: -
+
+-   Time: -
+
+-   Activity: TOTAL SUPPLY
+
+-   Energy sources: -
+
+Download excel and save as "energy_supply.xlsx".
+
+## Total final consumption
+
+**Data source:** [OLADE supply and demand series](https://sielac.olacde.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1)
+
+**Report:**
+
+-   Rows: Information unit
+
+-   Columns: Energy source
+
+-   Units: J
+
+**Filters:**
+
+-   Information unit: -
+
+-   Time: -
+
+-   Activity: FINAL CONSUMPTION
+
+-   Energy sources: -
+
+Download excel and save as "energy_consumption.xlsx".
+
+## Final consumption by sector
+
+**Data source:** [OLADE supply and demand series](https://sielac.olacde.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1)
+
+**Report:**
+
+-   Rows: Activity
+
+-   Columns: Information unit
+
+-   Units: J
+
+**Filters:**
+
+-   Information unit: -
+
+-   Time: -
+
+-   Activity: Transport; Industrial; Residential; Commercial, services, public; Agriculture, fishing, mining; Construction and others
+
+-   Energy sources: Total
+
+Download excel and save as "energy_consumption_sector.xlsx".
+
+# OLD DOWNLOAD INSTRUCTIONS -----------------
 
 ## Grupo 1: total energy supply, in barrels of oil equivalent (bep)
 
@@ -15,7 +114,7 @@ For the report, select:
 
 -   **Filas:** unidad\
 -   **Columnas:** energético\
--   **Unidades:** 10^3 bep\
+-   **Unidades:** 10\^3 bep\
 
 For the filters, select:
 
@@ -25,8 +124,6 @@ For the filters, select:
 -   **Energético:** -\
 
 Save as: olade_grupo1.xlsx
-
-
 
 ## Grupo 2: energy use by economic sector, in tonnes of oil equivalent (tep)
 
@@ -48,7 +145,6 @@ For the filters, select:
 
 Save as: olade_grupo2.xlsx
 
-
 ## Grupo 3: electricity losses, in barrels of oil equivalent (bep)
 
 **Data source:** Series de oferta y demanda\
@@ -58,7 +154,7 @@ For the report, select:
 
 -   **Filas:** unidad\
 -   **Columnas:** energético\
--   **Unidades:** 10^3 bep\
+-   **Unidades:** 10\^3 bep\
 
 For the filters, select:
 
@@ -68,8 +164,6 @@ For the filters, select:
 -   **Energético:** electricidad\
 
 Save as: olade_grupo3.xlsx
-
-
 
 ## Grupo 4: electricity consumption, in GwH
 
@@ -91,7 +185,6 @@ For the filters, select:
 
 Save as: olade_grupo4.xlsx
 
-
 ## Grupo 5: total energy production, in barrels of oil equivalent (bep)
 
 **Data source:** Series de oferta y demanda\
@@ -101,7 +194,7 @@ For the report, select:
 
 -   **Filas:** unidad\
 -   **Columnas:** energético\
--   **Unidades:** 10^3 bep\
+-   **Unidades:** 10\^3 bep\
 
 For the filters, select:
 
@@ -112,7 +205,6 @@ For the filters, select:
 
 Save as: olade_grupo5.xlsx
 
-
 ## Grupo 6: total energy consumption, in barrels of oil equivalent (bep)
 
 **Data source:** Series de oferta y demanda\
@@ -122,7 +214,7 @@ For the report, select:
 
 -   **Filas:** unidad\
 -   **Columnas:** energético\
--   **Unidades:** 10^3 bep\
+-   **Unidades:** 10\^3 bep\
 
 For the filters, select:
 
@@ -133,12 +225,9 @@ For the filters, select:
 
 Save as: olade_grupo6.xlsx
 
-
-
 ## Grupo 7: energy intensity per GDP
 
-**Data source:** Indicadores/ económico - energético
-https://sielac.olade.org/WebForms/Reportes/ReporteIndicadores.aspx?tipo=5&or=510&ss=2&v=1
+**Data source:** Indicadores/ económico - energético https://sielac.olade.org/WebForms/Reportes/ReporteIndicadores.aspx?tipo=5&or=510&ss=2&v=1
 
 For the report, select:
 
@@ -153,12 +242,9 @@ For the filters, select:
 
 Save as: olade_grupo7.xlsx
 
-
-
 ## Grupo 8: share of energy losses of total energy supply
 
-**Data source:** Indicadores / energético
-https://sielac.olade.org/WebForms/Reportes/ReporteIndicadores.aspx?tipo=4&or=509&ss=2&v=1
+**Data source:** Indicadores / energético https://sielac.olade.org/WebForms/Reportes/ReporteIndicadores.aspx?tipo=4&or=509&ss=2&v=1
 
 For the report, select:
 
@@ -173,12 +259,9 @@ For the filters, select:
 
 Save as: olade_grupo8.xlsx
 
-
-
 ## Grupo 9: installed capacity, in MW
 
-**Data source:** Infraestructura / eléctrico / capacidad instalada por fuente
-https://sielac.olade.org/WebForms/Reportes/ReporteDato7.aspx?oc=181&or=392&ss=2&v=1
+**Data source:** Infraestructura / eléctrico / capacidad instalada por fuente https://sielac.olade.org/WebForms/Reportes/ReporteDato7.aspx?oc=181&or=392&ss=2&v=1
 
 For the report, select:
 
