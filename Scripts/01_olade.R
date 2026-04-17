@@ -11,9 +11,6 @@ library(CepalStatR)
 
 # This script processes OLADE energy indicators using the automated process_indicator() function
 
-### transition data download instructions from: ***
-# See data cleaning notes at: cepalstat-data-upload\Data\Raw\olade\energy_indicators_overview.xlsx
-
 input_path <- here("Data/Raw/olade")
 output_path <- here("Data/Raw/olade")
 
@@ -24,75 +21,55 @@ iso %<>%
   filter(ECLACa == "Y") %>%
   select(cepalstat, name, std_name)
 
-# ---- cleaning helpers ----
+# ---- cleaning functions ----
 
-remove_headers <- function(df, header_row, unit_row) {
-  df %>%
-    anti_join(header_row) %>%
-    anti_join(unit_row)
-}
-
-standardize_headers <- function(header_row) {
-  header <- unlist(header_row, use.names = FALSE) %>% str_trim()
-  header[1] <- "Country"
-  header
-}
-
-# Generic cleaning function for grupos with Type dimension (grupos 1, 4, 5, 6)
-clean_grupo_standard <- function(input_file, output_file) {
+# Generic cleaning function for files with countries as rows
+clean_olade_standard <- function(input_file, output_file) {
 
   # Read data
   data <- read_excel(paste0(input_path, "/", input_file), col_names = FALSE)
-
-  # Extract header and unit rows
-  header_row <- data[3,]
-  unit_row <- data[4,]
-
-  # Remove header rows
-  data %<>% remove_headers(header_row, unit_row)
-
-  # Format header row
-  colnames(data) <- standardize_headers(header_row)
-
-  # Create year field
+  
+  # Extract and apply column headers from row 3; rename first column to "Country"
+  header_row <- unlist(data[3, ], use.names = FALSE) %>% str_trim()
+  header_row[1] <- "Country"
+  
+    # Remove header and unit rows, then apply column names
+  data <- data[-c(3,4), ]
+  colnames(data) <- header_row
+  
+  # Extract year from rows where Country field contains a 4-digit year,
+  # fill downward to tag each country block, then remove those year header rows
   data %<>%
     mutate(Years = str_extract(Country, "\\b\\d{4}$")) %>%
     fill(Years, .direction = "down") %>%
-    select(Country, Years, everything())
-
-  # Remove year header and first row
-  data %<>%
-    filter(!str_detect(Country, "\\b\\d{4}$")) %>%
-    filter(Country != "Series de oferta y demanda")
-
-  # Standardize country names
+    select(Country, Years, everything()) %>%
+    filter(!str_detect(Country, "\\b\\d{4}$"), Country != "Supply and demand series")
+  
+  # Standardize country names against ISO reference table
   data %<>%
     left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
     mutate(Country = coalesce(std_name, Country)) %>%
     select(-std_name)
-
-  # Check which countries don't match to iso
+  
+  # Check which countries don't match to ISO (uncomment to diagnose)
   # data %>%
   #   filter(!Country %in% iso$name) %>%
   #   distinct(Country) %>%
   #   print()
-
-  # Filter to LAC countries only
+  
+  # Filter to LAC countries, excluding regional aggregates
   data %<>%
-    filter(Country %in% iso$name) %>%
-    filter(!Country %in% c("Central America", "South America", "Caribbean"))
-
-  # Pivot to long format
+    filter(Country %in% iso$name, !Country %in% c("Central America", "South America", "Caribbean"))
+  
+  # Pivot to long format and drop rows with no reported value
   data %<>%
     pivot_longer(cols = -c(Country, Years), names_to = "Type", values_to = "value") %>%
-    mutate(value = as.numeric(value)) %>%
+    mutate(value = as.numeric(value), Years = as.numeric(Years)) %>%
     filter(!is.na(value))
-
+  
   # Export
   write.csv(data, file = file.path(output_path, output_file), row.names = FALSE)
-
   message(glue("✓ Exported {output_file}"))
-
   return(data)
 }
 
@@ -152,6 +129,28 @@ clean_grupo_years_as_cols <- function(input_file, output_file, filter_pattern = 
   return(data)
 }
 
+####
+
+
+# ---- total energy production ----
+
+production <- clean_olade_standard("energy_production_raw.xlsx", "energy_production_clean.csv")
+
+# ---- total energy supply ----
+
+supply <- clean_olade_standard("energy_supply_raw.xlsx", "energy_supply_clean.csv")
+
+# ---- total final consumption ----
+
+consumption <- clean_olade_standard("energy_consumption_raw.xlsx", "energy_consumption_clean.csv")
+
+# ---- final consumption by sector ----
+
+consumption_sector <- clean_olade_standard("energy_consumption_sector_raw.xlsx", "energy_consumption_sector_clean.csv")
+
+
+
+#### OLD CLEANING ------------------------------------------
 
 # ---- GRUPO 1 ----
 
