@@ -29,7 +29,7 @@ Navigate to the [OLADE website](SIE) and create an account and log in to access 
 
 -   Energy sources: -
 
-Download excel and save as "energy_production.xlsx".
+Download excel and save as "energy_production_raw.xlsx".
 
 ## Total energy supply
 
@@ -53,7 +53,7 @@ Download excel and save as "energy_production.xlsx".
 
 -   Energy sources: -
 
-Download excel and save as "energy_supply.xlsx".
+Download excel and save as "energy_supply_raw.xlsx".
 
 ## Total final consumption
 
@@ -77,7 +77,7 @@ Download excel and save as "energy_supply.xlsx".
 
 -   Energy sources: -
 
-Download excel and save as "energy_consumption.xlsx".
+Download excel and save as "energy_consumption_raw.xlsx".
 
 ## Final consumption by sector
 
@@ -101,7 +101,7 @@ Download excel and save as "energy_consumption.xlsx".
 
 -   Energy sources: Total
 
-Download excel and save as "energy_consumption_sector.xlsx".
+Download excel and save as "energy_consumption_sector_raw.xlsx".
 
 # OLD DOWNLOAD INSTRUCTIONS -----------------
 
