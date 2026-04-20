@@ -31,6 +31,130 @@ iso %<>%
 
 max_year <- 2024 # define most recent year with full data
 
+# ---- read downloaded files ----
+
+data_prod <- read_csv(paste0(input_path, "/energy_production_clean.csv"))
+data_supply <- read_csv(paste0(input_path, "/energy_supply_clean.csv"))
+data_cons <- read_csv(paste0(input_path, "/energy_consumption_clean.csv"))
+data_cons_sec <- read_csv(paste0(input_path, "/energy_consumption_sector_clean.csv"))
+# data_g5 <- read_csv(paste0(olade_path, "/grupo5_raw.csv"))
+# data_g6 <- read_csv(paste0(olade_path, "/grupo6_raw.csv"))
+# data_g7 <- read_csv(paste0(olade_path, "/grupo7_raw.csv"))
+# data_g8 <- read_csv(paste0(olade_path, "/grupo8_raw.csv"))
+# data_g9 <- read_csv(paste0(olade_path, "/grupo9_raw.csv"))
+
+# read energy type dimension mappings
+energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))
+
+
+# ---- core energy indicators ----
+# ---- indicator 2040/5672 — energy production ----
+# indicator 2040 used a duplicate dimension (dimension 20726 instead of dimension 44966)
+# 20726 - Tipo de energía__Primaria_Secundaria (outdated; missing newer energy sources and total)
+# 44966 - Tipo de energía__Primaria_y_Secundaria (current dimension)
+# indicator 5672 was created as a clone to be updated with the correct information and utilized moving forward
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+indicator_id <- 5672
+
+dim_config_5672 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "44966"),
+  pub_col = c("208_name", "29117_name", "_name_es")
+)
+
+
+
+
+# ** fix these later to match indicator 2478 (dim 44966) - this is the duplicate dimension
+
+filter_5672 <- function(data) {
+  data %>%
+    filter(Years <= max_year)
+}
+
+transform_5672 <- function(data) {
+  ## data-specific issue: ** noticed that the total rows aren't always accurate for Brazil and this data source specifically, so recalculate manually
+  primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña",
+                 "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
+  
+  secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel",
+                   "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
+  
+  data %<>%
+    filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
+    bind_rows(
+      data %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
+      data %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
+      data %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
+    ) %>%
+    arrange(Country, Years, Type)
+  
+  data %>%
+    mutate(Type = case_when(
+      Type == "Bagazo de caña" ~ "Productos de caña",
+      Type == "Diésel oil con biodiésel" ~ "Diesel oil",
+      Type == "Diésel oil sin biodiésel" ~ "Diesel oil",
+      Type == "Gas licuado de petróleo" ~ "Gas licuado",
+      Type == "Gasolina con etanol" ~ "Gasolinas/alcohol",
+      Type == "Gasolina sin etanol" ~ "Gasolinas/alcohol",
+      Type == "Kerosene/jet fuel" ~ "Kerosene y turbo",
+      Type == "Coque" ~ "Coques",
+      Type == "Total primarias" ~ "PRIMARIA",
+      Type == "Total secundarias" ~ "SECUNDARIA",
+      TRUE ~ Type
+    )) %>%
+    group_by(Country, Years, Type) %>%
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    # Drop new categories to avoid duplication
+    filter(!Type %in% c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total"))
+}
+
+footnotes_5672 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_5672 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_g5,
+  dim_config = dim_config_5672,
+  filter_fn = filter_5672,
+  transform_fn = transform_5672,
+  footnotes_fn = footnotes_5672,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# ---- indicator 2487 — primary and secondary energy supply ----
+# ---- indicator 3154 — renewable proportion of primary energy supply ----
+# ---- indicator 2486 — primary energy supply from renewable and non-renewable sources, by type of energy ----
+# ---- indicator 4236 — proportion of renewable primary energy supply, by type of energy ----
+# ---- indicator 2041 — energy consumption ----
+# ---- economic-energy indicators ----
+# ---- indicator 4174 — X ----
+# ---- indicator 2023 — X ----
+# ---- indicator 3243 — X ----
+# ---- indicator 4242 — X ----
+# ---- indicator 4183 — X ----
+# ---- indicator 4184 — X ----
+# ---- electricity indicators ----
+
+
+
+
+
+
+
+
+
+
+#### OLD CLEANING ------------------------------------------
+
 
 # ---- read downloaded files ----
 olade_path <- here("Data/Raw/olade")
@@ -903,48 +1027,53 @@ result_4183 <- process_indicator(
 )
 
 
-# # ---- indicator 4184 — Variation rate of GDP energy intensity (final energy consumption) ----
-# 
-# indicator_id <- 4184
-# 
-# dim_config_4184 <- tibble(
-#   data_col = c("Country", "Years"),
-#   dim_id = c("208", "29117"),
-#   pub_col = c("208_name", "29117_name")
-# )
-# 
-# filter_4184 <- function(data) {
-#   data %>%
-#     filter(Years <= max_year) # remove most recent year with only LatAm
-# }
-# 
-# transform_4184 <- function(data) {
-#   # Data already contains energy intensity (from Grupo 7)
-#   # Just need to calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
-#   data %>%
-#     arrange(Country, Years) %>%
-#     group_by(Country) %>%
-#     mutate(
-#       intensity_prev = lag(value),
-#       value = ((value - intensity_prev) / intensity_prev) * 100
-#     ) %>%
-#     ungroup() %>%
-#     select(Country, Years, value) %>%
-#     filter(!is.na(value))
-# }
-# 
-# footnotes_4184 <- function(data) {
-#   data # keep footnotes_id as empty
-# }
-# 
-# result_4184 <- process_indicator(
-#   indicator_id = indicator_id,
-#   data = data_g7,
-#   dim_config = dim_config_4184,
-#   filter_fn = filter_4184,
-#   transform_fn = transform_4184,
-#   footnotes_fn = footnotes_4184,
-#   remove_lac = FALSE, # keep source LAC data from OLADE
-#   diagnostics = TRUE,
-#   export = TRUE
-# )
+# ---- indicator 4184 — Variation rate of GDP energy intensity (final energy consumption) ----
+
+indicator_id <- 4184
+
+dim_config_4184 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_4184 <- function(data) {
+  data %>%
+    filter(Years <= max_year) # remove most recent year with only LatAm
+}
+
+transform_4184 <- function(data) {
+  # Data already contains energy intensity (from Grupo 7)
+  # Just need to calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
+  data %>%
+    arrange(Country, Years) %>%
+    group_by(Country) %>%
+    mutate(
+      intensity_prev = lag(value),
+      value = ((value - intensity_prev) / intensity_prev) * 100
+    ) %>%
+    ungroup() %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+}
+
+footnotes_4184 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_4184 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_g7,
+  dim_config = dim_config_4184,
+  filter_fn = filter_4184,
+  transform_fn = transform_4184,
+  footnotes_fn = footnotes_4184,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+# ---- indicator 1755 — Installed capacity for producing electricity (historical series) ----
+
+# This OLADE series runs from 1970 to 2015. The data shows the total electrical capacity for countries.
+# This series was replaced by indicator 4150 — Installed capacity for producing electricity, by source, which includes more detailed data.
