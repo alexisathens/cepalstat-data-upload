@@ -3,6 +3,7 @@ library(magrittr)
 library(httr2)
 library(jsonlite)
 library(glue)
+library(quarto)
 
 # Stop code if there are any NA fields that didn't match
 # Sample usage: assert_no_na_cols(i2486f, cols = ends_with("_id"))
@@ -445,6 +446,34 @@ create_comparison_checks <- function(comp, dim_config) {
   return(comp)
 }
 
+# Function that renders 03_qc_report.qmd for given indicator
+render_qc_checks <- function(indicator_id, open_qmd = TRUE) {
+  
+  # Construct qmd file name
+  output_file   <- paste0("qc_report_", indicator_id, ".html")
+  
+  # Render the report with injected parameters
+  quarto_render(
+    input          = paste0(here(), "/Scripts/03_qc_report.qmd"),
+    output_file    = output_file,
+    output_format  = "html",
+    execute_params = list(
+      indicator_id = indicator_id
+    )
+  )
+  
+  # Manually move output from Scripts/ to QC Reports/
+  file.rename(
+    from = here::here("Scripts", output_file),
+    to   = here::here("QC Reports", output_file)
+  )
+  
+  # Open file in browser
+  if(open_qmd == TRUE){
+    browseURL(here::here("QC Reports", output_file))
+  }
+}
+
 # Function that updates indicator_metadata.xlsx with code versioning
 update_indicator_metadata <- function(indicator_id, ind_notes = NULL) {
   
@@ -465,4 +494,39 @@ update_indicator_metadata <- function(indicator_id, ind_notes = NULL) {
   
   # Write back
   writexl::write_xlsx(list(metadata = meta), here("Data/indicator_metadata.xlsx"))
+}
+
+
+update_changelog <- function(indicator_id = NULL, change_type, description,
+                             old_value = NULL, new_value = NULL) {
+  # Load changelog
+  log <- read_xlsx(here("Data/indicator_changelog.xlsx"), sheet = "changelog")
+  log %<>% mutate(date = lubridate::ymd(date, quiet = TRUE))
+  
+  meta <- read_xlsx(here("Data/indicator_metadata.xlsx"), sheet = "metadata")
+  
+  if (is.null(indicator_id)) this_indicator_id <- NA_character_
+  if (is.null(old_value)) old_value <- NA_character_
+  if (is.null(new_value)) new_value <- NA_character_
+  
+  if(!is.null(indicator_id)) {this_indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)} # pull indicator name
+  last_log_entry <- log %>% slice_tail(n = 1) %>% pull(entry_id)
+  this_log_entry <- sprintf("c%03d", as.integer(sub("c", "", last_log_entry)) + 1)
+  
+  # Format new entry
+  new_change <- tibble(
+    entry_id = this_log_entry,
+    date = as.Date(Sys.Date()),
+    indicator_id = this_indicator_id,
+    indicator_name = this_indicator_name,
+    change_type = change_type,
+    description = description,
+    old_value = old_value,
+    new_value = new_value
+  )
+  
+  log %<>% bind_rows(new_change)
+  
+  # Write back
+  writexl::write_xlsx(list(changelog = log), here("Data/indicator_changelog.xlsx"))
 }
