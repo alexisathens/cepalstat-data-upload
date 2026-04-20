@@ -26,8 +26,8 @@ iso %<>%
   filter(ECLACa == "Y") %>%
   select(cepalstat, name, std_name)
 
-# read in indicator metadata
-# meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+# read energy type dimension mappings
+energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))
 
 max_year <- 2024 # define most recent year with full data
 
@@ -43,9 +43,6 @@ data_cons_sec <- read_csv(paste0(input_path, "/energy_consumption_sector_clean.c
 # data_g8 <- read_csv(paste0(olade_path, "/grupo8_raw.csv"))
 # data_g9 <- read_csv(paste0(olade_path, "/grupo9_raw.csv"))
 
-# read energy type dimension mappings
-energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))
-
 
 # ---- core energy indicators ----
 # ---- indicator 2040/5672 — energy production ----
@@ -57,81 +54,191 @@ energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx
 # Fill out dim config table by matching the following info:
 # get_indicator_dimensions(indicator_id)
 # print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+# 
+# indicator_id <- 5672
+# 
+# dim_config_5672 <- tibble(
+#   data_col = c("Country", "Years", "Type"),
+#   dim_id = c("208", "29117", "44966"),
+#   pub_col = c("208_name", "29117_name", "44966_name")
+# )
+# 
+# # --- continue below when dimension is changed from old to new 44966
+# 
+# 
+# # ** fix these later to match indicator 2478 (dim 44966) - this is the duplicate dimension
+# 
+# filter_5672 <- function(data) {
+#   data %>%
+#     filter(Years <= max_year)
+# }
+# 
+# transform_5672 <- function(data) {
+#   ## data-specific issue: ** noticed that the total rows aren't always accurate for Brazil and this data source specifically, so recalculate manually
+#   primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña",
+#                  "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
+#   
+#   secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel",
+#                    "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
+#   
+#   data %<>%
+#     filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
+#     bind_rows(
+#       data %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
+#       data %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
+#       data %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
+#     ) %>%
+#     arrange(Country, Years, Type)
+#   
+#   data %>%
+#     mutate(Type = case_when(
+#       Type == "Bagazo de caña" ~ "Productos de caña",
+#       Type == "Diésel oil con biodiésel" ~ "Diesel oil",
+#       Type == "Diésel oil sin biodiésel" ~ "Diesel oil",
+#       Type == "Gas licuado de petróleo" ~ "Gas licuado",
+#       Type == "Gasolina con etanol" ~ "Gasolinas/alcohol",
+#       Type == "Gasolina sin etanol" ~ "Gasolinas/alcohol",
+#       Type == "Kerosene/jet fuel" ~ "Kerosene y turbo",
+#       Type == "Coque" ~ "Coques",
+#       Type == "Total primarias" ~ "PRIMARIA",
+#       Type == "Total secundarias" ~ "SECUNDARIA",
+#       TRUE ~ Type
+#     )) %>%
+#     group_by(Country, Years, Type) %>%
+#     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+#     # Drop new categories to avoid duplication
+#     filter(!Type %in% c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total"))
+# }
+# 
+# footnotes_5672 <- function(data) {
+#   data # keep footnotes_id as empty
+# }
+# 
+# result_5672 <- process_indicator(
+#   indicator_id = indicator_id,
+#   data = data_g5,
+#   dim_config = dim_config_5672,
+#   filter_fn = filter_5672,
+#   transform_fn = transform_5672,
+#   footnotes_fn = footnotes_5672,
+#   remove_lac = FALSE, # keep source LAC data from OLADE
+#   diagnostics = TRUE,
+#   export = TRUE
+# )
 
-indicator_id <- 5672
 
-dim_config_5672 <- tibble(
+# ---- indicator 2487 — primary and secondary energy supply ----
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+indicator_id <- 2487
+
+dim_config_2487 <- tibble(
   data_col = c("Country", "Years", "Type"),
   dim_id = c("208", "29117", "44966"),
-  pub_col = c("208_name", "29117_name", "_name_es")
+  pub_col = c("208_name", "29117_name", "44966_name")
 )
 
+# Read in data for this indicator
+# data <- data_supply
 
-
-
-# ** fix these later to match indicator 2478 (dim 44966) - this is the duplicate dimension
-
-filter_5672 <- function(data) {
-  data %>%
+filter_2487 <- function(data) {
+  data %>% 
     filter(Years <= max_year)
 }
 
-transform_5672 <- function(data) {
-  ## data-specific issue: ** noticed that the total rows aren't always accurate for Brazil and this data source specifically, so recalculate manually
-  primaries <- c("Petróleo", "Gas natural", "Carbón mineral", "Nuclear", "Hidroenergía", "Geotermia", "Eólica", "Solar", "Leña", "Bagazo de caña",
-                 "Etanol", "Biodiésel", "Biogás", "Otra biomasa", "Otras primarias")
-  
-  secondaries <- c("Electricidad", "Gas licuado de petróleo", "Gasolina sin etanol", "Gasolina con etanol", "Kerosene/jet fuel", "Diésel oil sin biodiésel",
-                   "Diésel oil con biodiésel", "Fuel oil", "Coque", "Carbón vegetal", "Gases", "Otras secundarias", "No energético")
-  
-  data %<>%
-    filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>%
-    bind_rows(
-      data %>% filter(Type %in% primaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total primarias"),
-      data %>% filter(Type %in% secondaries) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total secundarias"),
-      data %>% filter(!Type %in% c("Total primarias", "Total secundarias", "Total")) %>% group_by(Country, Years) %>% summarise(value = sum(value), .groups = "drop") %>% mutate(Type = "Total")
-    ) %>%
-    arrange(Country, Years, Type)
-  
-  data %>%
-    mutate(Type = case_when(
-      Type == "Bagazo de caña" ~ "Productos de caña",
-      Type == "Diésel oil con biodiésel" ~ "Diesel oil",
-      Type == "Diésel oil sin biodiésel" ~ "Diesel oil",
-      Type == "Gas licuado de petróleo" ~ "Gas licuado",
-      Type == "Gasolina con etanol" ~ "Gasolinas/alcohol",
-      Type == "Gasolina sin etanol" ~ "Gasolinas/alcohol",
-      Type == "Kerosene/jet fuel" ~ "Kerosene y turbo",
-      Type == "Coque" ~ "Coques",
-      Type == "Total primarias" ~ "PRIMARIA",
-      Type == "Total secundarias" ~ "SECUNDARIA",
-      TRUE ~ Type
-    )) %>%
-    group_by(Country, Years, Type) %>%
+transform_2487 <- function(data) {
+  data %>% 
+    # merge CEPALSTAT energy labels
+    rename(olade_type = Type) %>% 
+    left_join(energy_types %>% select(type, olade_type) %>% fill(type, .direction = "down"),
+              by = c("olade_type")) %>% 
+    # keep OLADE subtotals and totals (since Total can't be calculated directly from data)
+    mutate(type = ifelse(is.na(type), olade_type, type)) %>% 
+    # summarize by energy type
+    group_by(Country, Years, type) %>% 
     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
-    # Drop new categories to avoid duplication
-    filter(!Type %in% c("Biodiésel", "Biogás", "Etanol", "Eólica", "Otra biomasa", "Solar", "Total"))
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    rename(Type = type)
 }
 
-footnotes_5672 <- function(data) {
-  data # keep footnotes_id as empty
+footnotes_2487 <- function(data) {
+  data %>%
+    mutate(footnotes_id = case_when(
+      Type == "Total primaries" ~ "5896", # Includes the following energy resources: petroleum, natural gas, coal, hydroenergy, geothermal, nuclear, firewood, cane bagasse, wind, solar, ethanol, biodiesel, biogas, other biomass and other primary sources.
+      Type == "Total secondaries" ~ "5897", # Includes the following energy resources: electricity, liquefied petroleum gas, gasoline/alcohol, kerosene/jet fuel, diesel oil, fuel oil, coke, charcoal, gases, other secondary and non-energy sources. 
+      TRUE ~ footnotes_id
+    ))
 }
 
-result_5672 <- process_indicator(
+result_2487 <- process_indicator(
   indicator_id = indicator_id,
-  data = data_g5,
-  dim_config = dim_config_5672,
-  filter_fn = filter_5672,
-  transform_fn = transform_5672,
-  footnotes_fn = footnotes_5672,
+  data = data_supply,
+  dim_config = dim_config_2487,
+  filter_fn = filter_2487,
+  transform_fn = transform_2487,
+  footnotes_fn = footnotes_2487,
   remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
   export = TRUE
 )
 
-
-# ---- indicator 2487 — primary and secondary energy supply ----
 # ---- indicator 3154 — renewable proportion of primary energy supply ----
+
+indicator_id <- 3154
+
+dim_config_3154 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_supply
+
+filter_3154 <- function(data) {
+  data %>% 
+    filter(Years <= max_year)
+}
+
+transform_3154 <- function(data) {
+  data %>% 
+    # merge CEPALSTAT energy labels
+    rename(olade_type = Type) %>% 
+    left_join(energy_types %>% select(type, olade_type, renewable) %>% fill(type, .direction = "down"),
+              by = c("olade_type")) %>% 
+    # keep OLADE subtotals and totals (since Total can't be calculated directly from data)
+    mutate(type = ifelse(is.na(type), olade_type, type)) %>% 
+    # filter on renewables or total primaries
+    filter(type == "Total primaries" | renewable == "Y") %>% 
+    mutate(renewable = ifelse(!is.na(renewable), "Renewable", "Total")) %>%
+    # calculate renewable share of total primary energy
+    group_by(Country, Years, renewable) %>%
+    summarize(value = sum_or_na(value), .groups = "drop") %>%
+    pivot_wider(names_from = renewable) %>%
+    mutate(value = Renewable / Total * 100) %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+}
+
+footnotes_3154 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_3154 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_supply,
+  dim_config = dim_config_3154,
+  filter_fn = filter_3154,
+  transform_fn = transform_3154,
+  footnotes_fn = footnotes_3154,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 # ---- indicator 2486 — primary energy supply from renewable and non-renewable sources, by type of energy ----
 # ---- indicator 4236 — proportion of renewable primary energy supply, by type of energy ----
 # ---- indicator 2041 — energy consumption ----
