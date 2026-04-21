@@ -185,6 +185,7 @@ result_2487 <- process_indicator(
   export = TRUE
 )
 
+
 # ---- indicator 3154 — renewable proportion of primary energy supply ----
 
 indicator_id <- 3154
@@ -239,9 +240,127 @@ result_3154 <- process_indicator(
   export = TRUE
 )
 
+
 # ---- indicator 2486 — primary energy supply from renewable and non-renewable sources, by type of energy ----
+
+indicator_id <- 2486
+
+dim_config_2486 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "44959"),
+  pub_col = c("208_name", "29117_name", "44959_name")
+)
+
+# Read in data for this indicator
+# data <- data_supply
+
+filter_2486 <- function(data) {
+  data %>% 
+    filter(Years <= max_year)
+}
+
+transform_2486 <- function(data) {
+  data %<>% 
+    # merge CEPALSTAT energy labels
+    rename(olade_type = Type) %>% 
+    left_join(energy_types %>% fill(type, .direction = "down"),
+              by = c("olade_type")) %>% 
+    # create clean/renewable groupings
+    filter(order == "Primary") %>% 
+    mutate(cat = ifelse(is.na(renewable), "Non-renewable energy",
+                        ifelse(is.na(clean), "Renewable energy not clean", "Clean renewable energy"))) %>%
+    # summarize to country-year-type level
+    group_by(Country, Years, type, cat) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  # create category sub-totals
+  subtotals <- data %>% 
+    group_by(Country, Years, cat) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    rename(type = cat)
+  
+  # join together and format
+  data %>% 
+    select(-cat) %>% 
+    bind_rows(subtotals) %>% 
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    mutate(type = ifelse(type == "Other primary", "Other clean", type)) %>% # adjust one label for this dimension
+    rename(Type = type) %>% 
+    filter(!is.na(value))
+}
+
+footnotes_2486 <- function(data) {
+  data # keep footnotes_id as empty (overwritten in manual version, keeping default)
+}
+
+result_2486 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_supply,
+  dim_config = dim_config_2486,
+  filter_fn = filter_2486,
+  transform_fn = transform_2486,
+  footnotes_fn = footnotes_2486,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 # ---- indicator 4236 — proportion of renewable primary energy supply, by type of energy ----
+
+indicator_id <- 4236
+
+dim_config_4236 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "44959"),
+  pub_col = c("208_name", "29117_name", "44959_name")
+)
+
+# Read in data for this indicator
+# data <- data_supply
+
+filter_4236 <- function(data) {
+  data %>% 
+    filter(Years <= max_year)
+}
+
+transform_4236 <- function(data) {
+  data %>% 
+    # merge CEPALSTAT energy labels
+    rename(olade_type = Type) %>% 
+    left_join(energy_types %>% fill(type, .direction = "down"),
+              by = c("olade_type")) %>% 
+    filter(renewable == "Y") %>% 
+    # Calculate share of renewable primary energy, broken out by type
+    group_by(Country, Years) %>%
+    mutate(total = sum(value, na.rm = TRUE)) %>%
+    ungroup() %>% 
+    mutate(share = round(value / total * 100, 1)) %>%
+    mutate(type = ifelse(type == "Other primary", "Other clean", type)) %>% # adjust one label for this dimension
+    select(Country, Years, type, share) %>%
+    rename(Type = type, value = share) %>%
+    filter(!is.na(value))
+}
+
+footnotes_4236 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_4236 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_supply,
+  dim_config = dim_config_4236,
+  filter_fn = filter_4236,
+  transform_fn = transform_4236,
+  footnotes_fn = footnotes_4236,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 # ---- indicator 2041 — energy consumption ----
+
 # ---- economic-energy indicators ----
 # ---- indicator 4174 — X ----
 # ---- indicator 2023 — X ----
