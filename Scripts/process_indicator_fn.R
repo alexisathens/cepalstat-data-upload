@@ -61,18 +61,25 @@ process_indicator <- function(indicator_id, data, dim_config,
   
   assert_no_duplicates(df)
   
-  ## 4. Harmonize labels
-  pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels()
-  join_keys <- setNames(dim_config$pub_col, dim_config$data_col)
+  ## 4. Join labels
+  df_l <- get_indicator_labels(df, dim_config)
+  assert_no_na_cols(df_l)
   
-  # Keep only matching columns and join
-  pub <- pub %>% select(all_of(unname(join_keys)), value)
-  comp <- full_join(df, pub, by = join_keys, suffix = c("", ".pub"))
+  
+  ## 5. Get public data and create comparison file
+  pub <- get_cepalstat_data(indicator_id) %>% 
+    mutate(value = as.numeric(value))
+  
+  join_keys <- names(df_l) %>% keep(~ str_detect(.x, "^dim_"))
+  comp <- full_join(df_l, pub, by = join_keys, suffix = c("", ".pub"))
+  assert_no_na_cols(comp, !contains("value"))
   
   # Summarize dimension overlap
-  comp_sum <- get_comp_summary_table(comp, dim_config)
+  comp_sum <- get_comp_summary(comp, dim_config)
+  comp_table <- run_comparison_checks(comp, dim_config)
   
-  ## 5. Inspect differences between public and new file
+  
+  ## 6. Inspect differences between public and new file
   if(diagnostics) {
     message(glue("🧾 Comparison summary for indicator {indicator_id}:"))
     
@@ -99,31 +106,18 @@ process_indicator <- function(indicator_id, data, dim_config,
     }
   }
   
-  ## 6. Join dimensions
-  df_f <- join_data_dim_members(df, dim_config)
-  assert_no_na_cols(df_f)
-  
   ## 7. Add footnotes, sources and format
-  df_f %<>%
+  df_f <- df_l %>% 
     mutate(footnotes_id = "") %>% 
     footnotes_fn()
   
   df_f %<>% 
-    select(ends_with("_id"), value) %>%
+    select(starts_with("dim_"), value, footnotes_id) %>%
     format_for_wasabi(indicator_id, source_fn = source_fn)
   
   assert_no_na_cols(df_f)
   
-  ## 8. Create comparison file
-  # Rebuild comp from current cleaned data and latest CEPALSTAT version
-  comp <- full_join(df, pub, by = join_keys, suffix = c("", ".pub"))
-  comp <- join_data_dim_members(comp, dim_config)
-  assert_no_na_cols(comp, !contains("value"))
-  
-  # Run comparison checks and format
-  comp <- create_comparison_checks(comp, dim_config)
-  
-  # 9. Export data and QC report
+  # 8. Export data and QC report
   if (export) {
     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
     
@@ -134,7 +128,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     
     # Write excel files
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
-    write_xlsx(comp, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
+    write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
     
     # Render data quality checks file
@@ -147,7 +141,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     message(glue("✅ Indicator {indicator_id} processing complete"))
   }
   
-  return(list(clean = df, formatted = df_f, comp = comp, comp_sum = comp_sum))
+  return(list(clean = df_l, formatted = df_f, comp = comp, comp_sum = comp_sum))
   
 }
 

@@ -153,6 +153,33 @@ get_indicator_sources <- function(indicator_id) {
   return(sources_tbl)
 }
 
+# Function to join indicator labels to flat indicator data
+get_indicator_labels <- function(df, dim_config) {
+  
+  df_l <- df # create new df with labels
+  
+  for(i in 1:nrow(dim_config)) {
+    this_data_col <- dim_config$data_col[i]
+    this_dim_id <- dim_config$dim_id[i]
+    this_pub_col <- dim_config$pub_col[i]
+    this_dim_col <- paste0("dim_", this_dim_id)
+    
+    this_dim_table <- get_full_dimension_table(this_dim_id)
+    this_name_col <- ifelse(str_detect(this_pub_col, "es"), "name_es", "name") # get label in spanish or english
+    
+    this_dim_table %<>% 
+      select(id, all_of(this_name_col)) %>% 
+      rename(!!this_dim_col := id,
+             name = !!sym(this_name_col))
+    
+    df_l %<>% 
+      left_join(this_dim_table, by = setNames("name", this_data_col))
+  }
+  
+  df_l %>% 
+    mutate(across(starts_with("dim_"), as.character))
+}
+
 # Get full dimension table (members) with English and Spanish names
 get_full_dimension_table <- function(dimension_id) {
   # English
@@ -242,7 +269,7 @@ get_cepalstat_data <- function(indicator_id) {
   return(pub)
 }
 
-# Take bare minimum df with value and *_id fields only and format for CEPALSTAT Wasabi upload
+# Take bare minimum df with value and dim_* fields only and format for CEPALSTAT Wasabi upload
 format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
   
   ## Final format:
@@ -257,10 +284,10 @@ format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
   data %<>%
     mutate(
       members_id = data %>%
-        select(ends_with("_id"), -footnotes_id) %>%
+        select(starts_with("dim_")) %>%
         pmap_chr(~ paste(c(...), collapse = ","))
     ) %>%
-    select(-ends_with("_id"), members_id, footnotes_id)
+    select(-starts_with("dim_"), members_id, footnotes_id)
   
   # Create record_id field
   data %<>%
@@ -294,13 +321,13 @@ format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
       pluck("body", "sources") %>%
       as_tibble()
     
-    ## Transition these manual source assignments to indicator-specific code
-    if(nrow(sources_tbl) > 1) {
-      if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs since direct from source
-      if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-      if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-      if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    }
+    ## Transition these manual source assignments to indicator-specific code -- just need to fix once
+    # if(nrow(sources_tbl) > 1) {
+    #   if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs since direct from source
+    #   if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+    #   if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+    #   if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
+    # }
     
     # Create source_id field
     data %<>% 
@@ -316,65 +343,65 @@ format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
 }
 
 # Take dimension map to long df with value and dimensions only and join them
-join_data_dim_members <- function(data, dim_config) {
-  
-  for(i in 1:nrow(dim_config)) {
-    data_col <- dim_config$data_col[i]
-    dim_id <- dim_config$dim_id[i]
-    dim_field <- str_remove(dim_config$pub_col[i], "^\\d+_")
-    
-    if(dim_field == "iso"){
-      matching_dim_id <- dim_config$dim_id[i]
-      matching_dim_col <- read_xlsx(here("Data/iso_codes.xlsx")) %>% select(id = cepalstat, match = name) %>% distinct(id, match)
-      matching_dim_col %<>% rename(!!paste0("d", dim_id, "_id") := id)
-    } else {
-      matching_dim_id <- dim_config$dim_id[i]
-      matching_dim_table <- get_full_dimension_table(matching_dim_id)
-      matching_dim_col <- matching_dim_table %>% select(id, match = !!sym(dim_field))
-      matching_dim_col %<>% rename(!!paste0("d", dim_id, "_id") := id)
-    }
-    
-    # Join members
-    data %<>% 
-      left_join(matching_dim_col, by = setNames("match", data_col))
-    
-  }
-  
-  return(data)
-}
+# join_data_dim_members <- function(data, dim_config) {
+#   
+#   for(i in 1:nrow(dim_config)) {
+#     data_col <- dim_config$data_col[i]
+#     dim_id <- dim_config$dim_id[i]
+#     dim_field <- str_remove(dim_config$pub_col[i], "^\\d+_")
+#     
+#     if(dim_field == "iso"){
+#       matching_dim_id <- dim_config$dim_id[i]
+#       matching_dim_col <- read_xlsx(here("Data/iso_codes.xlsx")) %>% select(id = cepalstat, match = name) %>% distinct(id, match)
+#       matching_dim_col %<>% rename(!!paste0("d", dim_id, "_id") := id)
+#     } else {
+#       matching_dim_id <- dim_config$dim_id[i]
+#       matching_dim_table <- get_full_dimension_table(matching_dim_id)
+#       matching_dim_col <- matching_dim_table %>% select(id, match = !!sym(dim_field))
+#       matching_dim_col %<>% rename(!!paste0("d", dim_id, "_id") := id)
+#     }
+#     
+#     # Join members
+#     data %<>% 
+#       left_join(matching_dim_col, by = setNames("match", data_col))
+#     
+#   }
+#   
+#   return(data)
+# }
 
 # Function that takes public CEPALSTAT data [output from get_cepalstat_data] and matches to readable labels
-match_cepalstat_labels <- function(pub) {
-  
-  # Extract dimension numbers from column names
-  dim_cols <- names(pub) %>%
-    str_extract("\\d+") %>%   # Extract first sequence of digits
-    na.omit() %>%             # Drop anything without a number (e.g. "value")
-    as.vector()
-  
-  for(i in dim_cols) {
-    this_pub_col <- names(pub)[str_detect(names(pub), i)] # Get corresponding name of column in pub
-    this_dim_table <- get_full_dimension_table(i) # Get full dimension member table
-    # Relabel columns for join
-    this_dim_table %<>% 
-      mutate(across(everything(), as.character)) %>% 
-      select(id, name, name_es) %>% 
-      rename(!!this_pub_col := id,
-             !!glue::glue("{i}_name") := name,
-             !!glue::glue("{i}_name_es") := name_es)
-    # Join labels on pub df
-    pub %<>% 
-      left_join(this_dim_table, by = setNames(this_pub_col, this_pub_col))
-  }
-  
-  # Assert no NA values in dimension columns (NA values in 'value' column are legitimate missing data)
-  assert_no_na_cols(pub, !contains("value"))
-  
-  return(pub)
-}
+# match_cepalstat_labels <- function(pub) {
+#   
+#   # Extract dimension numbers from column names
+#   dim_cols <- names(pub) %>%
+#     str_extract("\\d+") %>%   # Extract first sequence of digits
+#     na.omit() %>%             # Drop anything without a number (e.g. "value")
+#     as.vector()
+#   
+#   for(i in dim_cols) {
+#     this_pub_col <- names(pub)[str_detect(names(pub), i)] # Get corresponding name of column in pub
+#     this_dim_table <- get_full_dimension_table(i) # Get full dimension member table
+#     # Relabel columns for join
+#     this_dim_table %<>% 
+#       mutate(across(everything(), as.character)) %>% 
+#       select(id, name, name_es) %>% 
+#       rename(!!this_pub_col := id,
+#              !!glue::glue("{i}_name") := name,
+#              !!glue::glue("{i}_name_es") := name_es)
+#     # Join labels on pub df
+#     pub %<>% 
+#       left_join(this_dim_table, by = setNames(this_pub_col, this_pub_col))
+#   }
+#   
+#   # Assert no NA values in dimension columns (NA values in 'value' column are legitimate missing data)
+#   assert_no_na_cols(pub, !contains("value"))
+#   
+#   return(pub)
+# }
 
 # Function that takes comp data frame and returns table with a flag for what members are present between the new and public data
-get_comp_summary_table <- function(comp, dim_config) {
+get_comp_summary <- function(comp, dim_config) {
   dim_comp_table <- NULL
   for(i in dim_config$data_col) {
     
@@ -401,7 +428,7 @@ get_comp_summary_table <- function(comp, dim_config) {
 }
 
 # Function that creates basic comparison checks and formats for QC report
-create_comparison_checks <- function(comp, dim_config) {
+run_comparison_checks <- function(comp, dim_config) {
   # Relabel columns to match old comp formatting
   rename_labels <- setNames(dim_config$data_col, paste0("dim_",dim_config$dim_id, "_label"))
   
