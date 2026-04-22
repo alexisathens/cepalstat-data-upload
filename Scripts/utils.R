@@ -153,35 +153,8 @@ get_indicator_sources <- function(indicator_id) {
   return(sources_tbl)
 }
 
-# Function to join indicator labels to flat indicator data
-get_indicator_labels <- function(df, dim_config) {
-  
-  df_l <- df # create new df with labels
-  
-  for(i in 1:nrow(dim_config)) {
-    this_data_col <- dim_config$data_col[i]
-    this_dim_id <- dim_config$dim_id[i]
-    this_pub_col <- dim_config$pub_col[i]
-    this_dim_col <- paste0("dim_", this_dim_id)
-    
-    this_dim_table <- get_full_dimension_table(this_dim_id)
-    this_name_col <- ifelse(str_detect(this_pub_col, "es"), "name_es", "name") # get label in spanish or english
-    
-    this_dim_table %<>% 
-      select(id, all_of(this_name_col)) %>% 
-      rename(!!this_dim_col := id,
-             name = !!sym(this_name_col))
-    
-    df_l %<>% 
-      left_join(this_dim_table, by = setNames("name", this_data_col))
-  }
-  
-  df_l %>% 
-    mutate(across(starts_with("dim_"), as.character))
-}
-
 # Get full dimension table (members) with English and Spanish names
-get_full_dimension_table <- function(dimension_id) {
+get_dimension_table <- function(dimension_id) {
   # English
   url_en <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/dimensions/{dimension_id}?lang=en")
   result_en <- fetch_cepalstat_json(url_en)
@@ -211,38 +184,65 @@ get_full_dimension_table <- function(dimension_id) {
   return(members)
 }
 
-# Get indicator-specific dimension members for an indicator, with English and Spanish names
-get_ind_dimension_table <- function(indicator_id, dimension_id) {
-  # English
-  url_en <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=en&format=json&in=1&path=0")
-  result_en <- fetch_cepalstat_json(url_en)
-  indicator_info_en <- result_en %>%
-    pluck("body", "dimensions") %>%
-    as_tibble() %>%
-    filter(id == dimension_id)
-  members_en <- indicator_info_en$members[[1]] %>% as_tibble()
-  members_en <- members_en %>%
-    mutate(dim_id = indicator_info_en$id[1],
-           dim_name = indicator_info_en$name[1])
-
-  # Spanish
-  url_es <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=es&format=json&in=1&path=0")
-  result_es <- fetch_cepalstat_json(url_es)
-  indicator_info_es <- result_es %>%
-    pluck("body", "dimensions") %>%
-    as_tibble() %>%
-    filter(id == dimension_id)
-  members_es <- indicator_info_es$members[[1]] %>% as_tibble()
-  members_es <- members_es %>%
-    mutate(dim_id = indicator_info_es$id[1],
-           dim_name = indicator_info_es$name[1])
-
-  # Join Spanish names as '*_es'
-  members <- members_en %>%
-    left_join(members_es %>% select(id, name_es = name, dim_name_es = dim_name), by = "id")
-
-  return(members)
+# Function to join indicator labels to flat indicator data
+get_indicator_labels <- function(df, dim_config) {
+  
+  df_l <- df # create new df with labels
+  
+  for(i in 1:nrow(dim_config)) {
+    this_data_col <- dim_config$data_col[i]
+    this_dim_id <- dim_config$dim_id[i]
+    this_pub_col <- dim_config$pub_col[i]
+    this_dim_col <- paste0("dim_", this_dim_id)
+    
+    this_dim_table <- get_dimension_table(this_dim_id)
+    this_name_col <- ifelse(str_detect(this_pub_col, "es"), "name_es", "name") # get label in spanish or english
+    
+    this_dim_table %<>% 
+      select(id, all_of(this_name_col)) %>% 
+      rename(!!this_dim_col := id,
+             name = !!sym(this_name_col))
+    
+    df_l %<>% 
+      left_join(this_dim_table, by = setNames("name", this_data_col))
+  }
+  
+  df_l %>% 
+    mutate(across(starts_with("dim_"), as.character))
 }
+
+# Get indicator-specific dimension members for an indicator, with English and Spanish names
+# get_ind_dimension_table <- function(indicator_id, dimension_id) {
+#   # English
+#   url_en <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=en&format=json&in=1&path=0")
+#   result_en <- fetch_cepalstat_json(url_en)
+#   indicator_info_en <- result_en %>%
+#     pluck("body", "dimensions") %>%
+#     as_tibble() %>%
+#     filter(id == dimension_id)
+#   members_en <- indicator_info_en$members[[1]] %>% as_tibble()
+#   members_en <- members_en %>%
+#     mutate(dim_id = indicator_info_en$id[1],
+#            dim_name = indicator_info_en$name[1])
+# 
+#   # Spanish
+#   url_es <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/dimensions?lang=es&format=json&in=1&path=0")
+#   result_es <- fetch_cepalstat_json(url_es)
+#   indicator_info_es <- result_es %>%
+#     pluck("body", "dimensions") %>%
+#     as_tibble() %>%
+#     filter(id == dimension_id)
+#   members_es <- indicator_info_es$members[[1]] %>% as_tibble()
+#   members_es <- members_es %>%
+#     mutate(dim_id = indicator_info_es$id[1],
+#            dim_name = indicator_info_es$name[1])
+# 
+#   # Join Spanish names as '*_es'
+#   members <- members_en %>%
+#     left_join(members_es %>% select(id, name_es = name, dim_name_es = dim_name), by = "id")
+# 
+#   return(members)
+# }
 
 # Fetch currently published CEPALSTAT data for given indicator
 get_cepalstat_data <- function(indicator_id) {
@@ -521,39 +521,4 @@ update_indicator_metadata <- function(indicator_id, ind_notes = NULL) {
   
   # Write back
   writexl::write_xlsx(list(metadata = meta), here("Data/indicator_metadata.xlsx"))
-}
-
-
-update_changelog <- function(indicator_id = NULL, change_type, description,
-                             old_value = NULL, new_value = NULL) {
-  # Load changelog
-  log <- read_xlsx(here("Data/indicator_changelog.xlsx"), sheet = "changelog")
-  log %<>% mutate(date = lubridate::ymd(date, quiet = TRUE))
-  
-  meta <- read_xlsx(here("Data/indicator_metadata.xlsx"), sheet = "metadata")
-  
-  if (is.null(indicator_id)) this_indicator_id <- NA_character_
-  if (is.null(old_value)) old_value <- NA_character_
-  if (is.null(new_value)) new_value <- NA_character_
-  
-  if(!is.null(indicator_id)) {this_indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)} # pull indicator name
-  last_log_entry <- log %>% slice_tail(n = 1) %>% pull(entry_id)
-  this_log_entry <- sprintf("c%03d", as.integer(sub("c", "", last_log_entry)) + 1)
-  
-  # Format new entry
-  new_change <- tibble(
-    entry_id = this_log_entry,
-    date = as.Date(Sys.Date()),
-    indicator_id = this_indicator_id,
-    indicator_name = this_indicator_name,
-    change_type = change_type,
-    description = description,
-    old_value = old_value,
-    new_value = new_value
-  )
-  
-  log %<>% bind_rows(new_change)
-  
-  # Write back
-  writexl::write_xlsx(list(changelog = log), here("Data/indicator_changelog.xlsx"))
 }
