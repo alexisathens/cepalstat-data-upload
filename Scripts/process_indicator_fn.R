@@ -6,7 +6,8 @@ process_indicator <- function(indicator_id, data, dim_config,
                               remove_lac = TRUE, # TRUE = remove and recalculate LAC, FALSE = keep source LAC
                               diagnostics = TRUE, export = TRUE,
                               ind_notes = NULL,
-                              open_qmd = TRUE) {
+                              open_qmd = TRUE,
+                              new_indicator = FALSE) {
   message(glue("▶ Processing indicator {indicator_id}..."))
 
   ## 1. Filter and transform raw data
@@ -67,11 +68,15 @@ process_indicator <- function(indicator_id, data, dim_config,
   
   
   ## 5. Get public data and create comparison file
-  pub <- get_cepalstat_data(indicator_id) %>% 
-    mutate(value = as.numeric(value))
+  if(!new_indicator) { # if public data exists, use it in comparison check
+    pub <- get_cepalstat_data(indicator_id) %>% 
+      mutate(value = as.numeric(value))
+    join_keys <- names(df_l) %>% keep(~ str_detect(.x, "^dim_"))
+    comp <- full_join(df_l, pub, by = join_keys, suffix = c("", ".pub"))
+  } else { # else fill comparison checks with NAs for public data
+    comp <- df_l %>% mutate(value.pub = NA_integer_)
+  }
   
-  join_keys <- names(df_l) %>% keep(~ str_detect(.x, "^dim_"))
-  comp <- full_join(df_l, pub, by = join_keys, suffix = c("", ".pub"))
   assert_no_na_cols(comp, !contains("value"))
   
   # Summarize dimension overlap
@@ -111,7 +116,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     mutate(footnotes_id = "") %>% 
     footnotes_fn()
   
-  df_f %<>% 
+  df_f %>% 
     select(starts_with("dim_"), value, footnotes_id) %>%
     format_for_wasabi(indicator_id, source_fn = source_fn)
   
@@ -146,18 +151,34 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 2487
-# data = data_prod
-# dim_config = dim_config_2487
-# filter_fn = filter_2487
-# transform_fn = transform_2487
-# remove_lac = FALSE
-# regional_fn = regional_2487
-# footnotes_fn = footnotes_2487
-# source_fn = NULL
-# diagnostics = TRUE
-# export = FALSE
-# open_qmd = TRUE
+indicator_id = 5672
+data = data_prod
+dim_config = dim_config_5672
+filter_fn = filter_5672
+transform_fn = transform_5672
+remove_lac = FALSE
+regional_fn = regional_5672
+footnotes_fn = footnotes_5672
+source_fn = source_5672
+diagnostics = TRUE
+export = FALSE
+open_qmd = TRUE
+new_indicator = TRUE
+
+## Debugging
+indicator_id = 3154
+data = data_supply
+dim_config = dim_config_3154
+filter_fn = filter_3154
+transform_fn = transform_3154
+remove_lac = FALSE
+regional_fn = regional_3154
+footnotes_fn = footnotes_3154
+source_fn = NULL
+diagnostics = TRUE
+export = FALSE
+open_qmd = TRUE
+new_indicator = FALSE
 
 ## Sample indicator processing code
 
