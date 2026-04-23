@@ -474,7 +474,7 @@ run_comparison_checks <- function(comp, dim_config) {
 }
 
 # Function that renders 03_qc_report.qmd for given indicator
-render_qc_checks <- function(indicator_id, open_qmd = TRUE) {
+render_qc_checks <- function(indicator_id, open_qmd = TRUE, new_indicator = FALSE) {
   
   # Construct qmd file name
   output_file   <- paste0("qc_report_", indicator_id, ".html")
@@ -485,7 +485,8 @@ render_qc_checks <- function(indicator_id, open_qmd = TRUE) {
     output_file    = output_file,
     output_format  = "html",
     execute_params = list(
-      indicator_id = indicator_id
+      indicator_id = indicator_id,
+      new_indicator = new_indicator
     )
   )
   
@@ -509,6 +510,9 @@ update_indicator_metadata <- function(indicator_id, ind_notes = NULL) {
   
   # Convert ind_notes to empty string if null
   if (is.null(ind_notes)) ind_notes <- NA_character_
+  
+  # Throw error if metadata doesn't exist (e.g., for a new indicator)
+  if(is_empty(meta %>% filter(id == indicator_id) %>% pull(id))) stop("Indicator metadata doesn't exist. Create metadata row in Data/indicator_metadata.xlsx.")
   
   meta <- meta %>%
     mutate(

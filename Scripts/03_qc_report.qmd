@@ -9,7 +9,8 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 3381
+  indicator_id: 5672
+  new_indicator: TRUE
 execute:
   echo: false
   warning: false
@@ -17,7 +18,7 @@ execute:
 project:
   type: default
   output-dir: "QC Reports"
-output-file: "qc_report_3381.html"
+output-file: "qc_report_5672.html"
 ---
 
 ## Quality Check Report for Indicator `r params$indicator_id`
@@ -500,7 +501,8 @@ p <- comp %>%
     legend.position = "none"
   )
 
-ggplotly(p, tooltip = "text") %>%
+if(!params$new_indicator) { # will throw error if no public data
+  ggplotly(p, tooltip = "text") %>%
   layout(
     title = list(
       text = paste0(
@@ -509,7 +511,7 @@ ggplotly(p, tooltip = "text") %>%
       )
     )
   )
-
+}
 
 ```
 
@@ -648,6 +650,8 @@ reactable(
 This section isolates country time series that have raised any flags: either with percent changes exceeding 20% or z-scores exceeding 3. This can be used to visually identify whether these data points are within-country outliers.
 
 ```{r}
+#| warning: false
+
 # Step 1: Identify countries with any large difference or outlier
 countries_with_flags <- comp %>% 
   filter(flag_some_na == FALSE & flag_some_value == TRUE) %>%
@@ -717,7 +721,8 @@ Need to add check for missing records when there are additional dimensions, or a
 -->
 
 ```{r, warning = FALSE, fig.height=16, results='asis'}
-render_plot_for_dim <- function(dim) {
+if(!params$new_indicator){
+  render_plot_for_dim <- function(dim) {
   dim_name <- get_indicator_dimensions(indicator_id) %>% 
     filter(id == str_extract(dim, "\\d+")) %>% 
     pull(name)
@@ -766,6 +771,7 @@ render_plot_for_dim <- function(dim) {
 
 if (length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
 if (length(extra_dims) == 2) render_plot_for_dim(extra_dims[2])
+}
 ```
 
 <!--

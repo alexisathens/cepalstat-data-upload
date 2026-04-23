@@ -137,7 +137,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
     
     # Render data quality checks file
-    render_qc_checks(indicator_id, open_qmd)
+    render_qc_checks(indicator_id, open_qmd, new_indicator)
     message(glue("✅ Exported quality check file for {indicator_id}"))
     
     # Update metadata for code version and last updated
@@ -151,34 +151,19 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-indicator_id = 5672
-data = data_prod
-dim_config = dim_config_5672
-filter_fn = filter_5672
-transform_fn = transform_5672
-remove_lac = FALSE
-regional_fn = regional_5672
-footnotes_fn = footnotes_5672
-source_fn = source_5672
-diagnostics = TRUE
-export = FALSE
-open_qmd = TRUE
-new_indicator = TRUE
-
-## Debugging
-indicator_id = 3154
-data = data_supply
-dim_config = dim_config_3154
-filter_fn = filter_3154
-transform_fn = transform_3154
-remove_lac = FALSE
-regional_fn = regional_3154
-footnotes_fn = footnotes_3154
-source_fn = NULL
-diagnostics = TRUE
-export = FALSE
-open_qmd = TRUE
-new_indicator = FALSE
+# indicator_id = 5672
+# data = data_prod
+# dim_config = dim_config_5672
+# filter_fn = filter_5672
+# transform_fn = transform_5672
+# remove_lac = FALSE
+# regional_fn = regional_5672
+# footnotes_fn = footnotes_5672
+# source_fn = source_5672
+# diagnostics = TRUE
+# export = FALSE
+# open_qmd = TRUE
+# new_indicator = TRUE
 
 ## Sample indicator processing code
 
