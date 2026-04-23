@@ -45,7 +45,8 @@ data_cons_sec <- read_csv(paste0(input_path, "/energy_consumption_sector_clean.c
 
 
 # ---- core energy indicators ----
-# ---- indicator 2040/5672 — energy production ----
+
+# ---- indicator 5672/2040 — energy production ----
 # indicator 2040 used a duplicate dimension (dimension 20726 instead of dimension 44966)
 # 20726 - Tipo de energía__Primaria_Secundaria (outdated; missing newer energy sources and total)
 # 44966 - Tipo de energía__Primaria_y_Secundaria (current dimension)
@@ -96,6 +97,7 @@ source_5672 <- function() {
 }
 
 result_5672 <- process_indicator(
+  new_indicator = TRUE, # NEW FOR 2026 (**remove this for future runs)
   indicator_id = indicator_id,
   data = data_prod,
   dim_config = dim_config_5672,
@@ -105,8 +107,7 @@ result_5672 <- process_indicator(
   source_fn = source_5672,
   remove_lac = FALSE, # keep source LAC data from OLADE
   diagnostics = TRUE,
-  export = TRUE,
-  new_indicator = TRUE
+  export = TRUE
 )
 
 
@@ -342,7 +343,69 @@ result_4236 <- process_indicator(
 )
 
 
-# ---- indicator 2041 — energy consumption ----
+# ---- indicator 5730/2041 — energy consumption ----
+# indicator 2041 used a duplicate dimension (dimension 20726 instead of dimension 44966)
+# 20726 - Tipo de energía__Primaria_Secundaria (outdated; missing newer energy sources and total)
+# 44966 - Tipo de energía__Primaria_y_Secundaria (current dimension)
+# indicator 5730 was created as a clone to be updated with the correct information and utilized moving forward
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+indicator_id <- 5730
+
+dim_config_5730 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "44966"),
+  pub_col = c("208_name", "29117_name", "44966_name")
+)
+
+# Read in data for this indicator
+# data <- data_cons
+
+filter_5730 <- function(data) {
+  data %>%
+    filter(Years <= max_year)
+}
+
+transform_5730 <- function(data) {
+  data %>% 
+    # merge CEPALSTAT energy labels
+    rename(olade_type = Type) %>% 
+    left_join(energy_types %>% select(type, olade_type) %>% fill(type, .direction = "down"),
+              by = c("olade_type")) %>% 
+    # keep OLADE subtotals and totals (since Total can't be calculated directly from data)
+    mutate(type = ifelse(is.na(type), olade_type, type)) %>% 
+    # summarize by energy type
+    group_by(Country, Years, type) %>% 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    rename(Type = type)
+}
+
+footnotes_5730 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+source_5730 <- function() {
+  # get_indicator_sources(2041) # define source for first time since this is a new indicator
+  714 # OLADE - Economic Energy Information System
+}
+
+result_5730 <- process_indicator(
+  new_indicator = TRUE, # NEW FOR 2026 (**remove this for future runs)
+  indicator_id = indicator_id,
+  data = data_prod,
+  dim_config = dim_config_5730,
+  filter_fn = filter_5730,
+  transform_fn = transform_5730,
+  footnotes_fn = footnotes_5730,
+  source_fn = source_5730,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
 
 # ---- economic-energy indicators ----
 # ---- indicator 4174 — X ----
