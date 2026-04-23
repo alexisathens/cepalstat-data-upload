@@ -121,7 +121,7 @@ Create comparison dfs at two different levels of detail:
 - comp_detailed is left in the original data format: includes record_id, dim_XXXX, dim_XXXX_label for any extra dims
 -->
 
-```{r}
+```{r create comp_detailed}
 # Keep `comp` df at country/year level. Create comp_detailed for IF there are additional dimensions.
 comp_detailed <- comp
 
@@ -159,7 +159,7 @@ comp %<>%
 This section summarizes key metadata about the indicator and dataset under review.
 It helps contextualize the scope of the data quality checks.
 
-```{r}
+```{r create summary table}
 # Create summary table
 summary_df <- tibble(
   Metric = names(summary_info),
@@ -199,7 +199,7 @@ It flags:
 The visual below shows data coverage by country and year. Gaps or additions should be reviewed for justification.
 
 
-```{r}
+```{r run coverage check}
 all_combinations <- expand_grid(
   country = sort(unique(comp$dim_208_label)),
   year = as.character(min(comp$dim_29117_label):max(comp$dim_29117_label))
@@ -210,7 +210,7 @@ coverage_check <- all_combinations %>%
   mutate(status = ifelse(is.na(status), "Missing in Both", status))
 ```
 
-```{r}
+```{r display coverage check}
 p <- coverage_check %>% 
   mutate(
     country = factor(country, levels = sort(unique(country), decreasing = TRUE)),
@@ -256,7 +256,7 @@ ggplotly(p, tooltip = "text") %>%
 This section visualizes the values of the new data points. Whether any of the new data points for the new year are anomalous can be explored in the Country-Level Analysis section.
 
 
-```{r}
+```{r show new values time series}
 p <- ggplot(comp, aes(
   x = as.numeric(dim_29117_label),  # Year
   y = value_data,
@@ -308,7 +308,7 @@ ggplotly(p, tooltip = "text") %>%
 ### Country Values Time Series
 This shows the same information but is scaled to the country level. 
 
-```{r, warning = FALSE, fig.height=14}
+```{r show new values by country, warning = FALSE, fig.height=14}
 p <- comp %>% 
   filter(!is.na(value_data)) %>% 
   ggplot(aes(
@@ -371,7 +371,7 @@ This helps identify outliers, input errors, or significant data revisions that m
 
 ### Summary Statistics
 
-```{r}
+```{r display data comparison summary statistics}
 summary_info <- comp %>%
   filter(status == "Present in Both") %>%
   summarise(
@@ -419,7 +419,7 @@ summary_df %>%
 
 This section compares data values for country/year pairs between the public and internal data sets. The dashed line indicates perfect alignment between the two sources. Any points colored in red indicate a greater than 20% difference between the two data sets.
 
-```{r}
+```{r show absolute value differences}
 p <- comp %>% 
   filter(flag_some_na == FALSE) %>% # remove partial entries
   mutate(flag_large_diff = factor(flag_large_diff, 
@@ -464,7 +464,7 @@ ggplotly(p, tooltip = "text")
 
 This section compares relative differences between the public and internal data. A percent change is calculated between the public data and internal data, and the data is displayed in country/year pairs. The ±20% tolerance threshold band is colored a light green. Large relative changes above 20% are colored red.
 
-```{r}
+```{r show percent differences}
 year_min <- min(as.numeric(comp$dim_29117_label), na.rm = TRUE)
 year_max <- max(as.numeric(comp$dim_29117_label), na.rm = TRUE)
 
@@ -523,7 +523,7 @@ This table displays records where the updated internal values differ from the pu
 
 Rows with a z-score (`z_perc_diff`) greater than 3 are statistically significant outliers, indicating values that deviate strongly from the overall distribution and may require further review or explanation.
 
-```{r}
+```{r display percent difference table}
 reactable(
   comp %>%
     mutate(
@@ -601,7 +601,7 @@ Future additions:
 
 This calculates z-scores within each country series to flag major deviations in the individual country series. This displays all entries with a z-score greater than 3. If no entries are shown, then all of the values within each country seem reasonable.
 
-```{r}
+```{r calculate country z-scores}
 # Calculate and store country z-scores
 comp %<>%
     group_by(dim_208_label) %>%
@@ -617,7 +617,7 @@ comp %<>%
 ```
 
 
-```{r}
+```{r display country z-score table}
 reactable(
   comp %>%
     filter(flag_some_na == FALSE) %>%
@@ -649,7 +649,7 @@ reactable(
 
 This section isolates country time series that have raised any flags: either with percent changes exceeding 20% or z-scores exceeding 3. This can be used to visually identify whether these data points are within-country outliers.
 
-```{r}
+```{r show country outlier time series}
 #| warning: false
 
 # Step 1: Identify countries with any large difference or outlier
@@ -720,7 +720,7 @@ if(!is_empty(countries_with_flags)){
 Need to add check for missing records when there are additional dimensions, or aggregate records
 -->
 
-```{r, warning = FALSE, fig.height=16, results='asis'}
+```{r show dimension series by country, warning = FALSE, fig.height=16, results='asis'}
 if(!params$new_indicator){
   render_plot_for_dim <- function(dim) {
   dim_name <- get_indicator_dimensions(indicator_id) %>% 
