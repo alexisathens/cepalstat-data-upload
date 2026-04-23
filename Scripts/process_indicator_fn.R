@@ -136,13 +136,13 @@ process_indicator <- function(indicator_id, data, dim_config,
     write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
     
-    # Render data quality checks file
-    render_qc_checks(indicator_id, open_qmd, new_indicator)
-    message(glue("✅ Exported quality check file for {indicator_id}"))
-    
     # Update metadata for code version and last updated
     update_indicator_metadata(indicator_id, ind_notes)
     message(glue("✅ Updated internal metadata for {indicator_id}"))
+    
+    # Render data quality checks file
+    render_qc_checks(indicator_id, open_qmd, new_indicator)
+    message(glue("✅ Exported quality check file for {indicator_id}"))
     message(glue("✅ Indicator {indicator_id} processing complete"))
   }
   
