@@ -116,7 +116,7 @@ process_indicator <- function(indicator_id, data, dim_config,
     mutate(footnotes_id = "") %>% 
     footnotes_fn()
   
-  df_f %>% 
+  df_f %<>% 
     select(starts_with("dim_"), value, footnotes_id) %>%
     format_for_wasabi(indicator_id, source_fn = source_fn)
   
