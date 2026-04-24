@@ -73,6 +73,15 @@ process_indicator <- function(indicator_id, data, dim_config,
       mutate(value = as.numeric(value))
     join_keys <- names(df_l) %>% keep(~ str_detect(.x, "^dim_"))
     comp <- full_join(df_l, pub, by = join_keys, suffix = c("", ".pub"))
+    
+    # quick fix for entries in pub that are missing labels - fill from other values in comp file (assuming they exist)
+    comp %<>% 
+      group_by(dim_208) %>% 
+      fill(Country, .direction = "downup") %>% 
+      ungroup() %>% 
+      group_by(dim_29117) %>% 
+      fill(Years, .direction = "downup") %>% 
+      ungroup()
   } else { # else fill comparison checks with NAs for public data
     comp <- df_l %>% mutate(value.pub = NA_integer_)
   }
@@ -151,19 +160,19 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 5672
+# indicator_id = 2023
 # data = data_prod
-# dim_config = dim_config_5672
-# filter_fn = filter_5672
-# transform_fn = transform_5672
+# dim_config = dim_config_2023
+# filter_fn = filter_2023
+# transform_fn = transform_2023
 # remove_lac = FALSE
-# regional_fn = regional_5672
-# footnotes_fn = footnotes_5672
-# source_fn = source_5672
+# regional_fn = regional_2023
+# footnotes_fn = footnotes_2023
+# source_fn = source_2023
 # diagnostics = TRUE
 # export = FALSE
 # open_qmd = TRUE
-# new_indicator = TRUE
+# new_indicator = FALSE
 
 ## Sample indicator processing code
 
