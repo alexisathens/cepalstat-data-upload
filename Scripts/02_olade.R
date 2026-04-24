@@ -396,7 +396,7 @@ source_5730 <- function() {
 result_5730 <- process_indicator(
   new_indicator = TRUE, # NEW FOR 2026 (**remove this for future runs)
   indicator_id = indicator_id,
-  data = data_prod,
+  data = data_cons,
   dim_config = dim_config_5730,
   filter_fn = filter_5730,
   transform_fn = transform_5730,
@@ -408,12 +408,127 @@ result_5730 <- process_indicator(
 )
 
 # ---- economic-energy indicators ----
-# ---- indicator 4174 — X ----
-# ---- indicator 2023 — X ----
-# ---- indicator 3243 — X ----
-# ---- indicator 4242 — X ----
-# ---- indicator 4183 — X ----
-# ---- indicator 4184 — X ----
+
+# ---- indicator 4174 — GDP energy intensity (primary energy supply / GDP) ----
+
+indicator_id <- 4174
+
+dim_config_4174 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_supply
+
+filter_4174 <- function(data) {
+  data %>%
+    filter(Type == "Total primaries" & Years <= max_year) %>%
+    select(-Type)
+}
+
+transform_4174 <- function(data) {
+  # Obtain PIB data from CEPALSTAT
+  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dolllars
+  pib <- call.data(id.indicator = 2204) %>% as_tibble()
+  
+  pib %<>%
+    mutate(Years = as.numeric(Years)) %>%
+    select(Country, Years, pib = value)
+  
+  # Join PIB data and calculate energy intensity
+  data %>%
+    left_join(pib, by = c("Country", "Years")) %>%
+    filter(as.numeric(Years) >= 1990) %>% # this is the start of the pib series
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    rename(supply = value) %>%
+    mutate(value = supply / pib) %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+}
+
+footnotes_4174 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_4174 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_supply,
+  dim_config = dim_config_4174,
+  filter_fn = filter_4174,
+  transform_fn = transform_4174,
+  footnotes_fn = footnotes_4174,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# ---- indicator 2023 — GDP energy intensity (final energy consumption / GDP) ----
+
+indicator_id <- 2023
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_2023 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_cons
+
+filter_2023 <- function(data) {
+  data %>%
+    filter(Type == "Total" & Years <= max_year) %>%
+    select(-Type)
+}
+
+transform_2023 <- function(data) {
+  # Obtain PIB data from CEPALSTAT
+  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dolllars
+  pib <- call.data(id.indicator = 2204) %>% as_tibble()
+  
+  pib %<>%
+    mutate(Years = as.numeric(Years)) %>%
+    select(Country, Years, pib = value)
+  
+  # Join PIB data and calculate energy intensity
+  data %>%
+    left_join(pib, by = c("Country", "Years")) %>%
+    filter(as.numeric(Years) >= 1990) %>% # this is the start of the pib series
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    rename(supply = value) %>%
+    mutate(value = supply / pib) %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+}
+
+footnotes_2023 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_2023 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_cons,
+  dim_config = dim_config_2023,
+  filter_fn = filter_2023,
+  transform_fn = transform_2023,
+  footnotes_fn = footnotes_2023,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# ---- indicator 4243 — energy intensity by economic activity (Final energy consumption / Value added of economic activity in constant 2018 dollars) ----
+# ---- indicator 4242 — energy intensity by economic activity (Final energy consumption / Value added of economic activity in PPP) - DELETE? ----
+# ---- indicator 4183 — variation rate of the energy intensity of the GDP (Primary energy supply / GDP) ----
+# ---- indicator 4184 — variation rate of the energy intensity of GDP (Final energy consumption / GDP) ----
 # ---- electricity indicators ----
 
 
