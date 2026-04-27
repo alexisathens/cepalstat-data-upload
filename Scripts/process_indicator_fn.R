@@ -63,25 +63,19 @@ process_indicator <- function(indicator_id, data, dim_config,
   assert_no_duplicates(df)
   
   ## 4. Join labels
-  df_l <- get_indicator_labels(df, dim_config)
+  df_l <- get_cepalstat_ids(df, dim_config)
   assert_no_na_cols(df_l)
   
   
   ## 5. Get public data and create comparison file
   if(!new_indicator) { # if public data exists, use it in comparison check
     pub <- get_cepalstat_data(indicator_id) %>% 
-      mutate(value = as.numeric(value))
-    join_keys <- names(df_l) %>% keep(~ str_detect(.x, "^dim_"))
+      mutate(value = as.numeric(value)) %>% 
+      get_cepalstat_labels(dim_config)
+    
+    join_keys <- intersect(names(df_l), names(pub)) %>% setdiff("value")
     comp <- full_join(df_l, pub, by = join_keys, suffix = c("", ".pub"))
     
-    # quick fix for entries in pub that are missing labels - fill from other values in comp file (assuming they exist)
-    comp %<>% 
-      group_by(dim_208) %>% 
-      fill(Country, .direction = "downup") %>% 
-      ungroup() %>% 
-      group_by(dim_29117) %>% 
-      fill(Years, .direction = "downup") %>% 
-      ungroup()
   } else { # else fill comparison checks with NAs for public data
     comp <- df_l %>% mutate(value.pub = NA_integer_)
   }
@@ -160,15 +154,15 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 2023
-# data = data_prod
-# dim_config = dim_config_2023
-# filter_fn = filter_2023
-# transform_fn = transform_2023
+# indicator_id = 4184
+# data = data_cons
+# dim_config = dim_config_4184
+# filter_fn = filter_4184
+# transform_fn = transform_4184
 # remove_lac = FALSE
-# regional_fn = regional_2023
-# footnotes_fn = footnotes_2023
-# source_fn = source_2023
+# regional_fn = regional_4184
+# footnotes_fn = footnotes_4184
+# source_fn = source_4184
 # diagnostics = TRUE
 # export = FALSE
 # open_qmd = TRUE

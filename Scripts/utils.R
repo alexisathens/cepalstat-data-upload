@@ -184,8 +184,8 @@ get_dimension_table <- function(dimension_id) {
   return(members)
 }
 
-# Function to join indicator labels to flat indicator data
-get_indicator_labels <- function(df, dim_config) {
+# Function to join cepalstat dimension ids to processed indicator data
+get_cepalstat_ids <- function(df, dim_config) {
   
   df_l <- df # create new df with labels
   
@@ -209,6 +209,35 @@ get_indicator_labels <- function(df, dim_config) {
   
   df_l %>% 
     mutate(across(starts_with("dim_"), as.character))
+}
+
+# Function to join cepalstat dimension labels to cepalstat data (pub)
+get_cepalstat_labels <- function(pub, dim_config) {
+  
+  pub_l <- pub # create new df with labels
+  
+  for(i in 1:nrow(dim_config)) {
+    this_data_col <- dim_config$data_col[i]
+    this_dim_id <- dim_config$dim_id[i]
+    this_pub_col <- dim_config$pub_col[i]
+    this_dim_col <- paste0("dim_", this_dim_id)
+    
+    this_dim_table <- get_dimension_table(this_dim_id)
+    this_name_col <- ifelse(str_detect(this_pub_col, "es"), "name_es", "name") # get label in spanish or english
+    
+    this_dim_table %<>% 
+      select(id, all_of(this_name_col)) %>% 
+      rename(!!this_dim_col := id,
+             !!sym(this_data_col) := name) %>% 
+      mutate(across(starts_with("dim_"), as.character))
+    
+    pub_l %<>% 
+      left_join(this_dim_table, by = this_dim_col)
+  }
+  
+  pub_l %>% 
+    mutate(across(starts_with("dim_"), as.character)) %>% 
+    relocate(c("value", starts_with("dim")), .after = last_col())
 }
 
 # Get indicator-specific dimension members for an indicator, with English and Spanish names
