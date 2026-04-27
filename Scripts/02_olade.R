@@ -502,8 +502,8 @@ transform_2023 <- function(data) {
     left_join(pib, by = c("Country", "Years")) %>%
     filter(as.numeric(Years) >= 1990) %>% # this is the start of the pib series
     mutate(value = value / 1e12) %>% # convert from joules to terajoules
-    rename(supply = value) %>%
-    mutate(value = supply / pib) %>%
+    rename(cons = value) %>%
+    mutate(value = cons / pib) %>%
     select(Country, Years, value) %>%
     filter(!is.na(value))
 }
@@ -527,8 +527,153 @@ result_2023 <- process_indicator(
 
 # ---- indicator 4243 — energy intensity by economic activity (Final energy consumption / Value added of economic activity in constant 2018 dollars) ----
 # ---- indicator 4242 — energy intensity by economic activity (Final energy consumption / Value added of economic activity in PPP) - DELETE? ----
-# ---- indicator 4183 — variation rate of the energy intensity of the GDP (Primary energy supply / GDP) ----
-# ---- indicator 4184 — variation rate of the energy intensity of GDP (Final energy consumption / GDP) ----
+
+# ---- indicator 4183 — variation rate of GDP energy intensity (primary energy supply / GDP) ----
+
+indicator_id <- 4183
+
+dim_config_4183 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_supply
+
+filter_4183 <- function(data) {
+  data %>%
+    filter(Type == "Total primaries" & Years <= max_year) %>%
+    select(-Type)
+}
+
+transform_4183 <- function(data) {
+  # Obtain PIB data from CEPALSTAT
+  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dolllars (millions)
+  pib <- call.data(id.indicator = 2204) %>% as_tibble()
+  
+  pib %<>%
+    mutate(Years = as.numeric(Years)) %>%
+    select(Country, Years, pib = value)
+  
+  # Join GDP data and calculate energy intensity
+  data %<>%
+    left_join(pib, by = c("Country", "Years")) %>%
+    filter(as.numeric(Years) >= 1990) %>% # this is the start of the pib series
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    rename(supply = value) %>%
+    mutate(value = supply / pib) %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+  
+  # Calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
+  data %>%
+    arrange(Country, Years) %>%
+    group_by(Country) %>%
+    mutate(
+      value_prev = lag(value),
+      value = ((value - value_prev) / value_prev) * 100
+    ) %>%
+    ungroup() %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+}
+
+footnotes_4183 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+source_4183 <- function() {
+  10685 # Calculations made by ECLAC based on the economic and energy information system of OLADE 
+}
+
+result_4183 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_supply,
+  dim_config = dim_config_4183,
+  filter_fn = filter_4183,
+  transform_fn = transform_4183,
+  footnotes_fn = footnotes_4183,
+  source_fn = source_4183,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
+# ---- indicator 4184 — variation rate of GDP energy intensity (final energy consumption / GDP) ----
+
+indicator_id <- 4184
+
+dim_config_4184 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_cons
+
+filter_4184 <- function(data) {
+  data %>%
+    filter(Type == "Total" & Years <= max_year) %>%
+    select(-Type)
+}
+
+transform_4184 <- function(data) {
+  # Obtain PIB data from CEPALSTAT
+  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dolllars
+  pib <- call.data(id.indicator = 2204) %>% as_tibble()
+  
+  pib %<>%
+    mutate(Years = as.numeric(Years)) %>%
+    select(Country, Years, pib = value)
+  
+  # Join PIB data and calculate energy intensity
+  data %<>%
+    left_join(pib, by = c("Country", "Years")) %>%
+    filter(as.numeric(Years) >= 1990) %>% # this is the start of the pib series
+    mutate(value = value / 1e12) %>% # convert from joules to terajoules
+    rename(cons = value) %>%
+    mutate(value = cons / pib) %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+  
+  # Calculate variation rate: ((Mt - Mt-1) / Mt-1) * 100
+  data %>%
+    arrange(Country, Years) %>%
+    group_by(Country) %>%
+    mutate(
+      value_prev = lag(value),
+      value = ((value - value_prev) / value_prev) * 100
+    ) %>%
+    ungroup() %>%
+    select(Country, Years, value) %>%
+    filter(!is.na(value))
+}
+
+footnotes_4184 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+source_4184 <- function() {
+  10685 # Calculations made by ECLAC based on the economic and energy information system of OLADE 
+}
+
+result_4184 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_cons,
+  dim_config = dim_config_4184,
+  filter_fn = filter_4184,
+  transform_fn = transform_4184,
+  footnotes_fn = footnotes_4184,
+  source_fn = source_4184,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+
 # ---- electricity indicators ----
 
 
