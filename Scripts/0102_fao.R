@@ -10,6 +10,7 @@ library(assertthat)
 library(quarto)
 library(CepalStatR)
 library(FAOSTAT)
+library(fishstat)
 
 # This script downloads, cleans, and standardizes the second delivery of FAO indicators in a more automated way
 
@@ -80,14 +81,6 @@ rp %<>% as_tibble()
 # match old formatting...
 rp %<>% rename(item = Item, element = Element, area = Area, year = Year, value = Value)
 rp %<>% mutate(element = ifelse(element == "Agricultural Use", "agricultural_use", element))
-
-# MANUALLY download bulk data from fishstat / fish capture production
-# at https://www.fao.org/fishery/statistics-query/en/capture/capture_quantity
-fish_folder <- here("Data/Raw/fao fish and aqua//global capture production quantity 20-11-2025")
-fish <- read_csv(paste0(fish_folder, "/Capture_Quantity.csv"))
-fish_country_map <- read_csv(paste0(fish_folder, "/CL_FI_COUNTRY_GROUPS.csv"))
-fish_species_map <- read_csv(paste0(fish_folder, "/CL_FI_SPECIES_GROUPS.csv"))
-fish_water_map <- read_csv(paste0(fish_folder, "/CL_FI_WATERAREA_GROUPS.csv"))
 
 # MANUALLY download bulk data from fishstat / aquaculture production
 # at https://www.fao.org/fishery/statistics-query/en/aquaculture/aquaculture_quantity
@@ -1139,21 +1132,22 @@ dim_config_2019 <- tibble(
   pub_col = c("208_name", "29117_name", "20720_name")
 )
 
-## ** indicator specific data cleaning **
-
-fish_country_map %<>% select(UN_Code, Country = Name_En)
-fish_species_map %<>% select(`3A_Code`, Species = Name_En, Species_Group = ISSCAAP_Group_En)
-fish_water_map %<>% select(Code, Water = Name_En)
-
-
-fish %<>% 
-  left_join(fish_country_map, by = c("COUNTRY.UN_CODE" = "UN_Code")) %>% 
-  left_join(fish_species_map, by = c("SPECIES.ALPHA_3_CODE" = "3A_Code")) %>% 
-  left_join(fish_water_map, by = c("AREA.CODE" = "Code")) %>% 
-  select(-COUNTRY.UN_CODE, -SPECIES.ALPHA_3_CODE, - AREA.CODE)
-
 # ****************************************
 
+# imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
+fish <- capture %>%
+    inner_join(country, by = "country") %>%
+    inner_join(species, by = "species") 
+
+fish <- fish %>% 
+  mutate(
+    Years = as.integer(year),
+    Country = country_name,
+    Species = species_name,
+    Species_Group = isscaap
+  )
+
+# ****************************************
 
 filter_2019 <- function(data) {
   whales <- c("Blue-whales, fin-whales", "Sperm-whales, pilot-whales", "Eared seals, hair seals, walruses", "Miscellaneous aquatic mammals")
@@ -1163,7 +1157,7 @@ filter_2019 <- function(data) {
     # filter out any countries too with inconsistent entries (to not impact LAC total)
     # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
-    select(Country, Years = PERIOD, Species, Species_Group, value = VALUE)
+    select(Country, Years,Species, Species_Group, value)
 }
 
 transform_2019 <- function(data) {
