@@ -720,17 +720,14 @@ if(!is_empty(countries_with_flags)){
 Need to add check for missing records when there are additional dimensions, or aggregate records
 -->
 
-```{r show dimension series by country, warning = FALSE, fig.height=16, results='asis'}
-if(!params$new_indicator){
-  render_plot_for_dim <- function(dim) {
-  dim_name <- get_indicator_dimensions(indicator_id) %>% 
-    filter(id == str_extract(dim, "\\d+")) %>% 
+```{r show dimension series by country, warning = FALSE, message = FALSE, fig.height=16}
+render_plot_for_dim <- function(dim) {
+  dim_name <- get_indicator_dimensions(indicator_id) %>%
+    filter(id == str_extract(dim, "\\d+")) %>%
     pull(name)
-  
-  cat(glue::glue("### Dimension-Level Analysis"))
-  
+
   by_extra <- comp_detailed %>%
-    filter(!is.na(value_data)) %>% 
+    filter(!is.na(value_data)) %>%
     group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim)))) %>%
     summarize(value_data = sum(value_data, na.rm = TRUE),
               value_pub = sum(value_pub, na.rm = TRUE),
@@ -738,7 +735,7 @@ if(!params$new_indicator){
     ungroup()
 
   p <- by_extra %>%
-    mutate(dim_29117_label = as.numeric(dim_29117_label)) %>% 
+    mutate(dim_29117_label = as.numeric(dim_29117_label)) %>%
     ggplot(aes(
       x = dim_29117_label,
       y = value_data,
@@ -750,7 +747,7 @@ if(!params$new_indicator){
             "<br>Group:", .data[[dim]],
             "<br>Value:", round(value_data, 1)
           )
-      
+
     )) +
     geom_line(linewidth = 0.8) +
     facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
@@ -766,11 +763,15 @@ if(!params$new_indicator){
     theme_minimal() +
     theme(legend.position = "none")
 
-  print(ggplotly(p, tooltip = "text"))
+  htmltools::tagList(
+    htmltools::h3("Dimension-Level Analysis"),
+    ggplotly(p, tooltip = "text")
+  )
 }
 
-if (length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
-if (length(extra_dims) == 2) render_plot_for_dim(extra_dims[2])
+if(!params$new_indicator){
+  if (length(extra_dims) >= 1) print(render_plot_for_dim(extra_dims[1]))
+  if (length(extra_dims) == 2) print(render_plot_for_dim(extra_dims[2]))
 }
 ```
 
