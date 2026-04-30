@@ -766,7 +766,7 @@ if(!params$new_indicator){
     theme_minimal() +
     theme(legend.position = "none")
 
-  ggplotly(p, tooltip = "text")
+  print(ggplotly(p, tooltip = "text"))
 }
 
 if (length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
