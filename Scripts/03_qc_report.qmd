@@ -720,8 +720,7 @@ if(!is_empty(countries_with_flags)){
 Need to add check for missing records when there are additional dimensions, or aggregate records
 -->
 
-```{r show dimension series by country, warning = FALSE, message = FALSE, fig.height=16, results='asis'}
-
+```{r show dimension series by country, warning = FALSE, message = FALSE, fig.height=16}
 render_plot_for_dim <- function(dim) {
   dim_name <- get_indicator_dimensions(indicator_id) %>% 
     filter(id == str_extract(dim, "\\d+")) %>% 
@@ -766,9 +765,14 @@ render_plot_for_dim <- function(dim) {
     theme_minimal() +
     theme(legend.position = "none")
   
-  print(ggplotly(p, tooltip = "text"))
+  #print(ggplotly(p, tooltip = "text"))
   #htmltools::tagList(ggplotly(p, tooltip = "text")) %>% print()
   #htmltools::tagList(plotly::as_widget(ggplotly(p, tooltip = "text")))
+  
+    htmltools::tagList(
+    htmltools::h3("Dimension-Level Analysis"),
+    ggplotly(p, tooltip = "text")
+  )
 }
 
 if(!params$new_indicator){
@@ -777,43 +781,6 @@ if(!params$new_indicator){
 }
 ```
 
-<!--
-## Appendix
-
-### Data Dictionary
--->
-```{r}
-# Create data dictionary
-# data_dict <- tibble(
-#   Field = names(comp),
-#   Description = c(
-#     "Unique record identifier",
-#     "Country code",
-#     "Country name",
-#     "Year code",
-#     "Year name",
-#     "Value in internal dataset",
-#     "Value in public dataset",
-#     "Absolute difference between values",
-#     "Percent difference between values",
-#     "Flag for missing entries",
-#     "Flag for new entries",
-#     "Flag for large differences",
-#     "Flag for NA values",
-#     "Comparison status",
-#     "Z score within country",
-#     "Z score outlier within country",
-#     "Flag for some value"
-#   )
-# )
-# 
-# data_dict %>%
-#   gt() %>%
-#   tab_header(
-#     title = "Data Dictionary",
-#     subtitle = "Description of fields in the comparison dataset"
-#   )
-```
 
 <!--
 ### Technical Details
