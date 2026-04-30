@@ -9,8 +9,8 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 5672
-  new_indicator: TRUE
+  indicator_id: 4243
+  new_indicator: FALSE
 execute:
   echo: false
   warning: false
@@ -733,7 +733,7 @@ render_plot_for_dim <- function(dim) {
               value_pub = sum(value_pub, na.rm = TRUE),
               .groups = "drop") %>%
     ungroup()
-
+  
   p <- by_extra %>%
     mutate(dim_29117_label = as.numeric(dim_29117_label)) %>%
     ggplot(aes(

@@ -29,6 +29,9 @@ iso %<>%
 # read energy type dimension mappings
 energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))
 
+# get mappings from olade energy sectors to cepalstat energy sectors
+energy_econ_sectors <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"), sheet = "dimensions_crosswalk_78134")
+
 max_year <- 2024 # define most recent year with full data
 
 # ---- read downloaded files ----
@@ -525,8 +528,71 @@ result_2023 <- process_indicator(
 )
 
 
-# ---- indicator 4243 — energy intensity by economic activity (Final energy consumption / Value added of economic activity in constant 2018 dollars) ----
-# ---- indicator 4242 — energy intensity by economic activity (Final energy consumption / Value added of economic activity in PPP) - DELETE? ----
+# ---- indicator 4243 — GDP energy intensity by economic sector ----
+
+indicator_id <- 4243
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+dim_config_4243 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "78134"),
+  pub_col = c("208_name", "29117_name", "78134_name")
+)
+
+# Read in data for this indicator
+# data <- data_cons_sec
+
+filter_4243 <- function(data) {
+  data %<>%
+    filter(Years <= max_year & Years >= 1990) %>%  # remove most recent year with only LatAm, and remove data prior to 1990 as that's when the econ series starts
+    filter(Type != "Residential") # olade classifies sectors by consumption and so includes residential use; cepalstat calculates gdp by production and so doesn't include
+}
+
+transform_4243 <- function(data) {
+  data %<>% 
+    left_join(energy_econ_sectors %>% distinct(olade_label, dim_label), by = c("Type" = "olade_label")) %>% 
+    group_by(Country, Years, dim_label) %>% 
+    summarize(cons = sum(value, na.rm = TRUE), .groups = "drop")
+  
+  # Obtain GDP by economic activity from CEPALSTAT (indicator 2216)
+  pib_sector <- call.data(id.indicator = 2216) %>% as_tibble()
+  # 2216 - Annual Gross Domestic Product (GDP) by activity at constant prices in dollars (Millions of dollars, 2018$)
+  
+  pib_sector %<>% 
+    distinct(Country, Years, Type = Rubro__Sector_Cuentas_nacionales_anuales, value) %>% # there are currently exact duplicates in cepalstat, take distinct values until this is fixed (issue confirmed by Patricia)
+    left_join(energy_econ_sectors %>% distinct(econ_label, dim_label), by = c("Type" = "econ_label")) %>% 
+    group_by(Country, Years, dim_label) %>% 
+    summarize(pib = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    filter(!is.na(dim_label)) # remove extra econ categories
+
+  data %>% 
+    left_join(pib_sector, by = c("Country", "Years", "dim_label")) %>% 
+    mutate(cons = cons / 1e12) %>% # convert from joules to terajoules
+    mutate(value = cons / pib) %>% 
+    rename(Type = dim_label) %>% 
+    select(-cons, -pib) %>% 
+    filter(!is.na(value))
+}
+
+footnotes_4243 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_4243 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_cons_sec,
+  dim_config = dim_config_4243,
+  filter_fn = filter_4243,
+  transform_fn = transform_4243,
+  footnotes_fn = footnotes_4243,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
 
 # ---- indicator 4183 — variation rate of GDP energy intensity (primary energy supply / GDP) ----
 
@@ -549,7 +615,7 @@ filter_4183 <- function(data) {
 
 transform_4183 <- function(data) {
   # Obtain PIB data from CEPALSTAT
-  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dolllars (millions)
+  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dollars (millions)
   pib <- call.data(id.indicator = 2204) %>% as_tibble()
   
   pib %<>%
@@ -622,7 +688,7 @@ filter_4184 <- function(data) {
 
 transform_4184 <- function(data) {
   # Obtain PIB data from CEPALSTAT
-  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dolllars
+  # 2204 - Total Annual Gross Domestic Product (GDP) at constant prices in (2018) dollars
   pib <- call.data(id.indicator = 2204) %>% as_tibble()
   
   pib %<>%
