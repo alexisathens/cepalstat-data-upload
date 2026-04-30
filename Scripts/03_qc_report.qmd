@@ -9,8 +9,8 @@ format:
     theme: cosmo
     math: "mathjax"
 params:
-  indicator_id: 5672
-  new_indicator: TRUE
+  indicator_id: 4243
+  new_indicator: FALSE
 execute:
   echo: false
   warning: false
@@ -720,9 +720,9 @@ if(!is_empty(countries_with_flags)){
 Need to add check for missing records when there are additional dimensions, or aggregate records
 -->
 
-```{r show dimension series by country, warning = FALSE, fig.height=16, results='asis'}
-if(!params$new_indicator){
-  render_plot_for_dim <- function(dim) {
+```{r show dimension series by country, warning = FALSE, message = FALSE, fig.height=16, results='asis'}
+
+render_plot_for_dim <- function(dim) {
   dim_name <- get_indicator_dimensions(indicator_id) %>% 
     filter(id == str_extract(dim, "\\d+")) %>% 
     pull(name)
@@ -736,7 +736,7 @@ if(!params$new_indicator){
               value_pub = sum(value_pub, na.rm = TRUE),
               .groups = "drop") %>%
     ungroup()
-
+  
   p <- by_extra %>%
     mutate(dim_29117_label = as.numeric(dim_29117_label)) %>% 
     ggplot(aes(
@@ -765,12 +765,15 @@ if(!params$new_indicator){
     scale_color_viridis_d(option = "C") +
     theme_minimal() +
     theme(legend.position = "none")
-
-  ggplotly(p, tooltip = "text")
+  
+  print(ggplotly(p, tooltip = "text"))
+  #htmltools::tagList(ggplotly(p, tooltip = "text")) %>% print()
+  #htmltools::tagList(plotly::as_widget(ggplotly(p, tooltip = "text")))
 }
 
-if (length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
-if (length(extra_dims) == 2) render_plot_for_dim(extra_dims[2])
+if(!params$new_indicator){
+  if (length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
+  if (length(extra_dims) == 2) render_plot_for_dim(extra_dims[2])
 }
 ```
 
