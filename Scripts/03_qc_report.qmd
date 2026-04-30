@@ -465,6 +465,8 @@ ggplotly(p, tooltip = "text")
 This section compares relative differences between the public and internal data. A percent change is calculated between the public data and internal data, and the data is displayed in country/year pairs. The ±20% tolerance threshold band is colored a light green. Large relative changes above 20% are colored red.
 
 ```{r show percent differences}
+#| eval: !expr (!params$new_indicator)
+
 year_min <- min(as.numeric(comp$dim_29117_label), na.rm = TRUE)
 year_max <- max(as.numeric(comp$dim_29117_label), na.rm = TRUE)
 
@@ -720,7 +722,9 @@ if(!is_empty(countries_with_flags)){
 Need to add check for missing records when there are additional dimensions, or aggregate records
 -->
 
-```{r show dimension series by country, warning = FALSE, message = FALSE, fig.height=16}
+```{r show dimension series by country, warning = FALSE, fig.height=16, results='asis'}
+#| eval: !expr (!params$new_indicator)
+
 render_plot_for_dim <- function(dim) {
   dim_name <- get_indicator_dimensions(indicator_id) %>%
     filter(id == str_extract(dim, "\\d+")) %>%
@@ -762,14 +766,13 @@ render_plot_for_dim <- function(dim) {
     scale_color_viridis_d(option = "C") +
     theme_minimal() +
     theme(legend.position = "none")
-
-  print(ggplotly(p, tooltip = "text"))
+  
+  cat("### Dimension-Level Analysis\n\n")
+  ggplotly(p, tooltip = "text")
 }
 
-if(!params$new_indicator){
-  if (length(extra_dims) >= 1) print(render_plot_for_dim(extra_dims[1]))
-  if (length(extra_dims) == 2) print(render_plot_for_dim(extra_dims[2]))
-}
+if(length(extra_dims) >= 1) render_plot_for_dim(extra_dims[1])
+if(length(extra_dims) == 2) render_plot_for_dim(extra_dims[2])
 ```
 
 
