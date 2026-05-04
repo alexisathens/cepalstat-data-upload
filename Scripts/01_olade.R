@@ -148,6 +148,9 @@ consumption <- clean_olade_standard("energy_consumption_raw.xlsx", "energy_consu
 
 consumption_sector <- clean_olade_standard("energy_consumption_sector_raw.xlsx", "energy_consumption_sector_clean.csv")
 
+# ---- electricity losses ----
+
+losses <- clean_olade_standard("electricity_losses_raw.xlsx", "electricity_losses_clean.csv")
 
 
 #### OLD CLEANING ------------------------------------------
