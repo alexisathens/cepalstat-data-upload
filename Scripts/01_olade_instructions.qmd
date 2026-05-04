@@ -103,6 +103,30 @@ Download excel and save as "energy_consumption_raw.xlsx".
 
 Download excel and save as "energy_consumption_sector_raw.xlsx".
 
+## Electricity losses
+
+**Data source:** [OLADE supply and demand series](https://sielac.olacde.org/WebForms/Reportes/ReporteOD.aspx?subsectorId=0&or=720&ss=2&v=1)
+
+**Report:**
+
+-   Rows: Information unit
+
+-   Columns: Energy source
+
+-   Units: Unit origin (GWh)
+
+**Filters:**
+
+-   Information unit: -
+
+-   Time: -
+
+-   Activity: Losses
+
+-   Energy sources: Electricity
+
+Download excel and save as "electricity_losses_raw.xlsx".
+
 # OLD DOWNLOAD INSTRUCTIONS -----------------
 
 ## Grupo 1: total energy supply, in barrels of oil equivalent (bep)
