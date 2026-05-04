@@ -40,6 +40,7 @@ data_prod <- read_csv(paste0(input_path, "/energy_production_clean.csv"))
 data_supply <- read_csv(paste0(input_path, "/energy_supply_clean.csv"))
 data_cons <- read_csv(paste0(input_path, "/energy_consumption_clean.csv"))
 data_cons_sec <- read_csv(paste0(input_path, "/energy_consumption_sector_clean.csv"))
+data_losses <- read_csv(paste0(input_path, "/electricity_losses_clean.csv"))
 # data_g5 <- read_csv(paste0(olade_path, "/grupo5_raw.csv"))
 # data_g6 <- read_csv(paste0(olade_path, "/grupo6_raw.csv"))
 # data_g7 <- read_csv(paste0(olade_path, "/grupo7_raw.csv"))
@@ -528,7 +529,7 @@ result_2023 <- process_indicator(
 )
 
 
-# ---- indicator 4243 — GDP energy intensity by economic sector ----
+# ---- indicator 4243 — GDP energy intensity by economic activity ----
 
 indicator_id <- 4243
 
@@ -742,6 +743,155 @@ result_4184 <- process_indicator(
 
 # ---- electricity indicators ----
 
+# ---- indicator 1754 — electricity consumption ----
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+indicator_id <- 1754
+
+dim_config_1754 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_cons
+
+filter_1754 <- function(data) {
+  data %>%
+    filter(Years <= max_year) %>% 
+    filter(Type == "Electricity") %>% 
+    select(-Type)
+}
+
+transform_1754 <- function(data) {
+  data %>% 
+    mutate(value = value / 3.6e12) # convert from joules to GWh
+}
+
+footnotes_1754 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_1754 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_cons,
+  dim_config = dim_config_1754,
+  filter_fn = filter_1754,
+  transform_fn = transform_1754,
+  footnotes_fn = footnotes_1754,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+# ---- indicator 4234 — electricity losses ----
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+indicator_id <- 4234
+
+dim_config_4234 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_losses
+
+filter_4234 <- function(data) {
+  data %>%
+    filter(Years <= max_year) %>% 
+    filter(Type == "Electricity") %>% 
+    select(-Type)
+}
+
+transform_4234 <- function(data) {
+  data
+  # note this data source is in its original units (GWh), so no need to convert anything
+}
+
+footnotes_4234 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_4234 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_losses,
+  dim_config = dim_config_4234,
+  filter_fn = filter_4234,
+  transform_fn = transform_4234,
+  footnotes_fn = footnotes_4234,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
+
+# ---- indicator 4235 - proportion of electricity losses ----
+
+# Fill out dim config table by matching the following info:
+# get_indicator_dimensions(indicator_id)
+# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
+
+indicator_id <- 4235
+
+dim_config_4235 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+# Read in data for this indicator
+# data <- data_supply
+
+filter_4235 <- function(data) {
+  data %>%
+    filter(Years <= max_year) %>% 
+    filter(Type == "Electricity") %>% 
+    select(-Type)
+}
+
+transform_4235 <- function(data) {
+  data %<>% 
+    mutate(supply = value / 3.6e12) %>%  # convert from joules to GWh
+    select(-value)
+  
+  losses <- data_losses
+  
+  losses %<>% 
+    filter(Years <= max_year) %>% 
+    filter(Type == "Electricity") %>% 
+    select(-Type) %>% 
+    rename(losses = value)
+  
+  data %>% 
+    full_join(losses, by = c("Country", "Years")) %>% 
+    mutate(value = losses / supply * 100) %>% 
+    filter(!is.na(value)) %>% 
+    select(-supply, -losses)
+}
+
+footnotes_4235 <- function(data) {
+  data # keep footnotes_id as empty
+}
+
+result_4235 <- process_indicator(
+  indicator_id = indicator_id,
+  data = data_supply,
+  dim_config = dim_config_4235,
+  filter_fn = filter_4235,
+  transform_fn = transform_4235,
+  footnotes_fn = footnotes_4235,
+  remove_lac = FALSE, # keep source LAC data from OLADE
+  diagnostics = TRUE,
+  export = TRUE
+)
 
 
 
