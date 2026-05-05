@@ -127,6 +127,32 @@ Download excel and save as "energy_consumption_sector_raw.xlsx".
 
 Download excel and save as "electricity_losses_raw.xlsx".
 
+## Installed capacity for electricity
+
+**Data source:** [OLADE electricity infrastructure series](https://sielac.olacde.org/WebForms/Reportes/ReporteDato7.aspx?oc=181&or=392&ss=2&v=1)
+
+**Report:**
+
+-   Rows: Classifier
+
+-   Columns: Information unit
+
+-   Units: Unit origin (MW)
+
+**Filters:**
+
+-   Information unit: -
+
+-   Time: -
+
+-   Energy sources: Electricity
+
+-   Classifier: Nuclear; Non-renewable thermal (combustion); Renewable thermal (combustion); Hydro, Geothermal, Wind, Solar (the last four are inside of Renewable sources, no combustion)
+
+-   Variable: Installed capacity
+
+Download excel and save as "electricity_infra_raw.xlsx".
+
 # OLD DOWNLOAD INSTRUCTIONS -----------------
 
 ## Grupo 1: total energy supply, in barrels of oil equivalent (bep)
