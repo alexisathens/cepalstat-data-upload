@@ -28,6 +28,7 @@ CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
 indicator_id <- 4183
+use_pdfs     <- FALSE  # set to TRUE to include PDF reference documents in the prompt
 
 ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
@@ -278,9 +279,15 @@ r_script_content <- scripts %>%
   imap(~ glue("--- {.y} ---\n{.x}")) %>%
   paste(collapse = "\n\n")
 
-message("Loading PDF reference documents...")
-pdf_blocks <- load_pdfs(paths$pdf_refs)
-message(glue("Loaded {length(pdf_blocks)} PDF reference(s)."))
+pdf_blocks <- if (use_pdfs) {
+  message("Loading PDF reference documents...")
+  blocks <- load_pdfs(paths$pdf_refs)
+  message(glue("Loaded {length(blocks)} PDF reference(s)."))
+  blocks
+} else {
+  message("PDF references skipped (use_pdfs = FALSE).")
+  list()
+}
 
 # Build prompts — edit these blocks to adjust what the model receives
 message("Fetching golden standard metadata examples...")
