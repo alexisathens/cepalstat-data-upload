@@ -60,6 +60,9 @@ more importantly, includes links to relevant resources for further reading.
 Keep in mind that the fields Data Source, Units, and Data Frequency are defined elsewhere in the
 metadata and do not need to be explicitly outlined in the three fields above.
 
+Also note that most of the metadata sheets were written originally in Spanish and translated. If there is an
+internationally (UN) used and approved phrasing or terminology, use that.
+
 Write with precision and professional tone appropriate for a UN statistical system.
 Avoid vague language. Cite units, data sources, and methodological steps explicitly.
 
