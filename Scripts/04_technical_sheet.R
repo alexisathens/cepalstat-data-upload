@@ -77,6 +77,16 @@ define_indicator_paths <- function(indicator_id) {
   ind_dim    <- ind_meta %>% filter(id == indicator_id) %>% pull(dimensions)
   ind_dim    <- if (is.na(ind_dim)) "" else ind_dim
 
+  # Defaults — source blocks below override only what they need
+  code_cleaning_instr <- NULL
+  code_cleaning       <- NULL
+  code_processing     <- NULL
+  crosswalk           <- NULL
+  crosswalk_tab       <- NULL
+  inputs   <- list(use_existing_metadata = TRUE, use_r_scripts = FALSE,
+                   use_pdfs = FALSE, use_examples = TRUE)
+  pdf_refs <- list()
+
   if (ind_source == "OLADE") {
     code_cleaning_instr <- file.path(SCRIPTS_DIR, "01_olade_instructions.qmd")
     code_cleaning       <- file.path(SCRIPTS_DIR, "01_olade.R")
@@ -135,10 +145,12 @@ define_indicator_paths <- function(indicator_id) {
     stop(glue("No path logic defined for source: {ind_source}"))
   }
 
+  path_if_exists <- function(p) if (!is.null(p) && file.exists(p)) p else NULL
+
   list(
-    code_cleaning_instr = if (file.exists(code_cleaning_instr)) code_cleaning_instr else NULL,
-    code_cleaning       = if (file.exists(code_cleaning)) code_cleaning else NULL,
-    code_processing     = if (file.exists(code_processing)) code_processing else NULL,
+    code_cleaning_instr = path_if_exists(code_cleaning_instr),
+    code_cleaning       = path_if_exists(code_cleaning),
+    code_processing     = path_if_exists(code_processing),
     crosswalk           = if (!is.null(crosswalk_tab)) crosswalk else NULL,
     crosswalk_tab       = crosswalk_tab,
     inputs              = inputs,
