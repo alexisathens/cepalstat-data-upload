@@ -24,7 +24,7 @@ INDICATOR_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Indicator")
 SCRIPTS_DIR   <- file.path(PROJECT_ROOT, "Scripts")
 OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
 
-CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang=en&format=json"
+CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
 indicator_id <- 5731
@@ -47,7 +47,7 @@ For each indicator, you will revise or draft the following three fields only:
 
 The Definition should be more general and clarify terms and concepts. Sometimes the indicator
 can be a calculation with values in both the numerator and denominator. If so, define both elements
-with a clear and technical definition.Depending on the complexity of the indicator, this can be anywhere 
+with a clear and technical definition.Depending on the complexity of the indicator, this can be anywhere
 from 3-6 sentences (or 2-4 short paragraphs).
 
 The Methodology is where details are included that gives the user sufficient information to recreate
@@ -70,6 +70,27 @@ STYLE REQUIREMENTS:
 - NEVER use em dashes (—) or en dashes (–) under any circumstances.
 - Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
   Write formulas in plain text only, for example: VR_t = ((M_t - M_(t-1)) / M_(t-1)) x 100
+"
+
+TRANSLATION_SYSTEM_PROMPT <- "
+You are a professional translator specializing in UN statistical documentation for Latin America.
+Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
+maintained by ECLAC (Comision Economica para America Latina y el Caribe).
+
+Translation requirements:
+- Use established ECLAC/CEPALSTAT Spanish terminology, as shown in the reference examples provided.
+- Do not translate proper names of organizations, data sources, or internationally recognized
+  acronyms that appear in their English form in Spanish UN documents (e.g., OLADE, GDP, CO2,
+  UNSD, IPCC, PIB is acceptable for GDP in Spanish contexts).
+- Preserve the exact structure and section labels of the original (DEFINITION:, METHODOLOGY:,
+  COMMENTS:).
+- Use formal, precise language appropriate for a UN statistical system.
+- Translate faithfully — do not add, remove, or summarize content.
+
+STYLE REQUIREMENTS:
+- NEVER use em dashes (—) or en dashes (–) under any circumstances.
+- Do not use HTML tags or special unicode characters.
+  Write formulas in plain text only.
 "
 
 
@@ -161,17 +182,18 @@ define_indicator_paths <- function(indicator_id) {
   )
 }
 
-fetch_cepalstat_metadata <- function(indicator_id) {
-  url      <- gsub("\\{id\\}", indicator_id, CEPALSTAT_API_URL)
-  response <- request(url) |> req_perform()
-  resp_body_json(response)
+fetch_cepalstat_metadata <- function(indicator_id, lang = "en") {
+  url <- CEPALSTAT_API_URL %>%
+    gsub("\\{id\\}",   indicator_id, .) %>%
+    gsub("\\{lang\\}", lang,         .)
+  resp_body_json(request(url) |> req_perform())
 }
 
-fetch_example_metadata <- function(example_ids) {
+fetch_example_metadata <- function(example_ids, lang = "en") {
   # Fetches golden standard metadata entries and formats them as labelled example blocks.
   example_ids %>%
     map(function(id) {
-      m <- fetch_cepalstat_metadata(id)
+      m <- fetch_cepalstat_metadata(id, lang = lang)
       glue(
         "--- EXAMPLE OUTPUT ---\n\n",
         "DEFINITION:\n{m$body$metadata$definition}\n\n",
@@ -282,16 +304,81 @@ generate_draft <- function(indicator_id, api_key, system_prompt, user_prompt, pd
   response_text
 }
 
-write_output <- function(indicator_id, generated_text) {
-  output_path <- file.path(OUTPUT_DIR, paste0("metadata_draft_", indicator_id, ".xlsx"))
+translate_to_spanish <- function(indicator_id, api_key, use_existing_spanish = TRUE) {
+  # Reads the reviewed English draft, translates it to Spanish, and writes the result
+  # to a .txt file. Returns the Spanish text.
 
-  # TODO: parse generated_text into individual fields once bulk upload column structure is confirmed
-  output_df <- data.frame(
-    indicator_id       = indicator_id,
-    generated_metadata = generated_text
+  draft_path <- file.path(OUTPUT_DIR, glue("english_draft_{indicator_id}.txt"))
+  assert_that(
+    file.exists(draft_path),
+    msg = glue("English draft not found: {draft_path}\nRun generate_draft() first.")
+  )
+  english_text <- paste(readLines(draft_path, warn = FALSE), collapse = "\n")
+
+  # Build translation prompt sections
+  translate_sections <- list()
+  translate_sections[["ENGLISH TEXT TO TRANSLATE"]] <- english_text
+
+  if (use_existing_spanish) {
+    message("Fetching existing Spanish metadata for terminology reference...")
+    es_meta <- fetch_cepalstat_metadata(indicator_id, lang = "es")
+    es_meta_text <- toJSON(es_meta, pretty = TRUE, auto_unbox = TRUE)
+    translate_sections[["EXISTING SPANISH METADATA (terminology reference)"]] <- es_meta_text
+  }
+
+  message("Fetching Spanish golden standard examples...")
+  es_examples <- fetch_example_metadata(c(2487, 4174), lang = "es")
+
+  system_prompt <- paste(
+    TRANSLATION_SYSTEM_PROMPT,
+    "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style and terminology:\n\n",
+    es_examples,
+    sep = "\n\n"
   )
 
-  write_xlsx(output_df, output_path)
+  user_prompt <- paste0(
+    "Indicator ID: ", indicator_id, "\n\n",
+    translate_sections %>% imap(~ glue("--- {.y} ---\n{.x}")) %>% paste(collapse = "\n\n"),
+    "\n\nTranslate the English text above into Spanish."
+  )
+
+  response <- request("https://api.anthropic.com/v1/messages") |>
+    req_headers(
+      "x-api-key"         = api_key,
+      "anthropic-version" = "2023-06-01",
+      "content-type"      = "application/json"
+    ) |>
+    req_body_json(list(
+      model      = ANTHROPIC_MODEL,
+      max_tokens = 4096,
+      system     = trimws(system_prompt),
+      messages   = list(list(role = "user", content = list(list(type = "text", text = user_prompt))))
+    )) |>
+    req_timeout(180) |>
+    req_retry(max_tries = 3, is_transient = \(r) resp_status(r) %in% c(429, 529)) |>
+    req_error(body = \(r) resp_body_string(r)) |>
+    req_perform()
+
+  result       <- resp_body_json(response)
+  spanish_text <- result$content[[1]]$text
+
+  spanish_path <- file.path(OUTPUT_DIR, glue("spanish_draft_{indicator_id}.txt"))
+  writeLines(spanish_text, spanish_path)
+  message(glue("Spanish draft written to: {spanish_path}"))
+
+  spanish_text
+}
+
+write_output <- function(indicator_id, english_text, spanish_text = NULL) {
+  output_path <- file.path(OUTPUT_DIR, paste0("metadata_draft_", indicator_id, ".xlsx"))
+
+  # TODO: parse text into individual fields (definition, methodology, comments) once
+  # the bulk upload column structure is confirmed.
+  rows <- list(data.frame(indicator_id = indicator_id, lang = "en", metadata = english_text))
+  if (!is.null(spanish_text))
+    rows <- c(rows, list(data.frame(indicator_id = indicator_id, lang = "es", metadata = spanish_text)))
+
+  write_xlsx(bind_rows(rows), output_path)
   message("Output written to: ", output_path)
 }
 
@@ -366,12 +453,20 @@ user_prompt <- paste0(
   "based on the available inputs. Keep other metadata elements exactly as-is."
 )
 
-# Call the Anthropic API
-message("Calling Anthropic API...")
+# Step 1: Generate English draft
+# Review and edit Metadata/Outputs/english_draft_{indicator_id}.txt before translating.
+message("Calling Anthropic API (English draft)...")
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
-generated_text <- generate_draft(indicator_id, api_key, system_prompt, user_prompt, pdf_blocks)
+english_text <- generate_draft(indicator_id, api_key, system_prompt, user_prompt, pdf_blocks)
+cat(english_text)
 
-cat(generated_text)
+# Step 2: Translate to Spanish
+# Uncomment after reviewing the English draft above.
+# spanish_text <- translate_to_spanish(indicator_id, api_key)
+# cat(spanish_text)
 
-write_output(indicator_id, generated_text)
+# Step 3: Write output
+# Pass spanish_text once translation is done; omit it to write English only.
+write_output(indicator_id, english_text)
+# write_output(indicator_id, english_text, spanish_text)
 message("Done.")
