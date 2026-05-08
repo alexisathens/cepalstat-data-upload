@@ -27,7 +27,7 @@ OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
 CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang=en&format=json"
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
-indicator_id <- 4183
+indicator_id <- 5731
 
 ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
@@ -52,7 +52,7 @@ from 3-6 sentences (or 2-4 short paragraphs).
 
 The Methodology is where details are included that gives the user sufficient information to recreate
 the indicator themselves. Generally, this includes notes on the data source, key groupings or
-filterings of the data, and any formulas or calculations.
+filterings of the data (that aren't apparent from the indicator name), and any formulas or calculations.
 
 The Comments are where general comments are made about the use of the data (if applicable), and
 more importantly, includes links to relevant resources for further reading.
@@ -123,6 +123,14 @@ define_indicator_paths <- function(indicator_id) {
       # )
     )
 
+  } else if (ind_source == "WDPA") {
+    # Which inputs to include in the prompt for this source.
+    inputs <- list(
+      use_existing_metadata = TRUE,
+      use_r_scripts         = FALSE, # part of Lara's coral ETL, so no R code available
+      use_pdfs              = FALSE,
+      use_examples          = TRUE
+    )
   } else {
     stop(glue("No path logic defined for source: {ind_source}"))
   }
