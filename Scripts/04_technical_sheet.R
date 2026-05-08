@@ -197,7 +197,6 @@ generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks)
     req_headers(
       "x-api-key"         = api_key,
       "anthropic-version" = "2023-06-01",
-      "anthropic-beta"    = "prompt-caching-2024-07-31",
       "content-type"      = "application/json"
     ) |>
     req_body_json(list(
@@ -207,6 +206,7 @@ generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks)
       messages   = list(list(role = "user", content = content))
     )) |>
     req_retry(max_tries = 3) |>
+    req_error(body = \(r) resp_body_string(r)) |>
     req_perform()
 
   result        <- resp_body_json(response)
