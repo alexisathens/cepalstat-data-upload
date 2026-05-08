@@ -12,7 +12,6 @@ library(glue)
 library(here)
 library(assertthat)
 library(CepalStatR)
-library(base64enc)
 
 
 # ---- setup ----
@@ -23,6 +22,10 @@ SOURCE_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Source")
 INDICATOR_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Indicator")
 SCRIPTS_DIR   <- file.path(PROJECT_ROOT, "Scripts")
 OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+
+# Local cache mapping local PDF paths -> Anthropic file IDs.
+# PDFs are uploaded once; subsequent runs reuse the stored IDs.
+PDF_FILE_ID_CACHE <- file.path(PROJECT_ROOT, "Metadata", "pdf_file_ids.json")
 
 CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang=en&format=json"
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
@@ -168,35 +171,66 @@ read_crosswalk <- function(paths) {
     paste(collapse = "\n")
 }
 
-load_pdfs <- function(pdf_dir) {
-  # Returns Anthropic API-compatible document blocks for all PDFs in a directory.
+upload_pdf <- function(pdf_path, api_key) {
+  # Uploads a PDF to the Anthropic Files API and returns its file_id.
+  response <- request("https://api.anthropic.com/v1/files") |>
+    req_headers(
+      "x-api-key"         = api_key,
+      "anthropic-version" = "2023-06-01",
+      "anthropic-beta"    = "files-api-2025-04-14"
+    ) |>
+    req_body_multipart(file = curl::form_file(pdf_path, type = "application/pdf")) |>
+    req_error(body = \(r) resp_body_string(r)) |>
+    req_perform()
+  resp_body_json(response)$id
+}
+
+load_pdfs <- function(pdf_dir, api_key) {
+  # Returns document blocks referencing Anthropic file IDs.
+  # Uploads any PDFs not already in the local cache; skips ones that are.
   if (is.null(pdf_dir) || !dir.exists(pdf_dir)) return(list())
 
   pdf_files <- list.files(pdf_dir, pattern = "\\.pdf$", full.names = TRUE)
+  if (length(pdf_files) == 0) return(list())
+
+  cache   <- if (file.exists(PDF_FILE_ID_CACHE)) fromJSON(PDF_FILE_ID_CACHE, simplifyVector = FALSE) else list()
+  changed <- FALSE
+
+  for (pdf_path in pdf_files) {
+    if (is.null(cache[[pdf_path]])) {
+      message(glue("  Uploading {basename(pdf_path)}..."))
+      cache[[pdf_path]] <- upload_pdf(pdf_path, api_key)
+      changed <- TRUE
+    } else {
+      message(glue("  Using cached file ID for {basename(pdf_path)}"))
+    }
+  }
+
+  if (changed) {
+    dir.create(dirname(PDF_FILE_ID_CACHE), showWarnings = FALSE, recursive = TRUE)
+    writeLines(toJSON(cache, auto_unbox = TRUE, pretty = TRUE), PDF_FILE_ID_CACHE)
+  }
 
   lapply(pdf_files, function(pdf_path) {
     list(
       type          = "document",
-      source        = list(type = "base64", media_type = "application/pdf", data = base64encode(pdf_path)),
+      source        = list(type = "file", file_id = cache[[pdf_path]]),
       title         = basename(pdf_path),
       cache_control = list(type = "ephemeral")
     )
   })
 }
 
-generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks) {
+generate_draft <- function(indicator_id, api_key, system_prompt, user_prompt, pdf_blocks) {
   # Calls the Anthropic API and writes the English draft to a .txt file for review.
   # Returns the response text.
-  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-  assert_that(nchar(api_key) > 0,
-              msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
-
   content <- c(pdf_blocks, list(list(type = "text", text = user_prompt)))
 
   response <- request("https://api.anthropic.com/v1/messages") |>
     req_headers(
       "x-api-key"         = api_key,
       "anthropic-version" = "2023-06-01",
+      "anthropic-beta"    = "files-api-2025-04-14",
       "content-type"      = "application/json"
     ) |>
     req_body_json(list(
@@ -238,6 +272,9 @@ write_output <- function(indicator_id, generated_text) {
 
 message(glue("Processing indicator {indicator_id}..."))
 
+api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
+
 paths             <- define_indicator_paths(indicator_id)
 existing_metadata <- fetch_cepalstat_metadata(indicator_id)
 
@@ -256,9 +293,9 @@ r_script_content <- scripts %>%
   paste(collapse = "\n\n")
 
 message("Loading PDF reference documents...")
-global_pdf_blocks    <- load_pdfs(GLOBAL_DIR)
-source_pdf_blocks    <- load_pdfs(paths$meta_source)
-indicator_pdf_blocks <- load_pdfs(file.path(INDICATOR_DIR, indicator_id))
+global_pdf_blocks    <- load_pdfs(GLOBAL_DIR, api_key)
+source_pdf_blocks    <- load_pdfs(paths$meta_source, api_key)
+indicator_pdf_blocks <- load_pdfs(file.path(INDICATOR_DIR, indicator_id), api_key)
 pdf_blocks <- c(global_pdf_blocks, source_pdf_blocks, indicator_pdf_blocks)
 message(glue(
   "Loaded {length(global_pdf_blocks)} global PDF(s), ",
@@ -290,7 +327,8 @@ user_prompt <- paste0(
 
 # Call the Anthropic API
 message("Calling Anthropic API...")
-generated_text <- generate_draft(indicator_id, system_prompt, user_prompt, pdf_blocks)
+dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
+generated_text <- generate_draft(indicator_id, api_key, system_prompt, user_prompt, pdf_blocks)
 
 cat(generated_text)
 
