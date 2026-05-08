@@ -46,8 +46,10 @@ For each indicator, you will revise or draft the following three fields only:
   2. Methodology
   3. Comments / additional information
 
-The Definition should be more general and clarify terms and concepts. Depending on the complexity
-of the indicator, this can be anywhere from 3-6 sentences (or 2-4 short paragraphs).
+The Definition should be more general and clarify terms and concepts. Sometimes the indicator
+can be a calculation with values in both the numerator and denominator. If so, define both elements
+with a clear and technical definition.Depending on the complexity of the indicator, this can be anywhere 
+from 3-6 sentences (or 2-4 short paragraphs).
 
 The Methodology is where details are included that gives the user sufficient information to recreate
 the indicator themselves. Generally, this includes notes on the data source, key groupings or
@@ -61,6 +63,11 @@ metadata and do not need to be explicitly outlined in the three fields above.
 
 Write with precision and professional tone appropriate for a UN statistical system.
 Avoid vague language. Cite units, data sources, and methodological steps explicitly.
+
+STYLE REQUIREMENTS:
+- NEVER use em dashes (—) or en dashes (–) under any circumstances.
+- Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
+  Write formulas in plain text only, for example: VR_t = ((M_t - M_(t-1)) / M_(t-1)) x 100
 "
 
 
@@ -223,6 +230,7 @@ generate_draft <- function(indicator_id, api_key, system_prompt, user_prompt, pd
     req_body_json(list(
       model      = ANTHROPIC_MODEL,
       max_tokens = 4096,
+      temperature = 0, # makes model more deterministic and reproducible
       system     = trimws(system_prompt),
       messages   = list(list(role = "user", content = content))
     )) |>
