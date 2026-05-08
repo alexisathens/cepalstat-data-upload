@@ -288,7 +288,6 @@ user_prompt <- paste0(
 
 # Call the Anthropic API
 message("Calling Anthropic API...")
-dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
 generated_text <- generate_draft(indicator_id, system_prompt, user_prompt, pdf_blocks)
 
 cat(generated_text)
