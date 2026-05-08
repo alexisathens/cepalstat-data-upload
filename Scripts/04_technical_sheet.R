@@ -176,9 +176,10 @@ load_pdfs <- function(pdf_dir) {
 
   lapply(pdf_files, function(pdf_path) {
     list(
-      type   = "document",
-      source = list(type = "base64", media_type = "application/pdf", data = base64encode(pdf_path)),
-      title  = basename(pdf_path)
+      type          = "document",
+      source        = list(type = "base64", media_type = "application/pdf", data = base64encode(pdf_path)),
+      title         = basename(pdf_path),
+      cache_control = list(type = "ephemeral")
     )
   })
 }
@@ -196,6 +197,7 @@ generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks)
     req_headers(
       "x-api-key"         = api_key,
       "anthropic-version" = "2023-06-01",
+      "anthropic-beta"    = "prompt-caching-2024-07-31",
       "content-type"      = "application/json"
     ) |>
     req_body_json(list(
