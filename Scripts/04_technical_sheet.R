@@ -226,7 +226,8 @@ generate_draft <- function(indicator_id, api_key, system_prompt, user_prompt, pd
       system     = trimws(system_prompt),
       messages   = list(list(role = "user", content = content))
     )) |>
-    req_retry(max_tries = 3) |>
+    req_timeout(180) |>
+    req_retry(max_tries = 3, is_transient = \(r) resp_status(r) %in% c(429, 529)) |>
     req_error(body = \(r) resp_body_string(r)) |>
     req_perform()
 
