@@ -462,8 +462,8 @@ cat(english_text)
 
 # Step 2: Translate to Spanish
 # Uncomment after reviewing the English draft above.
-# spanish_text <- translate_to_spanish(indicator_id, api_key)
-# cat(spanish_text)
+spanish_text <- translate_to_spanish(indicator_id, api_key)
+cat(spanish_text)
 
 # Step 3: Write output
 # Pass spanish_text once translation is done; omit it to write English only.
