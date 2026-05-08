@@ -22,7 +22,7 @@ library(base64enc)  # Encoding PDFs for the Anthropic API
 
 PROJECT_ROOT  <- here::here()   # Assumes script is run from the project root
 
-UNSD_PDF_DIR  <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "UNSD references")     # Static UNSD reference PDFs
+GLOBAL_DIR  <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "Global")     # Static UNSD reference PDFs
 SOURCE_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Source")          # Source-specific PDFs
 INDICATOR_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Indicator")          # Indicator-specific PDFs
 SCRIPTS_DIR <- file.path(PROJECT_ROOT, "Scripts")          # Scripts path
@@ -33,36 +33,34 @@ CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
 # --- Set your indicator ID here ---
-indicator_id <- 2487
+indicator_id <- 4183
 
 # get metadata
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
 
 # =============================================================================
-# Step 1: Resolve indicator file paths
+# Step 1: Define indicator file paths
 # Replace the internals with your actual path logic once known.
 # =============================================================================
 
-resolve_indicator_paths <- function(indicator_id) {
+define_indicator_paths <- function(indicator_id) {
   # Returns a list of file paths associated with a given indicator.
   
   ind_source <- meta %>% filter(id == indicator_id) %>% pull(source)
   ind_dim <- meta %>% filter(id == indicator_id) %>% pull(dimensions)
+  ind_dim <- if(is.na(ind_dim)) "" else ind_dim
   
   if(ind_source == "OLADE") {
     code_cleaning_instr <- file.path(SCRIPTS_DIR, "01_olade_instructions.qmd")
     code_cleaning <- file.path(SCRIPTS_DIR, "01_olade.R")
     code_processing <- file.path(SCRIPTS_DIR, "02_olade.R")
-    
     meta_source <- file.path(SOURCE_DIR, "olade")
-    meta_ind <- file.path(INDICATOR_DIR, indicator_id)
     
     crosswalk <- file.path(PROJECT_ROOT, "Data", "Raw", "olade", "energy_dimensions_crosswalk.xlsx")
-    
     crosswalk_tab <- if (ind_dim == "Type of energy__Primary_and_Secondary") {
       "dimensions_crosswalk_44966"
-    } else if (indicator_dim == "Energy intensity_Economic activity") {
+    } else if (ind_dim == "Energy intensity_Economic activity") {
       "dimensions_crosswalk_78134"
     } else {
       NULL  # No crosswalk for this indicator
@@ -77,7 +75,6 @@ resolve_indicator_paths <- function(indicator_id) {
     code_cleaning = if (file.exists(code_cleaning)) code_cleaning else NULL,
     code_processing = if (file.exists(code_processing)) code_processing else NULL,
     meta_source = if (dir.exists(meta_source)) meta_source else NULL,
-    meta_ind = if (dir.exists(meta_ind)) meta_ind else NULL,
     crosswalk = if (!is.null(crosswalk_tab)) crosswalk else NULL,
     crosswalk_tab  = crosswalk_tab
   )
@@ -88,7 +85,7 @@ resolve_indicator_paths <- function(indicator_id) {
 # Step 2: Fetch existing metadata from the CEPALSTAT API
 # =============================================================================
 
-fetch_existing_metadata <- function(indicator_id) {
+fetch_cepalstat_metadata <- function(indicator_id) {
   # Fetches current metadata for the indicator from the CEPALSTAT public API.
   
   url <- gsub("\\{id\\}", indicator_id, CEPALSTAT_API_URL)
@@ -97,6 +94,25 @@ fetch_existing_metadata <- function(indicator_id) {
     req_perform()
   
   resp_body_json(response)
+}
+
+fetch_example_metadata <- function(example_ids) {
+  # Fetches golden standard metadata entries from CEPALSTAT and formats
+  # them as labelled example blocks for inclusion in the system prompt.
+  
+  example_ids %>%
+    map(function(id) {
+      meta <- fetch_cepalstat_metadata(id)
+      
+      # Inspect str(fetch_cepalstat_metadata(2487)) to confirm field names
+      glue(
+        "--- EXAMPLE OUTPUT ---\n\n",
+        "DEFINITION:\n{meta$body$metadata$definition}\n\n",
+        "METHODOLOGY:\n{meta$body$metadata$calculation_methodology}\n\n",
+        "COMMENTS:\n{meta$body$metadata$comments}\n"
+      )
+    }) %>%
+    paste(collapse = "\n\n")
 }
 
 
@@ -233,31 +249,40 @@ You are an expert in statistical metadata standards for international developmen
 Your task is to draft metadata for CEPALSTAT environmental indicators following UNSD best
 practices, as illustrated in the reference documents provided.
 
-For each indicator, you will revise or draft the following four fields only:
+For each indicator, you will revise or draft the following three fields only:
   1. Definition
   2. Methodology
   3. Comments / additional information
+  
+The Definition should be more general and clarify terms and concepts. Depending on the complexity 
+of the indicator, this can be anywhere from 3-6 sentences (or 2-4 short paragraphs).
 
-The field 'Data characteristics' should always be left exactly as: 'Frequency: Annual / Coverage: National'
+The Methodology is where details are included that gives the user sufficient information to recreate
+the indicator themselves. Generally, this includes notes on the data source, key groupings or filterings of 
+the data, and any formulas or calculations.
+
+The Comments are where general comments are made about the use of the data (if applicable), and more importantly,
+includes links to relevant resources for further reading.
+
+Keep in mind that the fields Data Source, Units, and Data Frequency are defined elsewhere in the metadata and 
+that they don't need to be explicitly outlined in the three fields above.
 
 Write with precision and professional tone appropriate for a UN statistical system.
 Avoid vague language. Cite units, data sources, and methodological steps explicitly.
-
-Provide output first in English, then in Spanish.
 "
 
+# Step 5a: Generate first draft in English
 
-call_anthropic_api <- function(indicator_id,
-                               existing_metadata,
-                               r_script_content,
-                               unsd_pdf_blocks,
-                               source_pdf_blocks) {
-  # Assembles the full prompt and calls the Anthropic API.
-  # Returns the model's response as a string.
+generate_draft <- function(indicator_id,
+                             existing_metadata,
+                             scripts,
+                             pdf_blocks) {
+  # First API call — generates English metadata fields only.
+  # Output is written to a file for human review before translation.
   
-  # Retrieve API key from environment (set in .Renviron)
   api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-  if (api_key == "") stop("ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
+  assert_that(nchar(api_key) > 0,
+              msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
   
   # Format existing metadata as text for the prompt
   existing_metadata_text <- toJSON(existing_metadata, pretty = TRUE, auto_unbox = TRUE)
@@ -274,16 +299,12 @@ call_anthropic_api <- function(indicator_id,
     "--- R PROCESSING SCRIPT ---\n", r_script_section, "\n\n",
     "Please revise the metadata fields (definition, calculation_methodology, comments) ",
     "based on the existing metadata, the R processing script, and the reference documents provided. ",
-    "Keep other metadata elements exactly as-is. ",
-    "Provide the output in English first, then in Spanish."
+    "Keep other metadata elements exactly as-is. "
   )
-  
-  # Combine all document inputs: UNSD reference first, then indicator-specific
-  all_documents <- c(unsd_pdf_blocks, source_pdf_blocks)
   
   # Build content block: documents first, then the text prompt
   content <- c(
-    all_documents,
+    pdf_blocks,
     list(list(type = "text", text = user_prompt))
   )
   
@@ -308,7 +329,16 @@ call_anthropic_api <- function(indicator_id,
   # Extract the text response
   result <- resp_body_json(response)
   result$content[[1]]$text
+  
+  # Write draft to file for review
+  draft_path <- file.path(OUTPUT_DIR, glue("english_draft_{indicator_id}.txt"))
+  writeLines(response_text, draft_path)
+  message(glue("English draft written to: {draft_path}"))
+  message("Review and edit the file, then call translate_to_spanish() to continue.")
+  
+  invisible(draft_path)
 }
+
 
 
 # =============================================================================
@@ -343,11 +373,11 @@ write_output <- function(indicator_id, generated_text) {
 message(glue("Processing indicator {indicator_id}..."))
 
 # Resolve file paths for this indicator
-paths <- resolve_indicator_paths(indicator_id)
+paths <- define_indicator_paths(indicator_id)
 
 # Fetch existing metadata from CEPALSTAT API
 message("Fetching existing metadata from CEPALSTAT API...")
-existing_metadata <- fetch_existing_metadata(indicator_id)
+existing_metadata <- fetch_cepalstat_metadata(indicator_id)
 
 # Read R scripts (processing script filtered to indicator section; others in full)
 message("Reading scripts...")
@@ -367,17 +397,23 @@ r_script_content <- scripts %>%
   paste(collapse = "\n\n")
 
 # Load PDFs from all three input directories
-# Order: UNSD references first, then source-specific, then indicator-specific
+# Order: global (UNSD) references first, then source-specific, then indicator-specific
 message("Loading PDF reference documents...")
-unsd_pdf_blocks <- load_pdfs(UNSD_PDF_DIR)
-source_pdf_blocks <- c(
-  load_pdfs(paths$meta_source),
-  load_pdfs(paths$meta_ind)
-)
+global_pdf_blocks <- load_pdfs(GLOBAL_DIR)
+source_pdf_blocks <- load_pdfs(paths$meta_source)
+indicator_pdf_blocks <- load_pdfs(here(INDICATOR_DIR, indicator_id))
+pdf_blocks <- c(global_pdf_blocks, source_pdf_blocks, indicator_pdf_blocks)
 message(glue(
-  "Loaded {length(unsd_pdf_blocks)} UNSD PDF(s) and ",
-  "{length(source_pdf_blocks)} source/indicator PDF(s)."
+  "Loaded {length(global_pdf_blocks)} global PDF(s), ",
+  "{length(source_pdf_blocks)} source PDF(s), and ",
+  "{length(indicator_pdf_blocks)} indicator PDF(s).",
 ))
+
+message("Fetching golden standard metadata examples...")
+example_block    <- fetch_example_metadata(c(2487, 4174))
+SYSTEM_PROMPT_WSAMPLES <- paste(SYSTEM_PROMPT, 
+                          "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n", 
+                          example_block, sep = "\n\n")
 
 # Call the Anthropic API
 message("Calling Anthropic API...")
