@@ -28,7 +28,6 @@ CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
 indicator_id <- 4183
-use_pdfs     <- FALSE  # set to TRUE to include PDF reference documents in the prompt
 
 ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
@@ -92,9 +91,18 @@ define_indicator_paths <- function(indicator_id) {
       NULL
     }
 
-    # PDFs to include as reference material.
+    # Which inputs to include in the prompt for this source.
+    # use_r_scripts also controls the crosswalk (dimension mapping table).
+    inputs <- list(
+      use_existing_metadata = TRUE,
+      use_r_scripts         = TRUE,
+      use_pdfs              = FALSE,
+      use_examples          = TRUE
+    )
+
+    # PDFs to include when use_pdfs = TRUE.
     # Specify pages as an integer vector (e.g. 1:20, c(5, 10:15)) or NULL for all pages.
-    # Tip: run pdf_length("path/to/file.pdf") to see how many pages a file has.
+    # Tip: run pdf_length("path/to/file.pdf") to check page counts.
     # Cost guide: roughly 500-1000 tokens per page of dense text.
     pdf_refs <- list(
       list(
@@ -125,6 +133,7 @@ define_indicator_paths <- function(indicator_id) {
     code_processing     = if (file.exists(code_processing)) code_processing else NULL,
     crosswalk           = if (!is.null(crosswalk_tab)) crosswalk else NULL,
     crosswalk_tab       = crosswalk_tab,
+    inputs              = inputs,
     pdf_refs            = pdf_refs
   )
 }
@@ -271,53 +280,67 @@ message(glue("Processing indicator {indicator_id}..."))
 api_key <- Sys.getenv("ANTHROPIC_API_KEY")
 assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
 
-paths             <- define_indicator_paths(indicator_id)
-existing_metadata <- fetch_cepalstat_metadata(indicator_id)
+paths <- define_indicator_paths(indicator_id)
+inp   <- paths$inputs
+message(glue(
+  "Input config — existing metadata: {inp$use_existing_metadata}, ",
+  "R scripts: {inp$use_r_scripts}, PDFs: {inp$use_pdfs}, examples: {inp$use_examples}"
+))
 
-message("Reading scripts...")
-scripts <- read_scripts(paths, indicator_id)
-message(glue("Loaded {length(scripts)} script(s): {paste(names(scripts), collapse = ', ')}"))
+# Gather active inputs; each active section is added to input_sections and
+# later assembled into the user prompt in the order it appears here.
+input_sections <- list()
 
-crosswalk_text <- read_crosswalk(paths)
-if (!is.null(crosswalk_text)) {
-  scripts$crosswalk <- crosswalk_text
-  message("Crosswalk loaded.")
+if (inp$use_existing_metadata) {
+  message("Fetching existing metadata from CEPALSTAT API...")
+  existing_metadata <- fetch_cepalstat_metadata(indicator_id)
+  input_sections[["EXISTING METADATA"]] <- toJSON(existing_metadata, pretty = TRUE, auto_unbox = TRUE)
 }
 
-r_script_content <- scripts %>%
-  imap(~ glue("--- {.y} ---\n{.x}")) %>%
-  paste(collapse = "\n\n")
+if (inp$use_r_scripts) {
+  message("Reading scripts...")
+  scripts <- read_scripts(paths, indicator_id)
+  message(glue("Loaded {length(scripts)} script(s): {paste(names(scripts), collapse = ', ')}"))
 
-pdf_blocks <- if (use_pdfs) {
+  crosswalk_text <- read_crosswalk(paths)
+  if (!is.null(crosswalk_text)) {
+    scripts$crosswalk <- crosswalk_text
+    message("Crosswalk loaded.")
+  }
+
+  input_sections[["R PROCESSING SCRIPT"]] <- scripts %>%
+    imap(~ glue("--- {.y} ---\n{.x}")) %>%
+    paste(collapse = "\n\n")
+}
+
+pdf_blocks <- if (inp$use_pdfs) {
   message("Loading PDF reference documents...")
   blocks <- load_pdfs(paths$pdf_refs)
   message(glue("Loaded {length(blocks)} PDF reference(s)."))
   blocks
 } else {
-  message("PDF references skipped (use_pdfs = FALSE).")
   list()
 }
 
 # Build prompts — edit these blocks to adjust what the model receives
-message("Fetching golden standard metadata examples...")
-example_block <- fetch_example_metadata(c(2487, 4174))
-
-system_prompt <- paste(
-  SYSTEM_PROMPT,
-  "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
-  example_block,
-  sep = "\n\n"
-)
-
-existing_metadata_text <- toJSON(existing_metadata, pretty = TRUE, auto_unbox = TRUE)
+system_prompt <- if (inp$use_examples) {
+  message("Fetching golden standard metadata examples...")
+  example_block <- fetch_example_metadata(c(2487, 4174))
+  paste(
+    SYSTEM_PROMPT,
+    "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
+    example_block,
+    sep = "\n\n"
+  )
+} else {
+  SYSTEM_PROMPT
+}
 
 user_prompt <- paste0(
   "Indicator ID: ", indicator_id, "\n\n",
-  "--- EXISTING METADATA ---\n", existing_metadata_text, "\n\n",
-  "--- R PROCESSING SCRIPT ---\n", r_script_content, "\n\n",
-  "Please revise the metadata fields (definition, calculation_methodology, comments) ",
-  "based on the existing metadata, the R processing script, and the reference documents provided. ",
-  "Keep other metadata elements exactly as-is."
+  input_sections %>% imap(~ glue("--- {.y} ---\n{.x}")) %>% paste(collapse = "\n\n"),
+  "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
+  "based on the available inputs. Keep other metadata elements exactly as-is."
 )
 
 # Call the Anthropic API
