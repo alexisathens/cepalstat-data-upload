@@ -270,9 +270,10 @@ load_pdfs <- function(pdf_refs) {
   )
 }
 
-generate_draft <- function(indicator_id, api_key, system_prompt, user_prompt, pdf_blocks) {
+generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks) {
   # Calls the Anthropic API and writes the English draft to a .txt file for review.
-  # Returns the response text.
+  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+  assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
   content <- c(pdf_blocks, list(list(type = "text", text = user_prompt)))
 
   response <- request("https://api.anthropic.com/v1/messages") |>
@@ -304,9 +305,11 @@ generate_draft <- function(indicator_id, api_key, system_prompt, user_prompt, pd
   response_text
 }
 
-translate_to_spanish <- function(indicator_id, api_key, use_existing_spanish = TRUE) {
+translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
   # Reads the reviewed English draft, translates it to Spanish, and writes the result
   # to a .txt file. Returns the Spanish text.
+  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+  assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
 
   draft_path <- file.path(OUTPUT_DIR, glue("english_draft_{indicator_id}.txt"))
   assert_that(
@@ -387,9 +390,6 @@ write_output <- function(indicator_id, english_text, spanish_text = NULL) {
 
 message(glue("Processing indicator {indicator_id}..."))
 
-api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
-
 paths <- define_indicator_paths(indicator_id)
 inp   <- paths$inputs
 message(glue(
@@ -457,13 +457,13 @@ user_prompt <- paste0(
 # Review and edit Metadata/Outputs/english_draft_{indicator_id}.txt before translating.
 message("Calling Anthropic API (English draft)...")
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
-english_text <- generate_draft(indicator_id, api_key, system_prompt, user_prompt, pdf_blocks)
+english_text <- generate_draft(indicator_id, system_prompt, user_prompt, pdf_blocks)
 cat(english_text)
 
 # Step 2: Translate to Spanish
 # Uncomment after reviewing the English draft above.
-spanish_text <- translate_to_spanish(indicator_id, api_key)
-cat(spanish_text)
+# spanish_text <- translate_to_spanish(indicator_id)
+# cat(spanish_text)
 
 # Step 3: Write output
 # Pass spanish_text once translation is done; omit it to write English only.
