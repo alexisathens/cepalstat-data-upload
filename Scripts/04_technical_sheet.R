@@ -27,7 +27,7 @@ OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
 CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
-indicator_id <- 5731
+indicator_id <- 5732
 
 ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
@@ -297,7 +297,7 @@ generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks)
   result        <- resp_body_json(response)
   response_text <- result$content[[1]]$text
 
-  draft_path <- file.path(OUTPUT_DIR, glue("english_draft_{indicator_id}.txt"))
+  draft_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_english_draft.txt"))
   writeLines(response_text, draft_path)
   message(glue("English draft written to: {draft_path}"))
   message("Review and edit the file, then call translate_to_spanish() to continue.")
@@ -311,7 +311,7 @@ translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
   api_key <- Sys.getenv("ANTHROPIC_API_KEY")
   assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
 
-  draft_path <- file.path(OUTPUT_DIR, glue("english_draft_{indicator_id}.txt"))
+  draft_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_english_draft.txt"))
   assert_that(
     file.exists(draft_path),
     msg = glue("English draft not found: {draft_path}\nRun generate_draft() first.")
@@ -365,7 +365,7 @@ translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
   result       <- resp_body_json(response)
   spanish_text <- result$content[[1]]$text
 
-  spanish_path <- file.path(OUTPUT_DIR, glue("spanish_draft_{indicator_id}.txt"))
+  spanish_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_spanish_draft.txt"))
   writeLines(spanish_text, spanish_path)
   message(glue("Spanish draft written to: {spanish_path}"))
 
@@ -461,9 +461,8 @@ english_text <- generate_draft(indicator_id, system_prompt, user_prompt, pdf_blo
 cat(english_text)
 
 # Step 2: Translate to Spanish
-# Uncomment after reviewing the English draft above.
-# spanish_text <- translate_to_spanish(indicator_id)
-# cat(spanish_text)
+spanish_text <- translate_to_spanish(indicator_id)
+cat(spanish_text)
 
 # Step 3: Write output
 # Pass spanish_text once translation is done; omit it to write English only.
