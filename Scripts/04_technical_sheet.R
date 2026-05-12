@@ -290,7 +290,8 @@ generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks)
       messages   = list(list(role = "user", content = content))
     )) |>
     req_timeout(180) |>
-    req_retry(max_tries = 3, is_transient = \(r) resp_status(r) %in% c(429, 529)) |>
+    req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
+              backoff = \(i) 30) |>
     req_error(body = \(r) resp_body_string(r)) |>
     req_perform()
 
@@ -358,7 +359,8 @@ translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
       messages   = list(list(role = "user", content = list(list(type = "text", text = user_prompt))))
     )) |>
     req_timeout(180) |>
-    req_retry(max_tries = 3, is_transient = \(r) resp_status(r) %in% c(429, 529)) |>
+    req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
+              backoff = \(i) 30) |>
     req_error(body = \(r) resp_body_string(r)) |>
     req_perform()
 
