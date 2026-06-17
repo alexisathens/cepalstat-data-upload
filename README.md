@@ -41,16 +41,16 @@ The `process_indicator_fn.R` script defines the central function used by all `02
 
 ![process_indicator workflow](Docs/process_indicator_flowchart.png)
 
-## Data Sources
+## Key Data Sources
 
 | Source | Data | Download method |
 |------------------------|------------------------|------------------------|
 | FAO (FAOSTAT) | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides | Automated via `FAOSTAT` R package |
 | FAO (FishStat / Aquastat) | Fish capture, aquaculture, water withdrawal | Manual download required |
 | Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | Automated via API |
-| EM-DAT | Natural disaster deaths, affected, economic damage | Manual download (account required at emdat.be) |
-| OLADE | Energy production and consumption | Manual download |
-| InforMEA | Environmental treaty indicators | See `01_informea.qmd` |
+| EM-DAT | Natural disaster deaths, affected, economic damage | Manual download (one file) |
+| OLADE | Energy production and consumption | Manual download (multiple files) |
+| InforMEA | Environmental treaty indicators | Automatically scraped from informea.org |
 
 ## Key Files
 
@@ -62,8 +62,6 @@ Data/
 ├── Checks/       # Comparison files vs. published data (comp_id{indicator_id}.xlsx)
 ├── iso_codes.xlsx           # Country name ↔ CEPALSTAT ID mapping
 └── indicator_metadata.xlsx  # Indicator tracking and processing history
-Docs/
-├── process_indicator_flowchart.png  # Visual diagram of process_indicator()
-└── qc_report_good.html              # Sample QC reports (good / bad examples)
+Docs/       # Misc documentation and visuals
 QC Reports/       # Generated QC HTML reports
 ```
