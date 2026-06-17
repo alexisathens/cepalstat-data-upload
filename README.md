@@ -1,6 +1,6 @@
 # cepalstat-data-upload
 
-Automates the collection, cleaning, and quality control of environmental indicators for the CEPALSTAT database.
+Automates the collection and cleaning of environmental indicators in the CEPALSTAT database.
 
 ## Overview
 
