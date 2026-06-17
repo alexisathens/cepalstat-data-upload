@@ -19,18 +19,20 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 | Script | Purpose |
 |------------------------------------|------------------------------------|
 | `01_climatewatch.R` | Download Climate Watch emissions data via API |
-| `01_olade.R` | Download OLADE energy data |
-| `01_informea.qmd` | Download InforMEA environmental treaty data |
-| `02_climatewatch.R` | Clean and standardize Climate Watch indicators |
-| `02_emdat.R` | Clean EM-DAT natural disaster data |
-| `02_olade.R` | Clean and standardize OLADE energy indicators |
+| `01_olade_instructions.R` | Manual download instructions for OLADE energy data |
+| `01_olade_format.R` | Standardize the format of the downloaded OLADE data |
+| `01_informea.qmd` | Scrape InforMEA environmental treaty data |
+| `01_other_instructions.qmd` | Manual download instructions for miscellaneous small data sources (such as IRENA, UNEP, Ramsar) |
+| `02_climatewatch.R` | Clean Climate Watch indicators |
+| `02_olade.R` | Clean OLADE energy indicators |
 | `02_other.R` | Clean miscellaneous indicators |
+| `0102_emdat.R` | Download and clean EM-DAT natural disaster data |
 | `0102_fao.R` | Download and clean FAO data (FAOSTAT, FishStat, Aquastat) |
 | `03_qc_report.qmd` | Generate QC HTML report comparing new vs. published data |
-| `04_technical_sheet.R` | Generate technical metadata sheet for upload |
+| `04_technical_sheet.R` | Generate technical metadata sheet |
 | `utils.R` | Shared utility functions (API calls, formatting, validation) |
 | `process_indicator_fn.R` | Core `process_indicator()` function used by all cleaning scripts |
-| `build_iso_table.R` | Build/update country name → ISO code mapping (`Data/iso_codes.xlsx`) |
+| `build_iso_table.R` | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
 | `build_metadata_table.R` | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
 
 ## The `process_indicator()` Function
