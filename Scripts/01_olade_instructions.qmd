@@ -5,7 +5,7 @@ format: html
 
 # OLADE Energy Data Download Instructions
 
-Navigate to the [OLADE website](SIE) and create an account and log in to access all years of energy data.
+Navigate to the [OLADE website](SIE) and create an account and log in to access all years of energy data. There are six different Excel files to download to build the energy indicators in CEPALSTAT.
 
 ## Total energy production
 
@@ -127,7 +127,7 @@ Download excel and save as "energy_consumption_sector_raw.xlsx".
 
 Download excel and save as "electricity_losses_raw.xlsx".
 
-## Installed capacity for electricity
+## Electricity infrastructure
 
 **Data source:** [OLADE electricity infrastructure series](https://sielac.olacde.org/WebForms/Reportes/ReporteDato7.aspx?oc=181&or=392&ss=2&v=1)
 

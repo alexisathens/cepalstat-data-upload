@@ -579,7 +579,7 @@ write.csv(indicator_4463,
 sector_ids_energy <- sectors %>%
   filter(data_source_id == source_id_climate_watch) %>% 
   #filter(str_detect(tolower(.data$name), "electricity|heat|manufacturing|construction|transport|fuel combustion|fugitive")) %>%
-  filter(name %in% c("Electricity/Heat", "Manufacturing/Construction", "Transportation", "Other Fuel Combustion", "Fugitive Emissions")) %>% 
+  filter(name %in% c("Building", "Electricity/Heat", "Manufacturing/Construction", "Transportation", "Other Fuel Combustion", "Fugitive Emissions")) %>% 
   pull(id)
 
 indicator_4462_raw <- cw_get_data(
