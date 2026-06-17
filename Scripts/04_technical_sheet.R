@@ -1,7 +1,7 @@
 # Generates a draft metadata template for a given CEPALSTAT indicator.
 # Fetches existing metadata from the CEPALSTAT API, reads the associated
 # R processing script and any source documentation PDFs, and calls the
-# Anthropic API to produce an updated draft in English and Spanish.
+# Anthropic API to produce an updated draft in English.
 
 library(tidyverse)
 library(readxl)
@@ -12,237 +12,28 @@ library(glue)
 library(here)
 library(assertthat)
 library(CepalStatR)
-library(base64enc)  # Encoding PDFs for the Anthropic API
+library(pdftools)
 
 
-# =============================================================================
-# Configuration
-# Adjust paths to match your project directory structure.
-# =============================================================================
+# ---- setup ----
 
-PROJECT_ROOT  <- here::here()   # Assumes script is run from the project root
+PROJECT_ROOT  <- here::here()
+GLOBAL_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "Global")
+SOURCE_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Source")
+INDICATOR_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Indicator")
+SCRIPTS_DIR   <- file.path(PROJECT_ROOT, "Scripts")
+OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
 
-GLOBAL_DIR  <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "Global")     # Static UNSD reference PDFs
-SOURCE_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Source")          # Source-specific PDFs
-INDICATOR_DIR <- file.path(PROJECT_ROOT, "Metadata", "Inputs", "By Indicator")          # Indicator-specific PDFs
-SCRIPTS_DIR <- file.path(PROJECT_ROOT, "Scripts")          # Scripts path
-OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")                       # Where output Excel files are written
-
-CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang=en&format=json"
-
+CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
 ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
 
-# --- Set your indicator ID here ---
-indicator_id <- 4183
+indicator_id <- 5732
 
-# get metadata
-meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
+ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
 
-# =============================================================================
-# Step 1: Define indicator file paths
-# Replace the internals with your actual path logic once known.
-# =============================================================================
-
-define_indicator_paths <- function(indicator_id) {
-  # Returns a list of file paths associated with a given indicator.
-  
-  ind_source <- meta %>% filter(id == indicator_id) %>% pull(source)
-  ind_dim <- meta %>% filter(id == indicator_id) %>% pull(dimensions)
-  ind_dim <- if(is.na(ind_dim)) "" else ind_dim
-  
-  if(ind_source == "OLADE") {
-    code_cleaning_instr <- file.path(SCRIPTS_DIR, "01_olade_instructions.qmd")
-    code_cleaning <- file.path(SCRIPTS_DIR, "01_olade.R")
-    code_processing <- file.path(SCRIPTS_DIR, "02_olade.R")
-    meta_source <- file.path(SOURCE_DIR, "olade")
-    
-    crosswalk <- file.path(PROJECT_ROOT, "Data", "Raw", "olade", "energy_dimensions_crosswalk.xlsx")
-    crosswalk_tab <- if (ind_dim == "Type of energy__Primary_and_Secondary") {
-      "dimensions_crosswalk_44966"
-    } else if (ind_dim == "Energy intensity_Economic activity") {
-      "dimensions_crosswalk_78134"
-    } else {
-      NULL  # No crosswalk for this indicator
-    }
-    
-  } else {
-    stop(glue("No path logic defined for source: {ind_source}"))
-  }
-  
-  list(
-    code_cleaning_instr = if (file.exists(code_cleaning_instr)) code_cleaning_instr else NULL,
-    code_cleaning = if (file.exists(code_cleaning)) code_cleaning else NULL,
-    code_processing = if (file.exists(code_processing)) code_processing else NULL,
-    meta_source = if (dir.exists(meta_source)) meta_source else NULL,
-    crosswalk = if (!is.null(crosswalk_tab)) crosswalk else NULL,
-    crosswalk_tab  = crosswalk_tab
-  )
-}
-
-
-# =============================================================================
-# Step 2: Fetch existing metadata from the CEPALSTAT API
-# =============================================================================
-
-fetch_cepalstat_metadata <- function(indicator_id) {
-  # Fetches current metadata for the indicator from the CEPALSTAT public API.
-  
-  url <- gsub("\\{id\\}", indicator_id, CEPALSTAT_API_URL)
-  
-  response <- request(url) |>
-    req_perform()
-  
-  resp_body_json(response)
-}
-
-fetch_example_metadata <- function(example_ids) {
-  # Fetches golden standard metadata entries from CEPALSTAT and formats
-  # them as labelled example blocks for inclusion in the system prompt.
-  
-  example_ids %>%
-    map(function(id) {
-      meta <- fetch_cepalstat_metadata(id)
-      
-      # Inspect str(fetch_cepalstat_metadata(2487)) to confirm field names
-      glue(
-        "--- EXAMPLE OUTPUT ---\n\n",
-        "DEFINITION:\n{meta$body$metadata$definition}\n\n",
-        "METHODOLOGY:\n{meta$body$metadata$calculation_methodology}\n\n",
-        "COMMENTS:\n{meta$body$metadata$comments}\n"
-      )
-    }) %>%
-    paste(collapse = "\n\n")
-}
-
-
-# =============================================================================
-# Step 3: Read R scripts and cleaning instructions
-# Reads all code files associated with the indicator.
-# For the processing script, only the section relevant to the indicator is
-# extracted. The cleaning and instructions files are passed in full since
-# their content is not cleanly separated by indicator.
-# =============================================================================
-
-extract_indicator_section <- function(script_path, indicator_id) {
-  # Extracts the portion of the processing script relevant to a given indicator.
-  # Returns a string containing:
-  #   - Any general content at the top of the script (before the THIRD section header)
-  #   - The indicator-specific section identified by its header comment
-  
-  lines <- readLines(script_path, warn = FALSE)
-  
-  # Pattern matching any section header (e.g. "# ---- indicator 2487 ---- ")
-  any_header_pattern    <- regex("^# ----", ignore_case = TRUE)
-  
-  # Pattern matching this indicator's specific section header
-  this_header_pattern <- glue("(?i)# ---- indicator {indicator_id}")
-  
-  all_header_idx  <- which(str_detect(lines, any_header_pattern))
-  this_header_idx <- which(str_detect(lines, this_header_pattern))
-  
-  # Warn and return NULL if the indicator section is not found
-  if (length(this_header_idx) == 0) {
-    warning(glue("No section found for indicator {indicator_id} in {basename(script_path)}"))
-    return(NULL)
-  }
-  
-  this_header_idx <- this_header_idx[1]
-  
-  # General content = everything before the first few section headers (setup; download files)
-  general_lines <- if (all_header_idx[1] > 1) {
-    lines[1:(all_header_idx[3] - 1)]
-  } else {
-    character(0)
-  }
-  
-  # Indicator section = from this header until the line before the next header (or end of file)
-  next_header_idx <- all_header_idx[all_header_idx > this_header_idx]
-  section_end_idx <- if (length(next_header_idx) > 0) next_header_idx[1] - 1 else length(lines)
-  indicator_lines <- lines[this_header_idx:section_end_idx]
-  
-  # Combine general content and indicator section
-  paste(c(general_lines, indicator_lines), collapse = "\n")
-}
-
-
-read_scripts <- function(paths, indicator_id) {
-  # Reads all code files associated with the indicator.
-  # The processing script is filtered to the relevant indicator section;
-  # the cleaning script and instructions file are passed in full.
-  
-  scripts <- list()
-  
-  # Cleaning instructions (.qmd) — passed in full; general documentation
-  if (!is.null(paths$code_cleaning_instr)) {
-    scripts$code_cleaning_instr <- paste(
-      readLines(paths$code_cleaning_instr, warn = FALSE),
-      collapse = "\n"
-    )
-  }
-  
-  # Cleaning script — passed in full; download logic is not separated by indicator
-  if (!is.null(paths$code_cleaning)) {
-    scripts$code_cleaning <- paste(
-      readLines(paths$code_cleaning, warn = FALSE),
-      collapse = "\n"
-    )
-  }
-  
-  # Processing script — extract only the relevant indicator section
-  if (!is.null(paths$code_processing)) {
-    scripts$code_processing <- extract_indicator_section(paths$code_processing, indicator_id)
-  }
-  
-  # Drop any entries that came back NULL (e.g. section not found in processing script)
-  keep(scripts, ~ !is.null(.x))
-}
-
-read_crosswalk <- function(paths) {
-  # Reads the indicator-specific tab from the OLADE dimensions crosswalk.
-  # Returns a formatted string representation of the table for inclusion
-  # in the prompt, or NULL if no crosswalk exists for this indicator.
-  
-  if (is.null(paths$crosswalk)) return(NULL)
-  
-  read_xlsx(paths$crosswalk, sheet = paths$crosswalk_tab) %>%
-    format_tsv() %>%                # Converts to tab-separated text for clean model input
-    paste(collapse = "\n")
-}
-
-
-# =============================================================================
-# Step 4: Load PDFs as base64 for the Anthropic API
-# The Anthropic API accepts PDFs as base64-encoded document inputs.
-# =============================================================================
-
-load_pdfs <- function(pdf_dir) {
-  # Loads all PDFs in a directory and returns them as a list of
-  # Anthropic API-compatible document content blocks.
-  # Returns an empty list if the directory does not exist.
-  
-  if (is.null(pdf_dir) || !dir.exists(pdf_dir)) return(list())
-  
-  pdf_files <- list.files(pdf_dir, pattern = "\\.pdf$", full.names = TRUE)
-  
-  lapply(pdf_files, function(pdf_path) {
-    encoded <- base64encode(pdf_path)
-    list(
-      type   = "document",
-      source = list(
-        type       = "base64",
-        media_type = "application/pdf",
-        data       = encoded
-      ),
-      title = basename(pdf_path)   # Labels the document so the model can reference it by name
-    )
-  })
-}
-
-
-# =============================================================================
-# Step 5: Build the prompt and call the Anthropic API
-# =============================================================================
+# ---- prompts ----
+# Edit SYSTEM_PROMPT and the user_prompt block in main to refine what the model generates.
 
 SYSTEM_PROMPT <- "
 You are an expert in statistical metadata standards for international development indicators.
@@ -253,62 +44,238 @@ For each indicator, you will revise or draft the following three fields only:
   1. Definition
   2. Methodology
   3. Comments / additional information
-  
-The Definition should be more general and clarify terms and concepts. Depending on the complexity 
-of the indicator, this can be anywhere from 3-6 sentences (or 2-4 short paragraphs).
+
+The Definition should be more general and clarify terms and concepts. Sometimes the indicator
+can be a calculation with values in both the numerator and denominator. If so, define both elements
+with a clear and technical definition.Depending on the complexity of the indicator, this can be anywhere
+from 3-6 sentences (or 2-4 short paragraphs).
 
 The Methodology is where details are included that gives the user sufficient information to recreate
-the indicator themselves. Generally, this includes notes on the data source, key groupings or filterings of 
-the data, and any formulas or calculations.
+the indicator themselves. Generally, this includes notes on the data source, key groupings or
+filterings of the data (that aren't apparent from the indicator name), and any formulas or calculations.
 
-The Comments are where general comments are made about the use of the data (if applicable), and more importantly,
-includes links to relevant resources for further reading.
+The Comments are where general comments are made about the use of the data (if applicable), and
+more importantly, includes links to relevant resources for further reading.
 
-Keep in mind that the fields Data Source, Units, and Data Frequency are defined elsewhere in the metadata and 
-that they don't need to be explicitly outlined in the three fields above.
+Keep in mind that the fields Data Source, Units, and Data Frequency are defined elsewhere in the
+metadata and do not need to be explicitly outlined in the three fields above.
+
+Also note that most of the metadata sheets were written originally in Spanish and translated. If there is an
+internationally (UN) used and approved phrasing or terminology, use that.
 
 Write with precision and professional tone appropriate for a UN statistical system.
 Avoid vague language. Cite units, data sources, and methodological steps explicitly.
+
+STYLE REQUIREMENTS:
+- NEVER use em dashes (—) or en dashes (–) under any circumstances.
+- Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
+  Write formulas in plain text only, for example: VR_t = ((M_t - M_(t-1)) / M_(t-1)) x 100
 "
 
-# Step 5a: Generate first draft in English
+TRANSLATION_SYSTEM_PROMPT <- "
+You are a professional translator specializing in UN statistical documentation for Latin America.
+Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
+maintained by ECLAC (Comision Economica para America Latina y el Caribe).
 
-generate_draft <- function(indicator_id,
-                             existing_metadata,
-                             scripts,
-                             pdf_blocks) {
-  # First API call — generates English metadata fields only.
-  # Output is written to a file for human review before translation.
-  
-  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-  assert_that(nchar(api_key) > 0,
-              msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
-  
-  # Format existing metadata as text for the prompt
-  existing_metadata_text <- toJSON(existing_metadata, pretty = TRUE, auto_unbox = TRUE)
-  
-  r_script_section <- if (nchar(r_script_content) > 0) {
-    r_script_content
+Translation requirements:
+- Use established ECLAC/CEPALSTAT Spanish terminology, as shown in the reference examples provided.
+- Do not translate proper names of organizations, data sources, or internationally recognized
+  acronyms that appear in their English form in Spanish UN documents (e.g., OLADE, GDP, CO2,
+  UNSD, IPCC, PIB is acceptable for GDP in Spanish contexts).
+- Preserve the exact structure and section labels of the original (DEFINITION:, METHODOLOGY:,
+  COMMENTS:).
+- Use formal, precise language appropriate for a UN statistical system.
+- Translate faithfully — do not add, remove, or summarize content.
+
+STYLE REQUIREMENTS:
+- NEVER use em dashes (—) or en dashes (–) under any circumstances.
+- Do not use HTML tags or special unicode characters.
+  Write formulas in plain text only.
+"
+
+
+# ---- functions ----
+
+define_indicator_paths <- function(indicator_id) {
+  ind_source <- ind_meta %>% filter(id == indicator_id) %>% pull(source)
+  ind_dim    <- ind_meta %>% filter(id == indicator_id) %>% pull(dimensions)
+  ind_dim    <- if (is.na(ind_dim)) "" else ind_dim
+
+  # Defaults — source blocks below override only what they need
+  code_cleaning_instr <- NULL
+  code_cleaning       <- NULL
+  code_processing     <- NULL
+  crosswalk           <- NULL
+  crosswalk_tab       <- NULL
+  inputs   <- list(use_existing_metadata = TRUE, use_r_scripts = FALSE,
+                   use_pdfs = FALSE, use_examples = TRUE)
+  pdf_refs <- list()
+
+  if (ind_source == "OLADE") {
+    code_cleaning_instr <- file.path(SCRIPTS_DIR, "01_olade_instructions.qmd")
+    code_cleaning       <- file.path(SCRIPTS_DIR, "01_olade.R")
+    code_processing     <- file.path(SCRIPTS_DIR, "02_olade.R")
+
+    crosswalk     <- file.path(PROJECT_ROOT, "Data", "Raw", "olade", "energy_dimensions_crosswalk.xlsx")
+    crosswalk_tab <- if (ind_dim == "Type of energy__Primary_and_Secondary") {
+      "dimensions_crosswalk_44966"
+    } else if (ind_dim == "Energy intensity_Economic activity") {
+      "dimensions_crosswalk_78134"
+    } else {
+      NULL
+    }
+
+    # Which inputs to include in the prompt for this source.
+    # use_r_scripts also controls the crosswalk (dimension mapping table).
+    inputs <- list(
+      use_existing_metadata = TRUE,
+      use_r_scripts         = TRUE,
+      use_pdfs              = FALSE,
+      use_examples          = TRUE
+    )
+
+    # PDFs to include when use_pdfs = TRUE.
+    # Specify pages as an integer vector (e.g. 1:20, c(5, 10:15)) or NULL for all pages.
+    # Tip: run pdf_length("path/to/file.pdf") to check page counts.
+    # Cost guide: roughly 500-1000 tokens per page of dense text.
+    pdf_refs <- list(
+      list(
+        path  = file.path(GLOBAL_DIR, "unsd_seea_2012.pdf"),
+        pages = 1:30,
+        label = "UNSD SEEA 2012 (selected pages)"
+      ),
+      list(
+        path  = file.path(SOURCE_DIR, "olade", "olade_methodology.pdf"),
+        pages = 1:40,
+        label = "OLADE Methodology Manual (selected pages)"
+      )
+      # Add indicator-specific references below as needed, e.g.:
+      # list(
+      #   path  = file.path(INDICATOR_DIR, indicator_id, "some_reference.pdf"),
+      #   pages = 1:10,
+      #   label = "Additional reference"
+      # )
+    )
+
+  } else if (ind_source == "WDPA") {
+    # Which inputs to include in the prompt for this source.
+    inputs <- list(
+      use_existing_metadata = TRUE,
+      use_r_scripts         = FALSE, # part of Lara's coral ETL, so no R code available
+      use_pdfs              = FALSE,
+      use_examples          = TRUE
+    )
   } else {
-    "No R script available for this indicator."
+    stop(glue("No path logic defined for source: {ind_source}"))
   }
-  
-  user_prompt <- paste0(
-    "Indicator ID: ", indicator_id, "\n\n",
-    "--- EXISTING METADATA ---\n", existing_metadata_text, "\n\n",
-    "--- R PROCESSING SCRIPT ---\n", r_script_section, "\n\n",
-    "Please revise the metadata fields (definition, calculation_methodology, comments) ",
-    "based on the existing metadata, the R processing script, and the reference documents provided. ",
-    "Keep other metadata elements exactly as-is. "
+
+  path_if_exists <- function(p) if (!is.null(p) && file.exists(p)) p else NULL
+
+  list(
+    code_cleaning_instr = path_if_exists(code_cleaning_instr),
+    code_cleaning       = path_if_exists(code_cleaning),
+    code_processing     = path_if_exists(code_processing),
+    crosswalk           = if (!is.null(crosswalk_tab)) crosswalk else NULL,
+    crosswalk_tab       = crosswalk_tab,
+    inputs              = inputs,
+    pdf_refs            = pdf_refs
   )
-  
-  # Build content block: documents first, then the text prompt
-  content <- c(
-    pdf_blocks,
-    list(list(type = "text", text = user_prompt))
+}
+
+fetch_cepalstat_metadata <- function(indicator_id, lang = "en") {
+  url <- CEPALSTAT_API_URL %>%
+    gsub("\\{id\\}",   indicator_id, .) %>%
+    gsub("\\{lang\\}", lang,         .)
+  resp_body_json(request(url) |> req_perform())
+}
+
+fetch_example_metadata <- function(example_ids, lang = "en") {
+  # Fetches golden standard metadata entries and formats them as labelled example blocks.
+  example_ids %>%
+    map(function(id) {
+      m <- fetch_cepalstat_metadata(id, lang = lang)
+      glue(
+        "--- EXAMPLE OUTPUT ---\n\n",
+        "DEFINITION:\n{m$body$metadata$definition}\n\n",
+        "METHODOLOGY:\n{m$body$metadata$calculation_methodology}\n\n",
+        "COMMENTS:\n{m$body$metadata$comments}\n"
+      )
+    }) %>%
+    paste(collapse = "\n\n")
+}
+
+extract_indicator_section <- function(script_path, indicator_id) {
+  # Extracts the indicator-specific section plus general setup from a processing script.
+  lines <- readLines(script_path, warn = FALSE)
+
+  any_header_pattern  <- "^# ----"
+  this_header_pattern <- glue("(?i)# ---- indicator {indicator_id}")
+
+  all_header_idx  <- which(str_detect(lines, any_header_pattern))
+  this_header_idx <- which(str_detect(lines, this_header_pattern))
+
+  if (length(this_header_idx) == 0) {
+    warning(glue("No section found for indicator {indicator_id} in {basename(script_path)}"))
+    return(NULL)
+  }
+
+  this_header_idx <- this_header_idx[1]
+
+  # General content = everything before the third section header (setup + data reads)
+  general_lines <- if (all_header_idx[1] > 1) lines[1:(all_header_idx[3] - 1)] else character(0)
+
+  next_header_idx <- all_header_idx[all_header_idx > this_header_idx]
+  section_end_idx <- if (length(next_header_idx) > 0) next_header_idx[1] - 1 else length(lines)
+  indicator_lines <- lines[this_header_idx:section_end_idx]
+
+  paste(c(general_lines, indicator_lines), collapse = "\n")
+}
+
+read_scripts <- function(paths, indicator_id) {
+  scripts <- list()
+
+  if (!is.null(paths$code_cleaning_instr))
+    scripts$code_cleaning_instr <- paste(readLines(paths$code_cleaning_instr, warn = FALSE), collapse = "\n")
+
+  if (!is.null(paths$code_cleaning))
+    scripts$code_cleaning <- paste(readLines(paths$code_cleaning, warn = FALSE), collapse = "\n")
+
+  if (!is.null(paths$code_processing))
+    scripts$code_processing <- extract_indicator_section(paths$code_processing, indicator_id)
+
+  keep(scripts, ~ !is.null(.x))
+}
+
+read_crosswalk <- function(paths) {
+  if (is.null(paths$crosswalk)) return(NULL)
+  read_xlsx(paths$crosswalk, sheet = paths$crosswalk_tab) %>%
+    format_tsv() %>%
+    paste(collapse = "\n")
+}
+
+load_pdfs <- function(pdf_refs) {
+  # Extracts text from the specified pages of each PDF and returns plain-text content blocks.
+  # Skips any files that don't exist on disk (with a warning).
+  keep(
+    lapply(pdf_refs, function(ref) {
+      if (!file.exists(ref$path)) {
+        warning(glue("PDF not found, skipping: {ref$path}"))
+        return(NULL)
+      }
+      all_pages <- pdf_text(ref$path)
+      selected  <- if (is.null(ref$pages)) all_pages else all_pages[ref$pages]
+      list(type = "text", text = glue("--- {ref$label} ---\n{paste(selected, collapse = '\n')}"))
+    }),
+    ~ !is.null(.x)
   )
-  
-  # Build and send the API request
+}
+
+generate_draft <- function(indicator_id, system_prompt, user_prompt, pdf_blocks) {
+  # Calls the Anthropic API and writes the English draft to a .txt file for review.
+  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+  assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
+  content <- c(pdf_blocks, list(list(type = "text", text = user_prompt)))
+
   response <- request("https://api.anthropic.com/v1/messages") |>
     req_headers(
       "x-api-key"         = api_key,
@@ -318,117 +285,189 @@ generate_draft <- function(indicator_id,
     req_body_json(list(
       model      = ANTHROPIC_MODEL,
       max_tokens = 4096,
-      system     = trimws(SYSTEM_PROMPT),
-      messages   = list(
-        list(role = "user", content = content)
-      )
+      temperature = 0, # makes model more deterministic and reproducible
+      system     = trimws(system_prompt),
+      messages   = list(list(role = "user", content = content))
     )) |>
-    req_retry(max_tries = 3) |>
+    req_timeout(180) |>
+    req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
+              backoff = \(i) 30) |>
+    req_error(body = \(r) resp_body_string(r)) |>
     req_perform()
-  
-  # Extract the text response
-  result <- resp_body_json(response)
-  result$content[[1]]$text
-  
-  # Write draft to file for review
-  draft_path <- file.path(OUTPUT_DIR, glue("english_draft_{indicator_id}.txt"))
+
+  result        <- resp_body_json(response)
+  response_text <- result$content[[1]]$text
+
+  draft_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_english_draft.txt"))
   writeLines(response_text, draft_path)
   message(glue("English draft written to: {draft_path}"))
   message("Review and edit the file, then call translate_to_spanish() to continue.")
-  
-  invisible(draft_path)
+
+  response_text
 }
 
+translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
+  # Reads the reviewed English draft, translates it to Spanish, and writes the result
+  # to a .txt file. Returns the Spanish text.
+  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+  assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
 
-
-# =============================================================================
-# Step 6: Write output to Excel
-# Format mirrors the CEPALSTAT metadata API structure, one field per row.
-# Adjust column names once the bulk upload template is confirmed.
-# =============================================================================
-
-write_output <- function(indicator_id, generated_text) {
-  # Writes the generated metadata to an Excel file.
-  # Currently stores the full model response as a single cell — this will
-  # be restructured into the bulk upload format once that template is confirmed.
-  
-  output_path <- file.path(OUTPUT_DIR, paste0("metadata_draft_", indicator_id, ".xlsx"))
-  
-  # TODO: Parse generated_text into individual fields and language rows
-  # once the bulk upload column structure is confirmed.
-  output_df <- data.frame(
-    indicator_id       = indicator_id,
-    generated_metadata = generated_text
+  draft_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_english_draft.txt"))
+  assert_that(
+    file.exists(draft_path),
+    msg = glue("English draft not found: {draft_path}\nRun generate_draft() first.")
   )
-  
-  write_xlsx(output_df, output_path)
+  english_text <- paste(readLines(draft_path, warn = FALSE), collapse = "\n")
+
+  # Build translation prompt sections
+  translate_sections <- list()
+  translate_sections[["ENGLISH TEXT TO TRANSLATE"]] <- english_text
+
+  if (use_existing_spanish) {
+    message("Fetching existing Spanish metadata for terminology reference...")
+    es_meta <- fetch_cepalstat_metadata(indicator_id, lang = "es")
+    es_meta_text <- toJSON(es_meta, pretty = TRUE, auto_unbox = TRUE)
+    translate_sections[["EXISTING SPANISH METADATA (terminology reference)"]] <- es_meta_text
+  }
+
+  message("Fetching Spanish golden standard examples...")
+  es_examples <- fetch_example_metadata(c(2487, 4174), lang = "es")
+
+  system_prompt <- paste(
+    TRANSLATION_SYSTEM_PROMPT,
+    "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style and terminology:\n\n",
+    es_examples,
+    sep = "\n\n"
+  )
+
+  user_prompt <- paste0(
+    "Indicator ID: ", indicator_id, "\n\n",
+    translate_sections %>% imap(~ glue("--- {.y} ---\n{.x}")) %>% paste(collapse = "\n\n"),
+    "\n\nTranslate the English text above into Spanish."
+  )
+
+  response <- request("https://api.anthropic.com/v1/messages") |>
+    req_headers(
+      "x-api-key"         = api_key,
+      "anthropic-version" = "2023-06-01",
+      "content-type"      = "application/json"
+    ) |>
+    req_body_json(list(
+      model      = ANTHROPIC_MODEL,
+      max_tokens = 4096,
+      system     = trimws(system_prompt),
+      messages   = list(list(role = "user", content = list(list(type = "text", text = user_prompt))))
+    )) |>
+    req_timeout(180) |>
+    req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
+              backoff = \(i) 30) |>
+    req_error(body = \(r) resp_body_string(r)) |>
+    req_perform()
+
+  result       <- resp_body_json(response)
+  spanish_text <- result$content[[1]]$text
+
+  spanish_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_spanish_draft.txt"))
+  writeLines(spanish_text, spanish_path)
+  message(glue("Spanish draft written to: {spanish_path}"))
+
+  spanish_text
+}
+
+write_output <- function(indicator_id, english_text, spanish_text = NULL) {
+  output_path <- file.path(OUTPUT_DIR, paste0("metadata_draft_", indicator_id, ".xlsx"))
+
+  # TODO: parse text into individual fields (definition, methodology, comments) once
+  # the bulk upload column structure is confirmed.
+  rows <- list(data.frame(indicator_id = indicator_id, lang = "en", metadata = english_text))
+  if (!is.null(spanish_text))
+    rows <- c(rows, list(data.frame(indicator_id = indicator_id, lang = "es", metadata = spanish_text)))
+
+  write_xlsx(bind_rows(rows), output_path)
   message("Output written to: ", output_path)
 }
 
 
-# =============================================================================
-# Main
-# =============================================================================
+# ---- main ----
 
 message(glue("Processing indicator {indicator_id}..."))
 
-# Resolve file paths for this indicator
 paths <- define_indicator_paths(indicator_id)
-
-# Fetch existing metadata from CEPALSTAT API
-message("Fetching existing metadata from CEPALSTAT API...")
-existing_metadata <- fetch_cepalstat_metadata(indicator_id)
-
-# Read R scripts (processing script filtered to indicator section; others in full)
-message("Reading scripts...")
-scripts <- read_scripts(paths, indicator_id)
-message(glue("Loaded {length(scripts)} script(s): {paste(names(scripts), collapse = ', ')}"))
-
-# Read crosswalk if one exists for this indicator, and append to scripts list
-crosswalk_text <- read_crosswalk(paths)
-if (!is.null(crosswalk_text)) {
-  scripts$crosswalk <- crosswalk_text
-  message("Crosswalk loaded.")
-}
-
-# Collapse named scripts list into a single labelled string for the prompt
-r_script_content <- scripts %>%
-  imap(~ glue("--- {.y} ---\n{.x}")) %>%
-  paste(collapse = "\n\n")
-
-# Load PDFs from all three input directories
-# Order: global (UNSD) references first, then source-specific, then indicator-specific
-message("Loading PDF reference documents...")
-global_pdf_blocks <- load_pdfs(GLOBAL_DIR)
-source_pdf_blocks <- load_pdfs(paths$meta_source)
-indicator_pdf_blocks <- load_pdfs(here(INDICATOR_DIR, indicator_id))
-pdf_blocks <- c(global_pdf_blocks, source_pdf_blocks, indicator_pdf_blocks)
+inp   <- paths$inputs
 message(glue(
-  "Loaded {length(global_pdf_blocks)} global PDF(s), ",
-  "{length(source_pdf_blocks)} source PDF(s), and ",
-  "{length(indicator_pdf_blocks)} indicator PDF(s).",
+  "Input config — existing metadata: {inp$use_existing_metadata}, ",
+  "R scripts: {inp$use_r_scripts}, PDFs: {inp$use_pdfs}, examples: {inp$use_examples}"
 ))
 
-message("Fetching golden standard metadata examples...")
-example_block    <- fetch_example_metadata(c(2487, 4174))
-SYSTEM_PROMPT_WSAMPLES <- paste(SYSTEM_PROMPT, 
-                          "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n", 
-                          example_block, sep = "\n\n")
+# Gather active inputs; each active section is added to input_sections and
+# later assembled into the user prompt in the order it appears here.
+input_sections <- list()
 
-# Call the Anthropic API
-message("Calling Anthropic API...")
-generated_text <- call_anthropic_api(
-  indicator_id      = indicator_id,
-  existing_metadata = existing_metadata,
-  r_script_content  = r_script_content,
-  unsd_pdf_blocks   = unsd_pdf_blocks,
-  source_pdf_blocks = source_pdf_blocks
+if (inp$use_existing_metadata) {
+  message("Fetching existing metadata from CEPALSTAT API...")
+  existing_metadata <- fetch_cepalstat_metadata(indicator_id)
+  input_sections[["EXISTING METADATA"]] <- toJSON(existing_metadata, pretty = TRUE, auto_unbox = TRUE)
+}
+
+if (inp$use_r_scripts) {
+  message("Reading scripts...")
+  scripts <- read_scripts(paths, indicator_id)
+  message(glue("Loaded {length(scripts)} script(s): {paste(names(scripts), collapse = ', ')}"))
+
+  crosswalk_text <- read_crosswalk(paths)
+  if (!is.null(crosswalk_text)) {
+    scripts$crosswalk <- crosswalk_text
+    message("Crosswalk loaded.")
+  }
+
+  input_sections[["R PROCESSING SCRIPT"]] <- scripts %>%
+    imap(~ glue("--- {.y} ---\n{.x}")) %>%
+    paste(collapse = "\n\n")
+}
+
+pdf_blocks <- if (inp$use_pdfs) {
+  message("Loading PDF reference documents...")
+  blocks <- load_pdfs(paths$pdf_refs)
+  message(glue("Loaded {length(blocks)} PDF reference(s)."))
+  blocks
+} else {
+  list()
+}
+
+# Build prompts — edit these blocks to adjust what the model receives
+system_prompt <- if (inp$use_examples) {
+  message("Fetching golden standard metadata examples...")
+  example_block <- fetch_example_metadata(c(2487, 4174))
+  paste(
+    SYSTEM_PROMPT,
+    "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
+    example_block,
+    sep = "\n\n"
+  )
+} else {
+  SYSTEM_PROMPT
+}
+
+user_prompt <- paste0(
+  "Indicator ID: ", indicator_id, "\n\n",
+  input_sections %>% imap(~ glue("--- {.y} ---\n{.x}")) %>% paste(collapse = "\n\n"),
+  "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
+  "based on the available inputs. Keep other metadata elements exactly as-is."
 )
 
-cat(generated_text)
-
-# Write output
+# Step 1: Generate English draft
+# Review and edit Metadata/Outputs/english_draft_{indicator_id}.txt before translating.
+message("Calling Anthropic API (English draft)...")
 dir.create(OUTPUT_DIR, showWarnings = FALSE, recursive = TRUE)
-write_output(indicator_id, generated_text)
-message("Done.")
+english_text <- generate_draft(indicator_id, system_prompt, user_prompt, pdf_blocks)
+cat(english_text)
 
+# Step 2: Translate to Spanish
+spanish_text <- translate_to_spanish(indicator_id)
+cat(spanish_text)
+
+# Step 3: Write output
+# Pass spanish_text once translation is done; omit it to write English only.
+write_output(indicator_id, english_text)
+# write_output(indicator_id, english_text, spanish_text)
+message("Done.")

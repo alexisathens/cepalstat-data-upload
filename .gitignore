@@ -1,0 +1,10 @@
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+Data/Checks/
+Data/Cleaned/
+Data/Misc/
+Data/Raw/
+Pilot/
+CEPALSTAT Review/
