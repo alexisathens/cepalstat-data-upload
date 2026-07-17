@@ -62,49 +62,33 @@ rfn %<>% as_tibble()
 rp <- get_faostat_bulk(code = "RP")
 rp %<>% as_tibble()
 
-## temp fix: bulk download while API is being updated (needs authentication now and R package hasn't caught up)
-library(tidyverse)
+# imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
+fish <- capture %>%
+  inner_join(country, by = "country") %>%
+  inner_join(species, by = "species") %>% 
+  as_tibble()
 
-# Direct bulk download — no authentication required
-url <- "https://bulks-faostat.fao.org/production/Inputs_Pesticides_Use_E_All_Data_(Normalized).zip"
-tmp <- tempfile(fileext = ".zip")
+fish <- fish %>% 
+  mutate(
+    Years = as.integer(year),
+    Country = country_name,
+    Species = species_name,
+    Species_Group = isscaap
+  )
 
-download.file(url, tmp, mode = "wb")
-unzip(tmp, exdir = tempdir())
+aqua <- aquaculture %>%
+  inner_join(country, by = "country") %>%
+  inner_join(species, by = "species") %>% 
+  inner_join(area, by = "area") %>% 
+  inner_join(environment, by = "environment") %>% 
+  as_tibble()
 
-rp <- read_csv(
-  file.path(tempdir(), "Inputs_Pesticides_Use_E_All_Data_(Normalized).csv"),
-  locale = locale(encoding = "latin1")
-)
-
-rp %<>% as_tibble()
-# match old formatting...
-rp %<>% rename(item = Item, element = Element, area = Area, year = Year, value = Value)
-rp %<>% mutate(element = ifelse(element == "Agricultural Use", "agricultural_use", element))
-
-# MANUALLY download bulk data from fishstat / aquaculture production
-# at https://www.fao.org/fishery/statistics-query/en/aquaculture/aquaculture_quantity
-aqua_folder <- here("Data/Raw/fao fish and aqua/global aquaculture production quantity 20-11-2025")
-aqua <- read_csv(paste0(aqua_folder, "/Aquaculture_Quantity.csv"))
-aqua_country_map <- read_csv(paste0(aqua_folder, "/CL_FI_COUNTRY_GROUPS.csv"))
-aqua_species_map <- read_csv(paste0(aqua_folder, "/CL_FI_SPECIES_GROUPS.csv"))
-aqua_water_map <- read_csv(paste0(aqua_folder, "/CL_FI_WATERAREA_GROUPS.csv"))
-aqua_environment_map <- read_csv(paste0(aqua_folder, "/CL_FI_PRODENVIRONMENT.csv"))
-
-# MANUALLY download data from aquastat
-# at https://data.apps.fao.org/aquastat/?lang=en
-# making these selections:
-# Variable group: water use
-# Variable subgroup: water withdrawal by sector
-# Variable:
-# - agricultural water withdrawal as % of total water withdrawal (for 4185)
-# - industrial water withdrawal as % of total water withdrawal (for 4185)
-# - municipal water withdrawal as % of total water withdrawal (for 4185)
-# - agricultural water withdrawal (for 4186)
-# Regions: Select Americas
-# Years: Select 1990 through the most recent available year
-aquastat_folder <- here("Data/Raw/fao fish and aqua/aquastat")
-aquastat <- read_xlsx(paste0(aquastat_folder, "/AQUASTAT Dissemination System.xlsx"))
+aqua <- aqua %>% 
+  mutate(
+    Years = as.integer(year),
+    Country = country_name,
+    Area = inlandmarine
+  )
 
 
 # FAO LAND USE (RL) INDICATORS -----
@@ -1132,23 +1116,6 @@ dim_config_2019 <- tibble(
   pub_col = c("208_name", "29117_name", "20720_name")
 )
 
-# ****************************************
-
-# imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
-fish <- capture %>%
-    inner_join(country, by = "country") %>%
-    inner_join(species, by = "species") 
-
-fish <- fish %>% 
-  mutate(
-    Years = as.integer(year),
-    Country = country_name,
-    Species = species_name,
-    Species_Group = isscaap
-  )
-
-# ****************************************
-
 filter_2019 <- function(data) {
   whales <- c("Blue-whales, fin-whales", "Sperm-whales, pilot-whales", "Eared seals, hair seals, walruses", "Miscellaneous aquatic mammals")
   
@@ -1157,7 +1124,7 @@ filter_2019 <- function(data) {
     # filter out any countries too with inconsistent entries (to not impact LAC total)
     # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
-    select(Country, Years,Species, Species_Group, value)
+    select(Country, Years, Species, Species_Group, value)
 }
 
 transform_2019 <- function(data) {
@@ -1265,7 +1232,8 @@ transform_2019 <- function(data) {
   
   data %<>% 
     group_by(Country, Years, Species) %>% 
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") 
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(value = value / 1000) # change units from tons to 1000s of tons
   
   return(data)
 }
@@ -1343,24 +1311,9 @@ dim_config_2020 <- tibble(
   pub_col = c("208_name", "29117_name", "26819_name")
 )
 
-## ** indicator specific data cleaning **
-
-aqua_country_map %<>% select(UN_Code, Country = Name_En)
-aqua_water_map %<>% select(Code, Area = InlandMarine_Group_En) # accept all areas
-aqua_environment_map %<>% select(Code, Environment = Name_En)
-
-aqua %<>% 
-  left_join(aqua_country_map, by = c("COUNTRY.UN_CODE" = "UN_Code")) %>% 
-  left_join(aqua_water_map, by = c("AREA.CODE" = "Code")) %>% 
-  left_join(aqua_environment_map, by = c("ENVIRONMENT.ALPHA_2_CODE" = "Code")) %>% 
-  select(Country, Area, Environment, Years = PERIOD, value = VALUE)
-
-# ****************************************
-
-
 filter_2020 <- function(data) {
   data %>% 
-    filter(Environment %in% c("Freshwater", "Marine")) %>% # remove "Brackishwater"
+    filter(environment_name %in% c("Freshwater", "Marine")) %>% # remove "Brackishwater"
     filter(Area %in% c("Inland waters", "Marine areas")) %>% # select all
     # filter out any countries too with inconsistent entries (to not impact LAC total)
     # filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla")) %>% 
@@ -1371,7 +1324,8 @@ filter_2020 <- function(data) {
 transform_2020 <- function(data) {
   data %>% 
     group_by(Country, Years, Area) %>% 
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(value = value / 1000) # change units from tons to 1000s of tons
 }
 
 regional_2020 <- function(data) {
