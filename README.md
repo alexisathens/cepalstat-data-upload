@@ -17,7 +17,7 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 ## Scripts
 
 | Script | Purpose |
-|------------------------------------|------------------------------------|
+|----|----|
 | `01_climatewatch.R` | Download Climate Watch emissions data via API |
 | `01_olade_instructions.R` | Manual download instructions for OLADE energy data |
 | `01_olade_format.R` | Standardize the format of the downloaded OLADE data |
@@ -44,7 +44,7 @@ The `process_indicator_fn.R` script defines the central function used by all `02
 ## Key Data Sources
 
 | Source | Data | Download method |
-|------------------------|------------------------|------------------------|
+|----|----|----|
 | FAO (FAOSTAT) | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides | Automated via `FAOSTAT` R package |
 | FAO (FishStat / Aquastat) | Fish capture, aquaculture, water withdrawal | Manual download required |
 | Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | Automated via API |
