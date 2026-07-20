@@ -122,8 +122,7 @@ result_4244 <- process_indicator(
   footnotes_fn = footnotes_4244,
   source_fn = source_4244,
   diagnostics = TRUE,
-  export = TRUE,
-  ind_notes = "Updated source to link to IRENA website"
+  export = TRUE
 )
 
 
@@ -498,8 +497,7 @@ result_2031 <- process_indicator(
   footnotes_fn = footnotes_2031,
   source_fn = source_2031,
   diagnostics = TRUE,
-  export = TRUE,
-  ind_notes = "Changed source from individual treaty websites to InforMEA"
+  export = TRUE
 )
 
 ### manual checks ---

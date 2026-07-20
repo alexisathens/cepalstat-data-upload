@@ -747,8 +747,7 @@ result_4176 <- process_indicator(
   footnotes_fn = footnotes_4176,
   source_fn = source_4176,
   diagnostics = TRUE,
-  export = TRUE,
-  ind_notes = "changed data source from fra to cci_lc"
+  export = TRUE
 )
 
 

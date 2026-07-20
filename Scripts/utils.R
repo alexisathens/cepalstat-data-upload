@@ -530,28 +530,3 @@ render_qc_checks <- function(indicator_id, open_qmd = TRUE, new_indicator = FALS
     browseURL(here::here("QC Reports", output_file))
   }
 }
-
-# Function that updates indicator_metadata.xlsx with code versioning
-update_indicator_metadata <- function(indicator_id, ind_notes = NULL) {
-  
-  # Load metadata
-  meta <- read_xlsx(here("Data/indicator_metadata.xlsx"), sheet = "metadata")
-  
-  # Convert ind_notes to empty string if null
-  if (is.null(ind_notes)) ind_notes <- NA_character_
-  
-  # Throw error if metadata doesn't exist (e.g., for a new indicator)
-  if(is_empty(meta %>% filter(id == indicator_id) %>% pull(id))) stop("Indicator metadata doesn't exist. Create metadata row in Data/indicator_metadata.xlsx.")
-  
-  meta <- meta %>%
-    mutate(
-      last_run = lubridate::ymd(last_run, quiet = TRUE)) %>% 
-    mutate(
-      automated = if_else(id == indicator_id, "Y", automated),
-      last_run = if_else(id == indicator_id, as.Date(Sys.Date()), as.Date(last_run)),
-      notes = if_else(id == indicator_id, ind_notes, notes)
-    )
-  
-  # Write back
-  writexl::write_xlsx(list(metadata = meta), here("Data/indicator_metadata.xlsx"))
-}
