@@ -154,15 +154,15 @@ process_indicator <- function(indicator_id, data, dim_config,
 }
 
 ## Debugging
-# indicator_id = 4184
-# data = data_cons
-# dim_config = dim_config_4184
-# filter_fn = filter_4184
-# transform_fn = transform_4184
+# indicator_id = 4243
+# data = data_cons_sec
+# dim_config = dim_config_4243
+# filter_fn = filter_4243
+# transform_fn = transform_4243
 # remove_lac = FALSE
-# regional_fn = regional_4184
-# footnotes_fn = footnotes_4184
-# source_fn = source_4184
+# regional_fn = regional_4243
+# footnotes_fn = footnotes_4243
+# source_fn = source_4243
 # diagnostics = TRUE
 # export = FALSE
 # open_qmd = TRUE
