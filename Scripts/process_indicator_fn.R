@@ -5,7 +5,6 @@ process_indicator <- function(indicator_id, data, dim_config,
                               source_fn = NULL,
                               remove_lac = TRUE, # TRUE = remove and recalculate LAC, FALSE = keep source LAC
                               diagnostics = TRUE, export = TRUE,
-                              ind_notes = NULL,
                               open_qmd = TRUE,
                               new_indicator = FALSE) {
   message(glue("▶ Processing indicator {indicator_id}..."))
@@ -128,21 +127,12 @@ process_indicator <- function(indicator_id, data, dim_config,
   # 8. Export data and QC report
   if (export) {
     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
-    
-    # First, throw error if metadata file is open
-    xlsx_con <- tryCatch(file(here::here("Data/indicator_metadata.xlsx"), open = "a"), error = function(e) e)
-    if (inherits(xlsx_con, "error")) stop("Close indicator_metadata.xlsx before running this script.")
-    close(xlsx_con)
-    
+
     # Write excel files
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
-    
-    # Update metadata for code version and last updated
-    update_indicator_metadata(indicator_id, ind_notes)
-    message(glue("✅ Updated internal metadata for {indicator_id}"))
-    
+
     # Render data quality checks file
     render_qc_checks(indicator_id, open_qmd, new_indicator)
     message(glue("✅ Exported quality check file for {indicator_id}"))

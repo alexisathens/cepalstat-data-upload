@@ -61,7 +61,7 @@ Data/
 ├── Cleaned/      # Final files for Wasabi upload (id{indicator_id}_{timestamp}.xlsx)
 ├── Checks/       # Comparison files vs. published data (comp_id{indicator_id}.xlsx)
 ├── iso_codes.xlsx           # Country name ↔ CEPALSTAT ID mapping
-└── indicator_metadata.xlsx  # Indicator tracking and processing history
+└── indicator_metadata.xlsx  # Indicator reference table (id, area, source, dimensions, notes), rebuilt via `build_metadata_table.R`
 Docs/       # Misc documentation and visuals
 QC Reports/       # Generated QC HTML reports
 ```
