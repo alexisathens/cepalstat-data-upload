@@ -34,10 +34,10 @@ iso %<>%
   select(cepalstat, name, std_name)
 
 # Read in the downloaded emdat data
-emdat <- read_xlsx(here("Data/Raw/emdat/public_emdat_custom_request_2025-11-04.xlsx"))
+emdat <- read_xlsx(here("Data/Raw/emdat/public_emdat_incl_hist_2026-07-06.xlsx"))
 
 # Define latest year of data
-max_year <- 2024
+max_year <- 2025
 
 
 ## ---- indicator 4046 - economic cost of disasters ----
@@ -78,7 +78,8 @@ transform_4046 <- function(data) {
     select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
     #filter(!is.na(value)) %>% 
     group_by(Country, Years, Group, Type) %>% 
-    summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
+    mutate(value = value / 1000) # convert '000 USD to millions
   
   type_sum <- data %>% 
     group_by(Country, Years, Group) %>% 
