@@ -33,6 +33,7 @@ suggest_metadata_en <- function(indicator_id = 3881,
   
   PROJECT_ROOT  <- here::here()
   OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+  LEGACY_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Legacy")
   
   CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
   ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
@@ -87,13 +88,34 @@ STYLE REQUIREMENTS:
       map(function(id) {
         m <- get_indicator_metadata(id, lang = lang)
         glue(
-          "--- sample metadata output -- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
+          "--- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
           "definition:\n{m$value[m$variable == 'definition']}\n\n",
           "calculation_methodology:\n{m$value[m$variable == 'calculation_methodology']}\n\n",
           "comments:\n{m$value[m$variable == 'comments']}\n"
         )
       }) %>%
       paste(collapse = "\n\n")
+  }
+  
+  save_legacy_metadata <- function(indicator_id) {
+    # Archives the current (pre-AI) English and Spanish metadata to a single text file
+    
+    legacy_path <- file.path(LEGACY_DIR, glue("metadata_{indicator_id}.txt"))
+    
+    if (!file.exists(legacy_path)) {
+      en_text <- get_formatted_metadata(indicator_id, lang = "en")
+      es_text <- get_formatted_metadata(indicator_id, lang = "es")
+      
+      today <- format(Sys.Date(), "%Y-%m-%d")
+      legacy_text <- glue(
+        "--- ENGLISH METADATA ({today}) ---\n\n{en_text}\n\n",
+        "--- SPANISH METADATA ({today}) ---\n\n{es_text}\n"
+      )
+      
+      legacy_path <- file.path(LEGACY_DIR, glue("metadata_{indicator_id}.txt"))
+      writeLines(legacy_text, legacy_path)
+    }
+    
   }
   
   generate_draft <- function(indicator_id, system_prompt, user_prompt) {
@@ -156,6 +178,9 @@ STYLE REQUIREMENTS:
     "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
     "based on the available inputs. Keep other metadata elements exactly as-is."
   )
+  
+  ## store existing (pre-AI) metadata locally
+  save_legacy_metadata(indicator_id)
   
   
   ## generate English draft
