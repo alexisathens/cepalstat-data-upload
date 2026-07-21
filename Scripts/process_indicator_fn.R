@@ -1,12 +1,16 @@
+source(here("Scripts/utils.R")) # for utility functions
+source(here("Scripts/04_technical_sheet.R")) # for AI-assisted metadata updates
+
 # Generic CEPALSTAT indicator processing function
 process_indicator <- function(indicator_id, data, dim_config,
                               filter_fn, transform_fn, footnotes_fn,
                               regional_fn = NULL, # NULL = default sum, FALSE = skip, function = custom
                               source_fn = NULL,
                               remove_lac = TRUE, # TRUE = remove and recalculate LAC, FALSE = keep source LAC
-                              diagnostics = TRUE, export = TRUE,
-                              open_qmd = TRUE,
-                              new_indicator = FALSE) {
+                              diagnostics = TRUE, 
+                              export = TRUE,
+                              new_indicator = FALSE,
+                              metadata = FALSE) {
   message(glue("▶ Processing indicator {indicator_id}..."))
 
   ## 1. Filter and transform raw data
@@ -134,9 +138,15 @@ process_indicator <- function(indicator_id, data, dim_config,
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
 
     # Render data quality checks file
-    render_qc_checks(indicator_id, open_qmd, new_indicator)
+    render_qc_checks(indicator_id, new_indicator)
     message(glue("✅ Exported quality check file for {indicator_id}"))
     message(glue("✅ Indicator {indicator_id} processing complete"))
+  }
+  
+  # 9. Suggest metadata improvements using Anthropic API
+  if (metadata) {
+    suggest_metadata_en(indicator_id)
+    message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
   }
   
   return(list(clean = df_l, formatted = df_f, comp = comp, comp_sum = comp_sum))
@@ -157,6 +167,7 @@ process_indicator <- function(indicator_id, data, dim_config,
 # export = FALSE
 # open_qmd = TRUE
 # new_indicator = FALSE
+# metadata = FALSE
 
 ## Sample indicator processing code
 
