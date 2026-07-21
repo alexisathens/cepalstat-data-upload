@@ -125,9 +125,9 @@ get_indicator_dimensions <- function(indicator_id) {
 }
 
 # Get table of indicator metadata
-get_indicator_metadata <- function(indicator_id) {
+get_indicator_metadata <- function(indicator_id, lang = "en") {
   ## Get footnotes_id from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang=en&format=json")
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang={lang}&format=json")
   
   # Send request and parse JSON
   result <- fetch_cepalstat_json(url)
@@ -503,7 +503,7 @@ run_comparison_checks <- function(comp, dim_config) {
 }
 
 # Function that renders 03_qc_report.qmd for given indicator
-render_qc_checks <- function(indicator_id, open_qmd = TRUE, new_indicator = FALSE) {
+render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRUE) {
   
   # Construct qmd file name
   output_file   <- paste0("qc_report_", indicator_id, ".html")
