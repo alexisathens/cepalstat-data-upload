@@ -19,27 +19,30 @@ library(CepalStatR)
 library(pdftools)
 
 
-# ---- setup ----
 
-PROJECT_ROOT  <- here::here()
-OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
-
-CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
-ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
-
-indicator_id <- 5732
-
-ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
-
-gold_standard_indicators <- c(2487, 4174)
+## testing variables
+# indicator_id <- 3881
+# gold_standard_indicators <- c(2487, 4174)
 # 2487 - Primary and secondary energy supply
 # 4174 - Energy intensity measured in terms of primary energy and GDP
 
+suggest_metadata_en <- function(indicator_id = 3881,
+                                gold_standard_indicators = c(2487, 4174)) {
+  
+  ## setup
+  
+  PROJECT_ROOT  <- here::here()
+  OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+  
+  CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
+  ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
+  
+  ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
-# ---- general system prompt ----
-# Edit SYSTEM_PROMPT and the user_prompt block in main to refine what the model generates.
-
-SYSTEM_PROMPT <- "
+  ## general system prompt
+  # Edit SYSTEM_PROMPT and the user_prompt block in main to refine what the model generates.
+  
+  SYSTEM_PROMPT <- "
 You are an expert in statistical metadata standards for international development indicators.
 Your task is to draft metadata for CEPALSTAT environmental indicators following UNSD best
 practices, as illustrated in the reference documents provided.
@@ -75,6 +78,94 @@ STYLE REQUIREMENTS:
 - Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
   Write formulas in plain text only, for example: VR_t = ((M_t - M_(t-1)) / M_(t-1)) x 100
 "
+  
+  ## functions
+  
+  get_formatted_metadata <- function(example_ids, lang = "en") {
+    # Fetches golden standard metadata entries and formats them as labelled example blocks.
+    example_ids %>%
+      map(function(id) {
+        m <- get_indicator_metadata(id, lang = lang)
+        glue(
+          "--- sample metadata output -- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
+          "definition:\n{m$value[m$variable == 'definition']}\n\n",
+          "calculation_methodology:\n{m$value[m$variable == 'calculation_methodology']}\n\n",
+          "comments:\n{m$value[m$variable == 'comments']}\n"
+        )
+      }) %>%
+      paste(collapse = "\n\n")
+  }
+  
+  generate_draft <- function(indicator_id, system_prompt, user_prompt) {
+    # Calls the Anthropic API and writes the English draft to a .txt file for review.
+    api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+    assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
+    
+    response <- request("https://api.anthropic.com/v1/messages") |>
+      req_headers(
+        "x-api-key"         = api_key,
+        "anthropic-version" = "2023-06-01",
+        "content-type"      = "application/json"
+      ) |>
+      req_body_json(list(
+        model      = ANTHROPIC_MODEL,
+        max_tokens = 4096,
+        temperature = 0, # makes model more deterministic and reproducible
+        system     = trimws(system_prompt),
+        messages   = list(list(role = "user", content = user_prompt))
+      )) |>
+      req_timeout(180) |>
+      req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
+                backoff = \(i) 30) |>
+      req_error(body = \(r) resp_body_string(r)) |>
+      req_perform()
+    
+    result        <- resp_body_json(response)
+    response_text <- result$content[[1]]$text
+    
+    draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_en.txt"))
+    writeLines(response_text, draft_path)
+    message(glue("English draft written to: {draft_path}"))
+    
+    response_text
+  }
+  
+  # ---- main ----
+  
+  # message(glue("Processing indicator {indicator_id}..."))
+  
+  ## update system prompt with good examples
+  golden_examples <- get_formatted_metadata(gold_standard_indicators)
+  
+  system_prompt <- paste(
+    SYSTEM_PROMPT,
+    "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
+    golden_examples,
+    sep = "\n\n"
+  )
+  
+  ## specify user prompt with current metadata text
+  
+  existing_metadata <- get_indicator_metadata(indicator_id) %>%
+    mutate(line = paste0(variable, ": ", value)) %>%
+    pull(line) %>%
+    paste(collapse = "\n")
+  
+  user_prompt <- paste0(
+    existing_metadata,
+    "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
+    "based on the available inputs. Keep other metadata elements exactly as-is."
+  )
+  
+  
+  ## generate English draft
+  # Review and edit Metadata/Outputs/metadata_{indicator_id}_en.txt before translating.
+  # message("Calling Anthropic API (English draft)...")
+  english_text <- generate_draft(indicator_id, system_prompt, user_prompt)
+  # cat(english_text)
+}
+
+
 
 # TRANSLATION_SYSTEM_PROMPT <- "
 # You are a professional translator specializing in UN statistical documentation for Latin America.
@@ -97,57 +188,6 @@ STYLE REQUIREMENTS:
 #   Write formulas in plain text only.
 # "
 
-
-# ---- functions ----
-
-get_formatted_metadata <- function(example_ids, lang = "en") {
-  # Fetches golden standard metadata entries and formats them as labelled example blocks.
-  example_ids %>%
-    map(function(id) {
-      m <- get_indicator_metadata(id, lang = lang)
-      glue(
-        "--- sample metadata output -- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
-        "definition:\n{m$value[m$variable == 'definition']}\n\n",
-        "calculation_methodology:\n{m$value[m$variable == 'calculation_methodology']}\n\n",
-        "comments:\n{m$value[m$variable == 'comments']}\n"
-      )
-    }) %>%
-    paste(collapse = "\n\n")
-}
-
-generate_draft <- function(indicator_id, system_prompt, user_prompt) {
-  # Calls the Anthropic API and writes the English draft to a .txt file for review.
-  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-  assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
-
-  response <- request("https://api.anthropic.com/v1/messages") |>
-    req_headers(
-      "x-api-key"         = api_key,
-      "anthropic-version" = "2023-06-01",
-      "content-type"      = "application/json"
-    ) |>
-    req_body_json(list(
-      model      = ANTHROPIC_MODEL,
-      max_tokens = 4096,
-      temperature = 0, # makes model more deterministic and reproducible
-      system     = trimws(system_prompt),
-      messages   = list(list(role = "user", content = user_prompt))
-    )) |>
-    req_timeout(180) |>
-    req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
-              backoff = \(i) 30) |>
-    req_error(body = \(r) resp_body_string(r)) |>
-    req_perform()
-
-  result        <- resp_body_json(response)
-  response_text <- result$content[[1]]$text
-
-  draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_en.txt"))
-  writeLines(response_text, draft_path)
-  message(glue("English draft written to: {draft_path}"))
-
-  response_text
-}
 
 # translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
 #   # Reads the reviewed English draft, translates it to Spanish, and writes the result
@@ -231,39 +271,7 @@ generate_draft <- function(indicator_id, system_prompt, user_prompt) {
 # }
 
 
-# ---- main ----
 
-# message(glue("Processing indicator {indicator_id}..."))
-
-## update system prompt with good examples
-golden_examples <- get_formatted_metadata(gold_standard_indicators)
-
-system_prompt <- paste(
-  SYSTEM_PROMPT,
-  "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
-  golden_examples,
-  sep = "\n\n"
-)
-
-## specify user prompt with current metadata text
-
-existing_metadata <- get_indicator_metadata(indicator_id) %>%
-  mutate(line = paste0(variable, ": ", value)) %>%
-  pull(line) %>%
-  paste(collapse = "\n")
-
-user_prompt <- paste0(
-  existing_metadata,
-  "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
-  "based on the available inputs. Keep other metadata elements exactly as-is."
-)
-
-
-# Step 1: Generate English draft
-# Review and edit Metadata/Outputs/metadata_{indicator_id}_en.txt before translating.
-# message("Calling Anthropic API (English draft)...")
-english_text <- generate_draft(indicator_id, system_prompt, user_prompt)
-cat(english_text)
 
 # Step 2: Translate to Spanish
 # spanish_text <- translate_to_spanish(indicator_id)
