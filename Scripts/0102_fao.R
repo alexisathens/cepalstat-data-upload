@@ -29,39 +29,62 @@ iso %<>%
 # Read in indicator metadata
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
-# Load information about all datasets into a data frame
-fao_metadata <- FAOSTAT::search_dataset() %>% as_tibble()
-# This shows the status of the data too, of the latest year and whether it's final
+# Define max year of reliable FAO data
+max_year <- 2024 # as of July 2026
 
+# Load information about all datasets into a data frame
+fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
 # Alternatively go here to see data areas: https://www.fao.org/faostat/en/#data
 
 
 # ---- download FAO bulk data ----
 
+# # download land use (RL) data
+# rl <- get_faostat_bulk(code = "RL")
+# rl %<>% as_tibble()
+# 
+# # download climate change (ET) data
+# et <- get_faostat_bulk(code = "ET")
+# et %<>% as_tibble()
+# 
+# # download land cover (LC) data
+# lc <- get_faostat_bulk(code = "LC")
+# lc %<>% as_tibble()
+# 
+# # download crops and livestock products (QCL) data
+# qcl <- get_faostat_bulk(code = "QCL")
+# qcl %<>% as_tibble()
+# 
+# # download fertilizers by Nutrient (RFN) data
+# rfn <- get_faostat_bulk(code = "RFN")
+# rfn %<>% as_tibble()
+# 
+# # download pesticide use (RP) data
+# rp <- get_faostat_bulk(code = "RP")
+# rp %<>% as_tibble()
+
+## create custom bulk download function while API is broken
+get_fao_bulk <- function(filename) {
+  data_folder <- here("Data/Raw/fao")
+  download_faostat_bulk(url_bulk = paste0("https://bulks-faostat.fao.org/production/", filename), 
+                        data_folder = data_folder)
+  read_faostat_bulk(file.path(data_folder, filename)) %>% as_tibble()
+}
+
 # download land use (RL) data
-rl <- get_faostat_bulk(code = "RL")
-rl %<>% as_tibble()
-
+rl <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% as_tibble()
 # download climate change (ET) data
-et <- get_faostat_bulk(code = "ET")
-et %<>% as_tibble()
-
+et <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% as_tibble()
 # download land cover (LC) data
-lc <- get_faostat_bulk(code = "LC")
-lc %<>% as_tibble()
-
+lc <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% as_tibble()
 # download crops and livestock products (QCL) data
-qcl <- get_faostat_bulk(code = "QCL")
-qcl %<>% as_tibble()
-
+qcl <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% as_tibble()
 # download fertilizers by Nutrient (RFN) data
-rfn <- get_faostat_bulk(code = "RFN")
-rfn %<>% as_tibble()
-
+rfn <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% as_tibble()
 # download pesticide use (RP) data
-rp <- get_faostat_bulk(code = "RP")
-rp %<>% as_tibble()
+rp <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% as_tibble()
 
+## fishstat & aquastat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
 fish <- capture %>%
   inner_join(country, by = "country") %>%
@@ -577,7 +600,9 @@ filter_4049 <- function(data) {
     filter(item %in% c("Agriculture area under organic agric.")) %>% 
     filter(element == "share_in_agricultural_land") %>% 
     # filter out any countries too with inconsistent entries (to not impact LAC total)
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla")) %>% 
+    filter(year <= max_year) %>% 
+    filter(!is.na(value))
 }
 
 transform_4049 <- function(data) {
@@ -592,6 +617,10 @@ footnotes_4049 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
+source_4049 <- function() {
+  651 # general FAOSTAT source
+}
+
 result_4049 <- process_indicator(
   indicator_id = 4049,
   data = rl,
@@ -600,6 +629,7 @@ result_4049 <- process_indicator(
   regional_fn = FALSE,
   transform_fn = transform_4049,
   footnotes_fn = footnotes_4049,
+  source_fn = source_4049,
   diagnostics = TRUE,
   export = TRUE
 )
