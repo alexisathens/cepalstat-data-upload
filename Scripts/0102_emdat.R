@@ -86,9 +86,15 @@ transform_4046 <- function(data) {
     summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
     rename(Type = Group)
   
+  total_sum <- data %>% 
+    group_by(Country, Years) %>% 
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+    mutate(Type = "Total")
+    
   data %<>% 
     select(-Group) %>% 
-    bind_rows(type_sum)
+    bind_rows(type_sum) %>% 
+    bind_rows(total_sum)
 }
 
 footnotes_4046 <- function(data) {
