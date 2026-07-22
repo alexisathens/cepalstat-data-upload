@@ -72,17 +72,23 @@ get_fao_bulk <- function(filename) {
 }
 
 # download land use (RL) data
-rl <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% as_tibble()
+rl <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% 
+  as_tibble() %>% filter(year <= max_year & !is.na(value))
 # download climate change (ET) data
-et <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% as_tibble()
+et <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% 
+  as_tibble() %>% filter(year <= max_year & !is.na(value))
 # download land cover (LC) data
-lc <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% as_tibble()
+lc <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% 
+  as_tibble() %>% filter(year <= max_year & !is.na(value))
 # download crops and livestock products (QCL) data
-qcl <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% as_tibble()
+qcl <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% 
+  as_tibble() %>% filter(year <= max_year & !is.na(value))
 # download fertilizers by Nutrient (RFN) data
-rfn <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% as_tibble()
+rfn <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% 
+  as_tibble() %>% filter(year <= max_year & !is.na(value))
 # download pesticide use (RP) data
-rp <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% as_tibble()
+rp <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% 
+  as_tibble() %>% filter(year <= max_year & !is.na(value))
 
 ## fishstat & aquastat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
@@ -617,9 +623,9 @@ footnotes_4049 <- function(data) {
   # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
 }
 
-source_4049 <- function() {
-  651 # general FAOSTAT source
-}
+# source_4049 <- function() {
+#   651 # general FAOSTAT source
+# }
 
 result_4049 <- process_indicator(
   indicator_id = 4049,
@@ -629,7 +635,7 @@ result_4049 <- process_indicator(
   regional_fn = FALSE,
   transform_fn = transform_4049,
   footnotes_fn = footnotes_4049,
-  source_fn = source_4049,
+  #source_fn = source_4049,
   diagnostics = TRUE,
   export = TRUE
 )
