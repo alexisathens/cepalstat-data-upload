@@ -1,13 +1,21 @@
+# ---- Project libraries ----
+
 library(tidyverse)
 library(magrittr)
+library(readxl)
 library(httr2)
 library(jsonlite)
 library(glue)
+library(writexl)
+library(here)
+library(assertthat)
 library(quarto)
+library(CepalStatR)
+library(FAOSTAT)
+library(fishstat)
 
-# ============================================================
-# Small helpers
-# ============================================================
+
+# ---- Small helpers ----
 
 # Helper: take sum, but retain NA if every value in the group is NA (rather than summing to 0)
 # Sample usage: summarize(value = sum_or_na(as.numeric(value)))
@@ -24,9 +32,8 @@ fetch_cepalstat_json <- function(url) {
     fromJSON(flatten = TRUE)
 }
 
-# ============================================================
-# Assertions — used throughout the pipeline to fail loudly on bad data
-# ============================================================
+
+# ---- Assertions ----
 
 # Stop code if any column (besides value, by default) has NA values that didn't match; else return data unchanged
 # Sample usage: assert_no_na_cols(i2486f, cols = ends_with("_id"))
@@ -113,9 +120,8 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
   return(data)
 }
 
-# ============================================================
-# CEPALSTAT API lookups
-# ============================================================
+
+# ---- CEPALSTAT API lookups ----
 
 # Get an indicator's dimensions (English + Spanish names) — used when building a new indicator's dim_config
 # Sample usage: get_indicator_dimensions(4046)
@@ -291,9 +297,8 @@ get_cepalstat_labels <- function(pub, dim_config) {
     relocate(c("value", starts_with("dim")), .after = last_col())
 }
 
-# ============================================================
-# Country / regional handling
-# ============================================================
+
+# ---- Country / regional handling ----
 
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
 # Always run for every indicator, right after transform_data().
@@ -305,13 +310,6 @@ standardize_countries <- function(df) {
     select(-std_name) %>%
     filter(Country %in% iso$name) %>%
     filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) # always remove subregions
-}
-
-# Source-level filter: drop FAO territories with chronically incomplete data (Sint Maarten, Bermuda).
-# Sample usage: df %>% filter_fao()
-filter_fao <- function(df) {
-  df %>%
-    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
 }
 
 # Regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
@@ -349,21 +347,8 @@ maintain_regional <- function(df) {
   df
 }
 
-# ============================================================
-# Footnotes & source
-# ============================================================
 
-# Helper: append a footnote id to an existing comma-separated list, without duplicating.
-# Still used by legacy footnotes_XXXX() functions in 0102_fao.R and 02_other.R that haven't been migrated
-# to add_footnotes() yet — safe to remove once those are converted to the footnotes-list pattern.
-# Sample usage: append_footnote(footnotes_id, "6970")
-append_footnote <- function(existing, new) {
-  case_when(
-    is.na(existing) | existing == "" ~ new,
-    !grepl(paste0("\\b", new, "\\b"), existing) ~ paste(existing, new, sep = ","),
-    TRUE ~ existing  # footnote already exists, don't duplicate
-  )
-}
+# ---- Footnotes & source ----
 
 # Apply a named list of footnote rules (id -> predicate function taking df, returning a logical vector)
 # to a labeled indicator dataframe. Initializes footnotes_id and appends every matching rule's id.
@@ -394,9 +379,8 @@ existing_source <- function(df, indicator_id) { # default: get existing source
   df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
 }
 
-# ============================================================
-# Comparison & diagnostics
-# ============================================================
+
+# ---- Comparison & diagnostics ----
 
 # Build the comparison dataframe between newly cleaned data (df_l) and currently published CEPALSTAT data.
 # When new_indicator = TRUE (no published data yet), value.pub is filled with NA instead of fetched.
@@ -520,9 +504,8 @@ run_diagnostics <- function(comp_sum) {
   }
 }
 
-# ============================================================
-# Export / formatting
-# ============================================================
+
+# ---- Export / formatting ----
 
 # Format cleaned + labeled indicator data into the final CEPALSTAT Wasabi upload shape.
 # Expects data already has source_id and footnotes_id columns (see existing_source(), add_footnotes()).
@@ -596,9 +579,8 @@ render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRU
   }
 }
 
-# ============================================================
-# Currently unused — kept for reference, not called anywhere in the pipeline
-# ============================================================
+
+# ---- Currently unused (deletable) ----
 
 # Dev helper: pull an indicator's available footnote text/ids from CEPALSTAT for manual review.
 # Zero code references anywhere — but this looks like an intentional interactive tool (see its own comment,
@@ -632,4 +614,16 @@ render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRU
 # join_labels <- function(df, dim_config) {
 #   get_cepalstat_ids(df %>% mutate(Years = as.character(Years)), # ** define std types later
 #                             dim_config)
+# }
+
+# Helper: append a footnote id to an existing comma-separated list, without duplicating.
+# Still used by legacy footnotes_XXXX() functions in 0102_fao.R and 02_other.R that haven't been migrated
+# to add_footnotes() yet — safe to remove once those are converted to the footnotes-list pattern.
+# Sample usage: append_footnote(footnotes_id, "6970")
+# append_footnote <- function(existing, new) {
+#   case_when(
+#     is.na(existing) | existing == "" ~ new,
+#     !grepl(paste0("\\b", new, "\\b"), existing) ~ paste(existing, new, sep = ","),
+#     TRUE ~ existing  # footnote already exists, don't duplicate
+#   )
 # }
