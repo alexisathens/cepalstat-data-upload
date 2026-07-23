@@ -3,6 +3,12 @@
 max_year_fao <- 2024
 max_year_emdat <- 2025
 
+# idea: could have some functions like filter_fao if there's standard filtering on all of them, or
+filter_fao <- function(df) {
+  df %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
+}
+
 # ============
 
 standardize_countries <- function(df) {
@@ -11,15 +17,7 @@ standardize_countries <- function(df) {
     mutate(Country = coalesce(std_name, Country)) %>%
     select(-std_name) %>%
     filter(Country %in% iso$name) %>% 
-    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) %>%  # always remove subregions
-    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda")) # remove countries with frequent incomplete data
-# check whether to centralize Country filter...
-}
-
-# idea: could have some functions like filter_fao if there's standard filtering on all of them, or
-filter_fao <- function(df) {
-  df %>% 
-    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
+    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) # always remove subregions
 }
 
 # recalculate regional totals using a simple sum
