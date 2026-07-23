@@ -24,10 +24,10 @@ emdat <- read_xlsx(here("Data/Raw/emdat/public_emdat_incl_hist_2026-07-06.xlsx")
 max_year_emdat <- 2025
 
 # Standard data filter
-filter_emdat <- function(data) {
+filter_emdat <- function(data, min_year = 1990) {
   data %>% 
     filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical")) %>%
-    filter(as.numeric(`Start Year`) >= 1990 & as.numeric(`Start Year`) <= max_year) %>% 
+    filter(as.numeric(`Start Year`) >= min_year) %>% 
     filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
 }
 
@@ -39,6 +39,8 @@ dim_config_4046 <- tibble(
   dim_id = c("208", "29117", "21714"),
   pub_col = c("208_name", "29117_name", "21714_name")
 )
+
+filter_4046 <- function(data) filter_emdat(data, min_year = 1970)
 
 transform_4046 <- function(data) {
   data %<>% 
@@ -81,7 +83,7 @@ spec_4046 <- indicator_spec(
   data = emdat,
   max_year = max_year_emdat,
   dim_config = dim_config_4046,
-  filter_data = filter_emdat,
+  filter_data = filter_4046,
   transform_data = transform_4046,
   calculate_regional = calculate_regional_sum
 )
