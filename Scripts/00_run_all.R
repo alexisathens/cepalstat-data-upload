@@ -1,4 +1,5 @@
 
+# store global variables in utils? or these go to source scripts?
 max_year_fao <- 2024
 max_year_emdat <- 2025
 
@@ -12,7 +13,8 @@ standardize_countries <- function(df) {
     filter(Country %in% iso$name) %>% 
     filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) %>%  # always remove subregions
     filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda")) # remove countries with frequent incomplete data
-}
+# check whether to centralize Country filter...
+  }
 
 calculate_regional_sum <- function(df) {
   # remove all LAC sub/regional totals
@@ -93,6 +95,48 @@ existing_source <- function(df, indicator_id) { # default: get existing source
   df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id)) 
 }
 
+create_comp_file <- function(df, indicator_id, dim_config, new_indicator) {
+  # Get public data and create comparison file
+  if(!new_indicator) { # if public data exists, use it in comparison check
+    pub <- get_cepalstat_data(indicator_id) %>% 
+      mutate(value = as.numeric(value)) %>% 
+      get_cepalstat_labels(dim_config)
+    
+    join_keys <- intersect(names(df_l), names(pub)) %>% setdiff("value")
+    comp <- full_join(df_l, pub, by = join_keys, suffix = c("", ".pub"))
+    
+  } else { # else fill comparison checks with NAs for public data
+    comp <- df_l %>% mutate(value.pub = NA_integer_)
+  }
+  
+  return(comp)
+}
+
+run_diagnostics <- function(comp_sum) {
+  # Inspect differences between public and new file
+  # 1️⃣ Missing from new data (likely label changes or dropped series)
+  missing_old <- comp_sum %>%
+    filter(status == "Old Only")
+  if (nrow(missing_old) > 0) {
+    message("⚠️  Dimensions present in old data only:")
+    print(missing_old %>% count(dim_name, sort = TRUE))
+    print(missing_old)
+  } else {
+    message(glue(" - No missing dimensions"))
+  }
+  
+  # 2️⃣ Newly added in updated data (new years or countries)
+  missing_new <- comp_sum %>%
+    filter(status == "New Only")
+  if (nrow(missing_new) > 0) {
+    message("🆕  Dimensions present in new data only:")
+    print(missing_new %>% count(dim_name, sort = TRUE))
+    print(missing_new)
+  } else {
+    message(glue(" - No new dimensions"))
+  }
+}
+
 # add lac_footnote as another standard option
 
 indicator_spec <- function(indicator_id, data, max_year, dim_config, filter_data, transform_data, 
@@ -114,8 +158,6 @@ spec_4046 <- indicator_spec(
   filter_data = filter_4046,
   transform_data = transform_4046,
   calculate_regional = calculate_regional_sum
-  #append_footnote = NULL, # create generic LAC footnote, default to null
-  #modify_source = NULL
 )
 
 global_spec <- list(diagnostics = TRUE, export = FALSE, qc_check = FALSE, open_qmd = FALSE, metadata = FALSE)
@@ -156,11 +198,21 @@ run_pipeline <- function(spec = indicator_spec, global = global_spec) {
     get_cepalstat_ids(., dim_config) %>% # store common lookups - create join_labels as wrapper w storage?
     assert_no_na_cols()
   
-  # comp <- df_l %>% 
-  #   create_comp_file() %>% 
-  #   run_comparison_checks() %>% 
-  #   assert_no_na_cols() %>%
-  #   run_diagnostics()
+  # get base comparison file
+  comp <- df_l %>%
+    create_comp_file(., indicator_id, dim_config, new_indicator) %>%
+    assert_no_na_cols(., !contains("value"))
+  
+  # run summary diagnostics
+  if (diagnostics) {
+    comp %>% 
+      get_comp_summary(., dim_config) %>% 
+      run_diagnostics()
+  }
+  
+  # get comparison table for quality check qmd
+  comp_table <- comp %>% 
+    run_comparison_checks(., dim_config)
   
   # get wasabi-formatted indicator df
   df_f <- df_l %>% 
@@ -169,51 +221,32 @@ run_pipeline <- function(spec = indicator_spec, global = global_spec) {
     format_for_wasabi(., indicator_id) %>% 
     assert_no_na_cols()
   
-}
-
-
-
-# df <- data %>% 
-#   filter_4046() %>% 
-#   transform_4046() %>% 
-#   #check_col_names() %>% # check names are correct for regional fn (dim_config+value+num+denom acceptable)
-#   standardize_countries() %>% 
-#   bind_rows(calculate_regional_sum(.)) %>% 
-#   assert_no_duplicates()  # changed fn to return data
-  
-# df_l <- df %>% 
-#   join_labels(., dim_config) %>% # store common lookups
-#   assert_no_na_cols() # changed fn to return data
-  
-# not sure if this chunk will work properly... might need to rewrite functions
-comp <- df_l %>% 
-  create_comp_file() %>% 
-  run_comparison_checks() %>% 
-  assert_no_na_cols() %>%
-  run_diagnostics()
-
-df_f <- df_l %>% 
-  modify_footnotes() %>% 
-  modify_source() %>% 
-  format_for_wasabi() %>% 
-  assert_no_na_cols()
-
-
-# only exports df_f and comp_table
-if(export) {
-  
-}
-
-if(qc_check) {
-  if(open_qmd) {
+  # export data for wasabi + qc report
+  if (export) {
+    dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
     
+    # Write excel files
+    write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
+    write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
+    message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
   }
-}
-
-if(metadata) {
   
+  # render quality check report
+  if (qc_check) {
+    # Render data quality checks file
+    render_qc_checks(indicator_id, new_indicator, open_qmd)
+    message(glue("✅ Exported quality check file for {indicator_id}"))
+  }
+  
+  # suggest metadata with anthropic api
+  if(metadata) {
+    suggest_metadata_en(indicator_id)
+    message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
+  }
+  
+  message(glue("✅ Indicator {indicator_id} processing complete"))
+  return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))
 }
-
 
 
   #calculate_regional_sum() %>% 
