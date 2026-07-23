@@ -80,12 +80,27 @@ join_labels <- function(df, dim_config) {
                             dim_config)
 }
 
+no_footnote <- function(df) { # default: nothing to add
+  df %>% mutate(footnotes_id = "")   
+} 
+
+lac_footnote <- function(df) {
+  df %>% mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
+  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+}
+
+existing_source <- function(df, indicator_id) { # default: get existing source
+  df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id)) 
+}
+
+# add lac_footnote as another standard option
+
 indicator_spec <- function(indicator_id, data, max_year, dim_config, filter_data, transform_data, 
-                           calculate_regional, append_footnote = NULL, modify_source = NULL, 
-                           new_indicator = FALSE) {
+                           calculate_regional, append_footnote = no_footnote, 
+                           define_source = existing_source, new_indicator = FALSE) {
   list(indicator_id = indicator_id, data = data, max_year = max_year, dim_config = dim_config,
        filter_data = filter_data, transform_data = transform_data, calculate_regional = calculate_regional,
-       append_footnote = append_footnote, modify_source = modify_source, new_indicator = new_indicator)
+       append_footnote = append_footnote, define_source = define_source, new_indicator = new_indicator)
 }
 
 
@@ -119,7 +134,7 @@ run_pipeline <- function(spec = indicator_spec, global = global_spec) {
   transform_data <- spec$transform_data
   calculate_regional <- spec$calculate_regional
   append_footnote    <- spec$append_footnote
-  modify_source      <- spec$modify_source
+  define_source      <- spec$define_source
   new_indicator <- spec$new_indicator
   diagnostics <- global$diagnostics
   export <- global$export
@@ -136,24 +151,39 @@ run_pipeline <- function(spec = indicator_spec, global = global_spec) {
     bind_rows(calculate_regional(.)) %>%
     assert_no_duplicates()
   
+  # get labeled indicator df
+  df_l <- df %>% 
+    get_cepalstat_ids(., dim_config) %>% # store common lookups - create join_labels as wrapper w storage?
+    assert_no_na_cols()
   
+  # comp <- df_l %>% 
+  #   create_comp_file() %>% 
+  #   run_comparison_checks() %>% 
+  #   assert_no_na_cols() %>%
+  #   run_diagnostics()
   
+  # get wasabi-formatted indicator df
+  df_f <- df_l %>% 
+    append_footnote() %>% # default = no footnote
+    define_source(., indicator_id) %>% # default = existing source
+    format_for_wasabi(., indicator_id) %>% 
+    assert_no_na_cols()
   
 }
 
 
 
-df <- data %>% 
-  filter_4046() %>% 
-  transform_4046() %>% 
-  #check_col_names() %>% # check names are correct for regional fn (dim_config+value+num+denom acceptable)
-  standardize_countries() %>% 
-  bind_rows(calculate_regional_sum(.)) %>% 
-  assert_no_duplicates()  # changed fn to return data
+# df <- data %>% 
+#   filter_4046() %>% 
+#   transform_4046() %>% 
+#   #check_col_names() %>% # check names are correct for regional fn (dim_config+value+num+denom acceptable)
+#   standardize_countries() %>% 
+#   bind_rows(calculate_regional_sum(.)) %>% 
+#   assert_no_duplicates()  # changed fn to return data
   
-df_l <- df %>% 
-  join_labels(., dim_config) %>% # store common lookups
-  assert_no_na_cols() # changed fn to return data
+# df_l <- df %>% 
+#   join_labels(., dim_config) %>% # store common lookups
+#   assert_no_na_cols() # changed fn to return data
   
 # not sure if this chunk will work properly... might need to rewrite functions
 comp <- df_l %>% 
