@@ -68,7 +68,6 @@ add_type_rollups <- function(data) {
 }
 
 ## ---- indicator 4046 - economic cost of disasters ----
-indicator_id <- 4046
 
 dim_config_4046 <- tibble(
   data_col = c("Country", "Years", "Type"),
@@ -101,7 +100,6 @@ spec_4046 <- indicator_spec(
 
 
 ## ---- indicator 5647 - number of disasters ----
-indicator_id <- 5647
 
 dim_config_5647 <- tibble(
   data_col = c("Country", "Years", "Type"),
@@ -132,7 +130,6 @@ spec_5647 <- indicator_spec(
 
 
 ## ---- indicator 5645 - deaths caused by disasters ----
-indicator_id <- 5645
 
 dim_config_5645 <- tibble(
   data_col = c("Country", "Years", "Type"),
@@ -163,7 +160,6 @@ spec_5645 <- indicator_spec(
 
 
 ## ---- indicator 5646 - persons affected by disasters ----
-indicator_id <- 5646
 
 dim_config_5646 <- tibble(
   data_col = c("Country", "Years", "Type"),
@@ -195,7 +191,6 @@ spec_5646 <- indicator_spec(
 
 ## ---- indicator 1837 - occurrence of disasters ----
 ## this indicator is no longer maintained
-# indicator_id <- 1837
 # 
 # dim_config_1837 <- tibble(
 #   data_col = c("Country", "Years", "Type", "Indicator"),
