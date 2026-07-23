@@ -22,7 +22,7 @@ assert_no_na_cols <- function(data, cols = everything(), data_name = deparse(sub
     stop(msg)
   }
   
-  invisible(TRUE)
+  data #invisible(TRUE)
 }
 
 # Stop code if there are any NA fields that didn't match
@@ -47,7 +47,7 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
     stop(msg)
   }
   
-  invisible(TRUE)
+  data #invisible(TRUE)
 }
 
 # Helper: take sum, but retain NAs if all values are NA
