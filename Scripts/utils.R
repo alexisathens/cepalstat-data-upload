@@ -140,7 +140,7 @@ get_indicator_metadata <- function(indicator_id, lang = "en") {
 }
 
 # Get table of indicator sources
-get_indicator_sources <- function(indicator_id) {
+get_indicator_source <- function(indicator_id) {
   ## Get footnotes_id from CEPALSTAT
   url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
   
@@ -298,10 +298,12 @@ get_cepalstat_data <- function(indicator_id) {
   return(pub)
 }
 
+
+
 # Take bare minimum df with value and dim_* fields only and format for CEPALSTAT Wasabi upload
-format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
+format_for_wasabi <- function(data, indicator_id){
   
-  ## Final format:
+  ## Wasabi format:
   # record_id: identificador único de cada fila (String)
   # indicator_id: id del indicador (Integer)
   # source_id: id de la fuente (Integer)
@@ -330,39 +332,6 @@ format_for_wasabi <- function(data, indicator_id, source_fn = NULL){
   # Create indicator_id field
   data %<>% 
     mutate(indicator_id = indicator_id) # Inherit from manually defined vector
-  
-  # Create source_id field
-  if(is.function(source_fn)) { # Use provided source_id directly (already assigned)
-
-    # Create source_id field
-    data %<>% 
-      mutate(source_id = source_fn())
-    
-  } else { # Fall back to CEPALSTAT API lookup
-    
-    # Get source_id from CEPALSTAT
-    url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
-    
-    # Send request and parse JSON
-    result <- fetch_cepalstat_json(url)
-    
-    sources_tbl <- result %>%
-      pluck("body", "sources") %>%
-      as_tibble()
-    
-    ## Transition these manual source assignments to indicator-specific code -- just need to fix once
-    # if(nrow(sources_tbl) > 1) {
-    #   if(indicator_id == 2036) {sources_tbl %<>% filter(id == 652)} # keep only FRA, drop CEPAL calcs since direct from source
-    #   if(indicator_id == 2530) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    #   if(indicator_id == 2531) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    #   if(indicator_id == 2021) {sources_tbl %<>% filter(id == 1338)} # keep only CEPAL based on FRA source, since we're doing intermediate calcs
-    # }
-    
-    # Create source_id field
-    data %<>% 
-      mutate(source_id = sources_tbl %>% pull(id))
-    
-  }
   
   # Select final columns
   data %<>% 
