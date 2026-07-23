@@ -23,12 +23,48 @@ emdat <- read_xlsx(here("Data/Raw/emdat/public_emdat_incl_hist_2026-07-06.xlsx")
 # Define latest year of data
 max_year_emdat <- 2025
 
-# Standard data filter
+# Common data filter
 filter_emdat <- function(data, min_year = 1990) {
   data %>% 
     filter(`Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological", "Geophysical")) %>%
     filter(as.numeric(`Start Year`) >= min_year) %>% 
     filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
+}
+
+# Label standardization
+standardize_emdat <- function(data) {
+  data %>%
+    mutate(Type = paste0(`Disaster Type`, "s")) %>%
+    mutate(Type = case_when(
+      Type == "Mass movement (wet)s" ~ "Wet mass displacement",
+      Type == "Volcanic activitys" ~ "Volcanic eruptions",
+      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
+      TRUE ~ Type
+    )) %>%
+    mutate(Group = case_when(
+      `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
+      `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
+      TRUE ~ NA_character_
+    )) %>%
+    select(-`Disaster Subgroup`, -`Disaster Type`)
+}
+
+# Sub/group/total summarization
+add_type_rollups <- function(data) {
+  type_sum <- data %>%
+    group_by(Country, Years, Group) %>%
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    rename(Type = Group)
+  
+  total_sum <- data %>%
+    group_by(Country, Years) %>%
+    summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Type = "Total")
+  
+  data %>%
+    select(-Group) %>%
+    bind_rows(type_sum) %>%
+    bind_rows(total_sum)
 }
 
 ## ---- indicator 4046 - economic cost of disasters ----
@@ -43,39 +79,14 @@ dim_config_4046 <- tibble(
 filter_4046 <- function(data) filter_emdat(data, min_year = 1970)
 
 transform_4046 <- function(data) {
-  data %<>% 
+  data %>% 
     mutate(value = ifelse(!is.na(`Total Damage, Adjusted ('000 US$)`), `Total Damage, Adjusted ('000 US$)`, `Total Damage ('000 US$)`)) %>%
     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`, value) %>% 
-    mutate(Type = paste0(`Disaster Type`, "s")) %>% 
-    mutate(Type = case_when(
-      Type == "Mass movement (wet)s" ~ "Wet mass displacement",
-      Type == "Volcanic activitys" ~ "Volcanic eruptions",
-      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
-      TRUE ~ Type
-    )) %>% 
-    mutate(Group = case_when(
-      `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
-      `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
-      TRUE ~ NA_character_)) %>%
-    select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
+    standardize_emdat() %>% 
     group_by(Country, Years, Group, Type) %>% 
     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>% 
-    mutate(value = value / 1000) # convert '000 USD to millions
-  
-  type_sum <- data %>% 
-    group_by(Country, Years, Group) %>% 
-    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    rename(Type = Group)
-  
-  total_sum <- data %>% 
-    group_by(Country, Years) %>% 
-    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    mutate(Type = "Total")
-    
-  data %>% 
-    select(-Group) %>% 
-    bind_rows(type_sum) %>% 
-    bind_rows(total_sum)
+    mutate(value = value / 1000) %>%  # convert '000 USD to millions
+    add_type_rollups
 }
 
 spec_4046 <- indicator_spec(
@@ -99,40 +110,14 @@ dim_config_5647 <- tibble(
 )
 
 transform_5647 <- function(data) {
-  data %<>% 
+  data %>% 
     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`) %>% 
-    mutate(Type = paste0(`Disaster Type`, "s")) %>% 
-    mutate(Type = case_when(
-      Type == "Mass movement (wet)s" ~ "Wet mass displacement",
-      Type == "Volcanic activitys" ~ "Volcanic eruptions",
-      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
-      TRUE ~ Type
-    )) %>% 
-    mutate(Group = case_when(
-      `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
-      `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
-      TRUE ~ NA_character_)) %>%
-    select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
+    standardize_emdat() %>% 
     group_by(Country, Years, Group, Type) %>% 
     count() %>% 
     ungroup() %>% 
-    rename(value = n)
-  
-  type_sum <- data %>% 
-    group_by(Country, Years, Group) %>% 
-    summarize(value = sum(value, na.rm = T)) %>% 
-    ungroup() %>% 
-    rename(Type = Group)
-  
-  total_sum <- data %>% 
-    group_by(Country, Years) %>% 
-    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    mutate(Type = "Total")
-  
-  data %>% 
-    select(-Group) %>% 
-    bind_rows(type_sum) %>% 
-    bind_rows(total_sum)
+    rename(value = n) %>% 
+    add_type_rollups()
 }
 
 spec_5647 <- indicator_spec(
@@ -158,38 +143,12 @@ dim_config_5645 <- tibble(
 transform_5645 <- function(data) {
   data %<>% 
     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`, `Total Deaths`) %>% 
-    mutate(Type = paste0(`Disaster Type`, "s")) %>% 
-    mutate(Type = case_when(
-      Type == "Mass movement (wet)s" ~ "Wet mass displacement",
-      Type == "Volcanic activitys" ~ "Volcanic eruptions",
-      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
-      TRUE ~ Type
-    )) %>% 
-    mutate(Group = case_when(
-      `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
-      `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
-      TRUE ~ NA_character_)) %>%
-    select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
+    standardize_emdat() %>% 
     rename(value = `Total Deaths`) %>% 
     filter(!is.na(value)) %>% 
     group_by(Country, Years, Group, Type) %>% 
-    summarize(value = sum(value, na.rm = T), .groups = "drop")
-  
-  type_sum <- data %>% 
-    group_by(Country, Years, Group) %>% 
-    summarize(value = sum(value, na.rm = T)) %>% 
-    ungroup() %>% 
-    rename(Type = Group)
-  
-  total_sum <- data %>% 
-    group_by(Country, Years) %>% 
     summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    mutate(Type = "Total")
-  
-  data %>% 
-    select(-Group) %>% 
-    bind_rows(type_sum) %>% 
-    bind_rows(total_sum)
+    add_type_rollups()
 }
 
 spec_5645 <- indicator_spec(
@@ -215,38 +174,12 @@ dim_config_5646 <- tibble(
 transform_5646 <- function(data) {
   data %<>% 
     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`, `Total Affected`) %>% 
-    mutate(Type = paste0(`Disaster Type`, "s")) %>% 
-    mutate(Type = case_when(
-      Type == "Mass movement (wet)s" ~ "Wet mass displacement",
-      Type == "Volcanic activitys" ~ "Volcanic eruptions",
-      Type == "Mass movement (dry)s" ~ "Dry mass displacement",
-      TRUE ~ Type
-    )) %>% 
-    mutate(Group = case_when(
-      `Disaster Subgroup` %in% c("Climatological", "Hydrological", "Meteorological") ~ "Climate change related",
-      `Disaster Subgroup` %in% c("Geophysical") ~ "Geophysical",
-      TRUE ~ NA_character_)) %>%
-    select(-`Disaster Subgroup`, -`Disaster Type`) %>% 
+    standardize_emdat() %>% 
     rename(value = `Total Affected`) %>% 
     filter(!is.na(value)) %>% 
     group_by(Country, Years, Group, Type) %>% 
-    summarize(value = sum(value, na.rm = T), .groups = "drop")
-  
-  type_sum <- data %>% 
-    group_by(Country, Years, Group) %>% 
-    summarize(value = sum(value, na.rm = T)) %>% 
-    ungroup() %>% 
-    rename(Type = Group)
-  
-  total_sum <- data %>% 
-    group_by(Country, Years) %>% 
     summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    mutate(Type = "Total")
-  
-  data %>% 
-    select(-Group) %>% 
-    bind_rows(type_sum) %>% 
-    bind_rows(total_sum)
+    add_type_rollups()
 }
 
 spec_5646 <- indicator_spec(
