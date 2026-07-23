@@ -14,8 +14,15 @@ standardize_countries <- function(df) {
     filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) %>%  # always remove subregions
     filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda")) # remove countries with frequent incomplete data
 # check whether to centralize Country filter...
-  }
+}
 
+# idea: could have some functions like filter_fao if there's standard filtering on all of them, or
+filter_fao <- function(df) {
+  df %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)", "Bermuda"))
+}
+
+# recalculate regional totals using a simple sum
 calculate_regional_sum <- function(df) {
   # remove all LAC sub/regional totals
   df %<>%
@@ -29,18 +36,23 @@ calculate_regional_sum <- function(df) {
     summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
     mutate(Country = "Latin America and the Caribbean")
   
-  lac_total
+  df %>% 
+    bind_rows(lac_total)
 }
 
-#regional options:
-  #calculate_regional_sum() %>% 
-  #calculate_regional_wgt_avg() %>% 
-  #maintain_regional() %>% 
-  #calculate_regional_custom() %>% (pass regional_4606 wtv)
+# recalculate regional totals with a weighted average
+calculate_regional_wgt_avg <- function(df) {
+  # ** write this function
+}
+
+# keep regional totals from original data source
+maintain_regional <- function(df) {
+  df
+}
 
 # data requirements: no NA values (throw error), no extra column names (throw error), no data beyond
 # max_year (fix silently); return df
-assert_data_reqs <- function(data, dim_config, indicator_id) {
+assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
   # check for NA values
   na_vals <- data %>% 
     filter(is.na(value))
@@ -82,20 +94,29 @@ join_labels <- function(df, dim_config) {
                             dim_config)
 }
 
-no_footnote <- function(df) { # default: nothing to add
-  df %>% mutate(footnotes_id = "")   
-} 
-
-lac_footnote <- function(df) {
-  df %>% mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
+add_footnotes <- function(df, footnotes) {
+  append_id <- function(existing, new) {
+    case_when(
+      is.na(existing) | existing == "" ~ new,
+      !grepl(paste0("\\b", new, "\\b"), existing) ~ paste(existing, new, sep = ","),
+      TRUE ~ existing
+    )
+  }
+  
+  df$footnotes_id <- ""
+  for (id in names(footnotes)) {
+    df$footnotes_id <- if_else(footnotes[[id]](df), append_id(df$footnotes_id, id), df$footnotes_id)
+  }
+  df
 }
+
+lac_footnote <- list("6970" = function(df) df$Country == "Latin America and the Caribbean")
 
 existing_source <- function(df, indicator_id) { # default: get existing source
   df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id)) 
 }
 
-create_comp_file <- function(df, indicator_id, dim_config, new_indicator) {
+create_comp_file <- function(df_l, indicator_id, dim_config, new_indicator) {
   # Get public data and create comparison file
   if(!new_indicator) { # if public data exists, use it in comparison check
     pub <- get_cepalstat_data(indicator_id) %>% 
@@ -137,15 +158,7 @@ run_diagnostics <- function(comp_sum) {
   }
 }
 
-# add lac_footnote as another standard option
 
-indicator_spec <- function(indicator_id, data, max_year, dim_config, filter_data, transform_data, 
-                           calculate_regional, append_footnote = no_footnote, 
-                           define_source = existing_source, new_indicator = FALSE) {
-  list(indicator_id = indicator_id, data = data, max_year = max_year, dim_config = dim_config,
-       filter_data = filter_data, transform_data = transform_data, calculate_regional = calculate_regional,
-       append_footnote = append_footnote, define_source = define_source, new_indicator = new_indicator)
-}
 
 
 # run
@@ -160,103 +173,5 @@ spec_4046 <- indicator_spec(
   calculate_regional = calculate_regional_sum
 )
 
+# define global specs
 global_spec <- list(diagnostics = TRUE, export = FALSE, qc_check = FALSE, open_qmd = FALSE, metadata = FALSE)
-
-# debugging
-spec <- spec_4046
-global <- global_spec
-
-run_pipeline <- function(spec = indicator_spec, global = global_spec) {
-  # get indicator-specific and global variables and functions
-  indicator_id   <- spec$indicator_id
-  data           <- spec$data
-  max_year       <- spec$max_year
-  dim_config     <- spec$dim_config
-  filter_data    <- spec$filter_data
-  transform_data <- spec$transform_data
-  calculate_regional <- spec$calculate_regional
-  append_footnote    <- spec$append_footnote
-  define_source      <- spec$define_source
-  new_indicator <- spec$new_indicator
-  diagnostics <- global$diagnostics
-  export <- global$export
-  qc_check <- global$qc_check
-  open_qmd <- global$open_qmd
-  metadata <- global$metadata
-  
-  # get clean indicator df
-  df <- data %>% 
-    filter_data() %>% 
-    transform_data() %>%
-    standardize_countries() %>%
-    assert_data_reqs(., dim_config, indicator_id) %>% # check column names and no NA values
-    bind_rows(calculate_regional(.)) %>%
-    assert_no_duplicates()
-  
-  # get labeled indicator df
-  df_l <- df %>% 
-    get_cepalstat_ids(., dim_config) %>% # store common lookups - create join_labels as wrapper w storage?
-    assert_no_na_cols()
-  
-  # get base comparison file
-  comp <- df_l %>%
-    create_comp_file(., indicator_id, dim_config, new_indicator) %>%
-    assert_no_na_cols(., !contains("value"))
-  
-  # run summary diagnostics
-  if (diagnostics) {
-    comp %>% 
-      get_comp_summary(., dim_config) %>% 
-      run_diagnostics()
-  }
-  
-  # get comparison table for quality check qmd
-  comp_table <- comp %>% 
-    run_comparison_checks(., dim_config)
-  
-  # get wasabi-formatted indicator df
-  df_f <- df_l %>% 
-    append_footnote() %>% # default = no footnote
-    define_source(., indicator_id) %>% # default = existing source
-    format_for_wasabi(., indicator_id) %>% 
-    assert_no_na_cols()
-  
-  # export data for wasabi + qc report
-  if (export) {
-    dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
-    
-    # Write excel files
-    write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
-    write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
-    message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
-  }
-  
-  # render quality check report
-  if (qc_check) {
-    # Render data quality checks file
-    render_qc_checks(indicator_id, new_indicator, open_qmd)
-    message(glue("✅ Exported quality check file for {indicator_id}"))
-  }
-  
-  # suggest metadata with anthropic api
-  if(metadata) {
-    suggest_metadata_en(indicator_id)
-    message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
-  }
-  
-  message(glue("✅ Indicator {indicator_id} processing complete"))
-  return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))
-}
-
-
-  #calculate_regional_sum() %>% 
-  #calculate_regional_wgt_avg() %>% 
-  #maintain_regional() %>% 
-  #calculate_regional_custom() %>% 
-  
-# throw error at end of transform col names!
-
-# idea: could have some functions like filter_fao if there's standard filtering on all of them, or 
-  # recalculate_regional_proportion that are reutilized at a global/source level (vs just indicator level!)
-  
-# rename fields in filter/transform num/denom! then can automate
