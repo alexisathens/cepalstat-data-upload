@@ -24,7 +24,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   filter_data    <- spec$filter_data
   transform_data <- spec$transform_data
   calculate_regional <- spec$calculate_regional
-  add_footnote    <- spec$add_footnote
+  footnotes    <- spec$footnotes
   define_source      <- spec$define_source
   new_indicator <- spec$new_indicator
   diagnostics <- global$diagnostics
