@@ -564,7 +564,7 @@ format_for_wasabi <- function(data, indicator_id){
   return(data)
 }
 
-# Render 03_qc_report.qmd for an indicator and open it in the browser.
+# Render qc_report.qmd for an indicator and open it in the browser.
 # Sample usage: render_qc_checks(4046, new_indicator = FALSE, open_qmd = TRUE)
 render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRUE) {
 
@@ -573,7 +573,7 @@ render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRU
 
   # Render the report with injected parameters
   quarto_render(
-    input          = paste0(here(), "/Scripts/03_qc_report.qmd"),
+    input          = paste0(here(), "/Scripts/qc_report.qmd"),
     output_file    = output_file,
     output_format  = "html",
     execute_params = list(

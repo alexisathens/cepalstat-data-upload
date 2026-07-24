@@ -1,5 +1,5 @@
 source(here("Scripts/process_indicator_fn.R"))
-source(here("Scripts/0102_emdat.R"))
+source(here("Scripts/emdat.R"))
 
 
 # ---- run functions ----
