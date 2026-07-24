@@ -10,6 +10,7 @@ library(writexl)
 library(here)
 library(assertthat)
 library(quarto)
+library(memoise)
 library(CepalStatR)
 library(FAOSTAT)
 library(fishstat)
@@ -220,6 +221,10 @@ get_dimension_table <- function(dimension_id) {
 
   return(members)
 }
+# Country/Years dimension tables get re-fetched identically across nearly every indicator in a bulk
+# run; caching avoids redundant API calls. In-memory only (cleared on session restart) — that's fine
+# here since CEPALSTAT's dimension/source data won't change mid-session.
+get_dimension_table  <- memoise(get_dimension_table)
 
 # Fetch the currently published CEPALSTAT data for an indicator (dim_* columns + value only)
 # Sample usage: get_cepalstat_data(4046)
