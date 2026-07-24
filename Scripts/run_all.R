@@ -1,4 +1,5 @@
 source(here("Scripts/process_indicator_fn.R"))
+source(here("Scripts/technical_sheet.R"))
 source(here("Scripts/emdat.R"))
 
 
@@ -55,3 +56,10 @@ beepr::beep(1)
 
 # run single indicator
 run_one_indicator(5645)
+
+
+# ---- export metadata -----
+suggest_metadata_en(5647, gold_standard_indicators = 2487)
+
+translate_metadata_es()
+

@@ -7,27 +7,14 @@
 # of token usage by only feeding Claude the current indicator metadata along with a "golden example" of a 
 # similar CEPALSTAT indicator.
 
-library(tidyverse)
-library(readxl)
-library(writexl)
-library(httr2)
-library(jsonlite)
-library(glue)
-library(here)
-library(assertthat)
-library(CepalStatR)
-library(pdftools)
-
-
-
 ## testing variables
 # indicator_id <- 3881
 # gold_standard_indicators <- c(2487, 4174)
-# 2487 - Primary and secondary energy supply
-# 4174 - Energy intensity measured in terms of primary energy and GDP
+# -- simple indicator
+# 2487 - Primary and secondary energy supply -- compound indicator
+# 4174 - Energy intensity measured in terms of primary energy and GDP -- calculated indicator
 
-suggest_metadata_en <- function(indicator_id = 3881,
-                                gold_standard_indicators = c(2487, 4174)) {
+suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)) {
   
   ## setup
   
@@ -37,8 +24,6 @@ suggest_metadata_en <- function(indicator_id = 3881,
   
   CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
   ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
-  
-  ind_meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
   ## general system prompt
   # Edit SYSTEM_PROMPT and the user_prompt block in main to refine what the model generates.
@@ -154,7 +139,7 @@ STYLE REQUIREMENTS:
   
   # ---- main ----
   
-  # message(glue("Processing indicator {indicator_id}..."))
+  message(glue("Processing metadata for indicator {indicator_id}..."))
   
   ## update system prompt with good examples
   golden_examples <- get_formatted_metadata(gold_standard_indicators)
@@ -182,12 +167,13 @@ STYLE REQUIREMENTS:
   ## store existing (pre-AI) metadata locally
   save_legacy_metadata(indicator_id)
   
-  
   ## generate English draft
   # Review and edit Metadata/Outputs/metadata_{indicator_id}_en.txt before translating.
   # message("Calling Anthropic API (English draft)...")
   english_text <- generate_draft(indicator_id, system_prompt, user_prompt)
   # cat(english_text)
+
+  message(glue("✅ Exported (en) metadata for {indicator_id}"))
 }
 
 
