@@ -1,17 +1,3 @@
-library(tidyverse)
-library(magrittr)
-library(readxl)
-library(httr2)
-library(jsonlite)
-library(glue)
-library(writexl)
-library(here)
-library(assertthat)
-library(quarto)
-library(CepalStatR)
-library(FAOSTAT)
-library(fishstat)
-
 # This script downloads, cleans, and standardizes the second delivery of FAO indicators in a more automated way
 
 # ---- setup ----
@@ -30,7 +16,7 @@ iso %<>%
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
 # Define max year of reliable FAO data
-max_year <- 2024 # as of July 2026
+max_year_fao <- 2024 # as of July 2026
 
 # Load information about all datasets into a data frame
 fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
