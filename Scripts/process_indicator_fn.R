@@ -1,5 +1,5 @@
 source(here("Scripts/utils.R"))
-source(here("Scripts/04_technical_sheet.R"))
+source(here("Scripts/technical_sheet.R"))
 
 # define indicator specs
 indicator_spec <- function(
