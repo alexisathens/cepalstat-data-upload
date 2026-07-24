@@ -15,7 +15,7 @@ run_one_indicator <- function(id, global = global_spec) {
 
 # Run many indicators and cache error messages
 # Sample usage: run_many_indicators(run_list) # where run_list is list of ids
-run_many_indicators <- function(ids, global = global_spec) {
+run_many_indicators <- function(run_list, global = global_spec) {
   run_log <- tibble(id = character(), status = character(), message = character())
   
   for (i in seq_along(run_list)) {
@@ -36,6 +36,7 @@ run_many_indicators <- function(ids, global = global_spec) {
   if (any(run_log$status == "error")) {
     message("❌ Failed: ", paste(run_log$id[run_log$status == "error"], collapse = ", "))
   }
+  return(run_log)
 }
 
 
