@@ -15,13 +15,14 @@ library(FAOSTAT)
 library(fishstat)
 
 # ---- Global variables ----
-# Read in ISO with cepalstat ids
+
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 
 iso %<>% 
   filter(ECLACa == "Y") %>% 
   select(cepalstat, name, std_name)
 
+meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
 # ---- Small helpers ----
 
