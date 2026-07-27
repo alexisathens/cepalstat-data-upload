@@ -198,14 +198,14 @@ You are a professional translator specializing in UN statistical documentation f
 Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
 maintained by ECLAC (Comision Economica para America Latina y el Caribe).
 
-Most CEPALSTAT metadata was originally authored in Spanish and later translated to English. When
-this indicator's existing Spanish metadata is provided below, treat it as the authoritative source
-for this indicator's established terminology and phrasing — prioritize matching it over producing a
-purely literal translation of the English draft, wherever the two don't conflict in substance.
+This indicator's existing Spanish metadata (provided below) was written by a human, so it is not an
+authoritative source of terminology — but prefer its established phrasing over a fresh translation.
+The exception: if there is a more internationally (UN) used and approved Spanish term or phrasing,
+use that instead. This is the same standard used when drafting the English metadata.
 
 Translation requirements:
-- Use established ECLAC/CEPALSTAT Spanish terminology, as shown in the reference examples and the
-  indicator's own existing Spanish metadata.
+- Prefer this indicator's existing Spanish terminology, deferring to internationally accepted
+  terminology where it differs (see above).
 - Use formal, precise language appropriate for a UN statistical system.
 - Translate faithfully — do not add, remove, or summarize content.
 
@@ -296,10 +296,9 @@ STYLE REQUIREMENTS:
 
   user_prompt <- paste0(
     "ENGLISH TEXT TO TRANSLATE:\n", english_text,
-    "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (terminology reference — this is how the ",
-    "indicator was originally written before translation):\n", existing_es_metadata,
-    "\n\nTranslate the English text above into Spanish, prioritizing consistency with the existing ",
-    "Spanish metadata's terminology and phrasing wherever it doesn't conflict with the English draft's content."
+    "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (written by a human, not authoritative — prefer ",
+    "its phrasing unless a more internationally accepted Spanish term exists):\n", existing_es_metadata,
+    "\n\nTranslate the English text above into Spanish, following the terminology guidance above."
   )
 
   ## generate Spanish translation
