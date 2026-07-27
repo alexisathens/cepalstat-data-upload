@@ -63,6 +63,20 @@ STYLE REQUIREMENTS:
 - NEVER use em dashes (—) or en dashes (–) under any circumstances.
 - Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
   Write formulas in plain text only, for example: VR_t = ((M_t - M_(t-1)) / M_(t-1)) x 100
+
+OUTPUT FORMAT (required — the output is parsed programmatically downstream):
+Format your entire response using exactly these three section headers, each alone on its own line,
+with the field's content immediately below it. Do not add any other headers, preamble, or commentary
+outside these three sections.
+
+### DEFINITION
+<definition text>
+
+### METHODOLOGY
+<methodology text>
+
+### COMMENTS
+<comments text>
 "
   
   ## functions
@@ -213,6 +227,11 @@ STYLE REQUIREMENTS:
 - NEVER use em dashes (—) or en dashes (–) under any circumstances.
 - Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
   Write formulas in plain text only.
+
+OUTPUT FORMAT (required — the output is parsed programmatically downstream):
+The English text uses ### DEFINITION / ### METHODOLOGY / ### COMMENTS as section headers. Preserve
+these exact headers unchanged (do not translate them) and translate only the content beneath each
+one. Do not add any other headers, preamble, or commentary outside these three sections.
 "
 
   ## functions
@@ -305,4 +324,77 @@ STYLE REQUIREMENTS:
   spanish_text <- generate_translation(indicator_id, system_prompt, user_prompt)
 
   message(glue("✅ Exported (es) metadata for {indicator_id}"))
+}
+
+
+export_metadata_admin <- function(indicator_id) {
+  # Reads the reviewed English and Spanish drafts (written by suggest_metadata_en and
+  # translate_metadata_es) and assembles them into the CEPALSTAT Admin import format: labelled
+  # Spanish/English pairs for Definicion, Metodologia, and Comentarios, with paragraph breaks
+  # converted to <br><br> for CEPALSTAT's rich text fields.
+
+  ## setup
+
+  PROJECT_ROOT <- here::here()
+  OUTPUT_DIR   <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+
+  ## functions
+
+  parse_fields <- function(text, source_label) {
+    # Splits a draft into its three labelled sections (### DEFINITION / ### METHODOLOGY / ### COMMENTS).
+    sections <- str_split(text, "(?=### (DEFINITION|METHODOLOGY|COMMENTS))")[[1]] %>%
+      discard(~ !nzchar(trimws(.x)))
+
+    field_map <- c(DEFINITION = "definition", METHODOLOGY = "methodology", COMMENTS = "comments")
+    out <- list(definition = NA_character_, methodology = NA_character_, comments = NA_character_)
+
+    for (sec in sections) {
+      header <- str_match(sec, "^### (\\w+)")[, 2]
+      body   <- str_remove(sec, "^### \\w+") %>% str_trim()
+      if (header %in% names(field_map)) out[[field_map[[header]]]] <- body
+    }
+
+    missing <- names(out)[map_lgl(out, is.na)]
+    if (length(missing) > 0) {
+      stop(glue(
+        "Could not find section(s) in {source_label} draft: {paste(missing, collapse = ', ')}. ",
+        "Expected headers: ### DEFINITION / ### METHODOLOGY / ### COMMENTS"
+      ))
+    }
+
+    out
+  }
+
+  to_html_breaks <- function(text) {
+    # Converts paragraph breaks to <br><br> for CEPALSTAT's rich text fields.
+    text %>% str_trim() %>% str_replace_all("\n+", "<br><br>")
+  }
+
+  # ---- main ----
+
+  message(glue("Assembling CEPALSTAT Admin export for indicator {indicator_id}..."))
+
+  en_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_en.txt"))
+  es_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_es.txt"))
+
+  assert_that(file.exists(en_path), msg = glue("English draft not found: {en_path}\nRun suggest_metadata_en() first."))
+  assert_that(file.exists(es_path), msg = glue("Spanish draft not found: {es_path}\nRun translate_metadata_es() first."))
+
+  en_fields <- paste(readLines(en_path, warn = FALSE), collapse = "\n") %>% parse_fields("English")
+  es_fields <- paste(readLines(es_path, warn = FALSE), collapse = "\n") %>% parse_fields("Spanish")
+
+  admin_text <- paste0(
+    "Definición - español:\n", to_html_breaks(es_fields$definition), "\n\n",
+    "Definición - inglés:\n", to_html_breaks(en_fields$definition), "\n\n",
+    "Metodología - español:\n", to_html_breaks(es_fields$methodology), "\n\n",
+    "Metodología - inglés:\n", to_html_breaks(en_fields$methodology), "\n\n",
+    "Comentarios - español:\n", to_html_breaks(es_fields$comments), "\n\n",
+    "Comentarios - inglés:\n", to_html_breaks(en_fields$comments), "\n"
+  )
+
+  admin_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_admin.txt"))
+  writeLines(admin_text, admin_path)
+  message(glue("✅ Exported CEPALSTAT Admin metadata for {indicator_id}: {admin_path}"))
+
+  invisible(admin_text)
 }
