@@ -268,7 +268,7 @@ STYLE REQUIREMENTS:
 
   # ---- main ----
 
-  message(glue("Processing translation for indicator {indicator_id}..."))
+  message(glue("Processing metadata translation for indicator {indicator_id}..."))
 
   ## update system prompt with good examples, in Spanish
   golden_examples <- get_formatted_metadata(gold_standard_indicators, lang = "es")
