@@ -289,7 +289,6 @@ STYLE REQUIREMENTS:
   english_text <- paste(readLines(draft_path, warn = FALSE), collapse = "\n")
 
   ## fetch this indicator's own existing Spanish metadata, for terminology grounding
-  message("Fetching existing Spanish metadata for terminology reference...")
   existing_es_metadata <- get_indicator_metadata(indicator_id, lang = "es") %>%
     mutate(line = paste0(variable, ": ", value)) %>%
     pull(line) %>%
@@ -308,29 +307,3 @@ STYLE REQUIREMENTS:
 
   message(glue("✅ Exported (es) metadata for {indicator_id}"))
 }
-
-# write_output <- function(indicator_id, english_text, spanish_text = NULL) {
-#   output_path <- file.path(OUTPUT_DIR, paste0("metadata_draft_", indicator_id, ".xlsx"))
-# 
-#   # TODO: parse text into individual fields (definition, methodology, comments) once
-#   # the bulk upload column structure is confirmed.
-#   rows <- list(data.frame(indicator_id = indicator_id, lang = "en", metadata = english_text))
-#   if (!is.null(spanish_text))
-#     rows <- c(rows, list(data.frame(indicator_id = indicator_id, lang = "es", metadata = spanish_text)))
-# 
-#   write_xlsx(bind_rows(rows), output_path)
-#   message("Output written to: ", output_path)
-# }
-
-
-
-
-# Step 2: Translate to Spanish
-# spanish_text <- translate_to_spanish(indicator_id)
-# cat(spanish_text)
-
-# Step 3: Write output
-# Pass spanish_text once translation is done; omit it to write English only.
-# write_output(indicator_id, english_text)
-# write_output(indicator_id, english_text, spanish_text)
-# message("Done.")
