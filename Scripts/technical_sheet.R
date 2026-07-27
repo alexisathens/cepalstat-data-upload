@@ -178,95 +178,99 @@ STYLE REQUIREMENTS:
 
 
 
-# TRANSLATION_SYSTEM_PROMPT <- "
-# You are a professional translator specializing in UN statistical documentation for Latin America.
-# Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
-# maintained by ECLAC (Comision Economica para America Latina y el Caribe).
-# 
-# Translation requirements:
-# - Use established ECLAC/CEPALSTAT Spanish terminology, as shown in the reference examples provided.
-# - Do not translate proper names of organizations, data sources, or internationally recognized
-#   acronyms that appear in their English form in Spanish UN documents (e.g., OLADE, GDP, CO2,
-#   UNSD, IPCC, PIB is acceptable for GDP in Spanish contexts).
-# - Preserve the exact structure and section labels of the original (DEFINITION:, METHODOLOGY:,
-#   COMMENTS:).
-# - Use formal, precise language appropriate for a UN statistical system.
-# - Translate faithfully — do not add, remove, or summarize content.
-# 
-# STYLE REQUIREMENTS:
-# - NEVER use em dashes (—) or en dashes (–) under any circumstances.
-# - Do not use HTML tags or special unicode characters.
-#   Write formulas in plain text only.
-# "
+translate_metadata_es <- function(indicator_id) {
+  # Reads the reviewed English draft, translates it to Spanish, and writes the result
+  # to a .txt file compatible with CEPALSTAT Admin.
+  
+  ## setup
+  
+  PROJECT_ROOT  <- here::here()
+  OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+  
+  CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
+  ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
+  
+  ## general system prompt
+  TRANSLATION_SYSTEM_PROMPT <- "
+You are a professional translator specializing in UN statistical documentation for Latin America.
+Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
+maintained by ECLAC (Comision Economica para America Latina y el Caribe).
 
+Translation requirements:
+- Use established ECLAC/CEPALSTAT Spanish terminology, as shown in the reference examples provided.
+- Use formal, precise language appropriate for a UN statistical system.
+- Translate faithfully — do not add, remove, or summarize content.
 
-# translate_to_spanish <- function(indicator_id, use_existing_spanish = TRUE) {
-#   # Reads the reviewed English draft, translates it to Spanish, and writes the result
-#   # to a .txt file. Returns the Spanish text.
-#   api_key <- Sys.getenv("ANTHROPIC_API_KEY")
-#   assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
-# 
-#   draft_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_english_draft.txt"))
-#   assert_that(
-#     file.exists(draft_path),
-#     msg = glue("English draft not found: {draft_path}\nRun generate_draft() first.")
-#   )
-#   english_text <- paste(readLines(draft_path, warn = FALSE), collapse = "\n")
-# 
-#   # Build translation prompt sections
-#   translate_sections <- list()
-#   translate_sections[["ENGLISH TEXT TO TRANSLATE"]] <- english_text
-# 
-#   if (use_existing_spanish) {
-#     message("Fetching existing Spanish metadata for terminology reference...")
-#     es_meta <- fetch_cepalstat_metadata(indicator_id, lang = "es")
-#     es_meta_text <- toJSON(es_meta, pretty = TRUE, auto_unbox = TRUE)
-#     translate_sections[["EXISTING SPANISH METADATA (terminology reference)"]] <- es_meta_text
-#   }
-# 
-#   message("Fetching Spanish golden standard examples...")
-#   es_examples <- fetch_example_metadata(c(2487, 4174), lang = "es")
-# 
-#   system_prompt <- paste(
-#     TRANSLATION_SYSTEM_PROMPT,
-#     "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style and terminology:\n\n",
-#     es_examples,
-#     sep = "\n\n"
-#   )
-# 
-#   user_prompt <- paste0(
-#     "Indicator ID: ", indicator_id, "\n\n",
-#     translate_sections %>% imap(~ glue("--- {.y} ---\n{.x}")) %>% paste(collapse = "\n\n"),
-#     "\n\nTranslate the English text above into Spanish."
-#   )
-# 
-#   response <- request("https://api.anthropic.com/v1/messages") |>
-#     req_headers(
-#       "x-api-key"         = api_key,
-#       "anthropic-version" = "2023-06-01",
-#       "content-type"      = "application/json"
-#     ) |>
-#     req_body_json(list(
-#       model      = ANTHROPIC_MODEL,
-#       max_tokens = 4096,
-#       system     = trimws(system_prompt),
-#       messages   = list(list(role = "user", content = list(list(type = "text", text = user_prompt))))
-#     )) |>
-#     req_timeout(180) |>
-#     req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
-#               backoff = \(i) 30) |>
-#     req_error(body = \(r) resp_body_string(r)) |>
-#     req_perform()
-# 
-#   result       <- resp_body_json(response)
-#   spanish_text <- result$content[[1]]$text
-# 
-#   spanish_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_spanish_draft.txt"))
-#   writeLines(spanish_text, spanish_path)
-#   message(glue("Spanish draft written to: {spanish_path}"))
-# 
-#   spanish_text
-# }
+STYLE REQUIREMENTS:
+- NEVER use em dashes (—) or en dashes (–) under any circumstances.
+- Do not use HTML tags or special unicode characters.
+- Write formulas in plain text only.
+"
+  
+  api_key <- Sys.getenv("ANTHROPIC_API_KEY")
+  assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
+
+  draft_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_english_draft.txt"))
+  assert_that(
+    file.exists(draft_path),
+    msg = glue("English draft not found: {draft_path}\nRun generate_draft() first.")
+  )
+  english_text <- paste(readLines(draft_path, warn = FALSE), collapse = "\n")
+
+  # Build translation prompt sections
+  translate_sections <- list()
+  translate_sections[["ENGLISH TEXT TO TRANSLATE"]] <- english_text
+
+  if (use_existing_spanish) {
+    message("Fetching existing Spanish metadata for terminology reference...")
+    es_meta <- fetch_cepalstat_metadata(indicator_id, lang = "es")
+    es_meta_text <- toJSON(es_meta, pretty = TRUE, auto_unbox = TRUE)
+    translate_sections[["EXISTING SPANISH METADATA (terminology reference)"]] <- es_meta_text
+  }
+
+  message("Fetching Spanish golden standard examples...")
+  es_examples <- fetch_example_metadata(c(2487, 4174), lang = "es")
+
+  system_prompt <- paste(
+    TRANSLATION_SYSTEM_PROMPT,
+    "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style and terminology:\n\n",
+    es_examples,
+    sep = "\n\n"
+  )
+
+  user_prompt <- paste0(
+    "Indicator ID: ", indicator_id, "\n\n",
+    translate_sections %>% imap(~ glue("--- {.y} ---\n{.x}")) %>% paste(collapse = "\n\n"),
+    "\n\nTranslate the English text above into Spanish."
+  )
+
+  response <- request("https://api.anthropic.com/v1/messages") |>
+    req_headers(
+      "x-api-key"         = api_key,
+      "anthropic-version" = "2023-06-01",
+      "content-type"      = "application/json"
+    ) |>
+    req_body_json(list(
+      model      = ANTHROPIC_MODEL,
+      max_tokens = 4096,
+      system     = trimws(system_prompt),
+      messages   = list(list(role = "user", content = list(list(type = "text", text = user_prompt))))
+    )) |>
+    req_timeout(180) |>
+    req_retry(max_tries = 4, is_transient = \(r) resp_status(r) %in% c(429, 529),
+              backoff = \(i) 30) |>
+    req_error(body = \(r) resp_body_string(r)) |>
+    req_perform()
+
+  result       <- resp_body_json(response)
+  spanish_text <- result$content[[1]]$text
+
+  spanish_path <- file.path(OUTPUT_DIR, glue("{indicator_id}_spanish_draft.txt"))
+  writeLines(spanish_text, spanish_path)
+  message(glue("Spanish draft written to: {spanish_path}"))
+
+  spanish_text
+}
 
 # write_output <- function(indicator_id, english_text, spanish_text = NULL) {
 #   output_path <- file.path(OUTPUT_DIR, paste0("metadata_draft_", indicator_id, ".xlsx"))
