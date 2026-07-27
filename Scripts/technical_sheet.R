@@ -194,9 +194,7 @@ outside these three sections.
 
 translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(2487)) {
   # Reads the reviewed English draft (written by suggest_metadata_en) and translates it to Spanish,
-  # using this indicator's own existing Spanish metadata as a terminology reference — most CEPALSTAT
-  # metadata was originally authored in Spanish, so the translation should stay consistent with the
-  # phrasing already established for this specific indicator, not just produce a literal translation.
+  # using this indicator's own existing Spanish metadata as a terminology reference.
 
   ## setup
 
@@ -280,7 +278,7 @@ one. Do not add any other headers, preamble, or commentary outside these three s
 
     draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_es.txt"))
     writeLines(response_text, draft_path)
-    message(glue("Spanish draft written to: {draft_path}"))
+    #message(glue("Spanish draft written to: {draft_path}"))
 
     response_text
   }
