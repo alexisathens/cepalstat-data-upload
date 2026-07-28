@@ -125,8 +125,11 @@ calculate_regional_5647 <- function(df) {
     filter(Years <= max_year_emdat) %>% 
     standardize_emdat() %>%
     standardize_countries() %>%
+    #mutate(Dis = str_sub(DisNo., 1, 9)) %>% 
+    mutate(Dis = str_remove(`DisNo.`, "-[A-Za-z]+$")) %>% # remove country identifier to keep intl id only
+    distinct(Dis, Years, Group, Type) %>% # keep single Dis event across countries
     group_by(Years, Group, Type) %>%
-    summarize(value = n_distinct(`DisNo.`), .groups = "drop") %>%
+    summarize(value = n(), .groups = "drop") %>%
     mutate(Years = as.character(Years), Country = "Latin America and the Caribbean") %>%
     add_type_rollups()
   
