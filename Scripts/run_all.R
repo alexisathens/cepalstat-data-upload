@@ -60,12 +60,22 @@ run_one_indicator(5645)
 
 # ---- export metadata -----
 # run one "pilot" for indicator group, then update the metadata publicly
-suggest_metadata_en(5647, gold_standard_indicators = 2487)
-translate_metadata_es(5647, gold_standard_indicators = 2487)
-export_metadata_admin(5647)
+pilot <- 5647
+suggest_metadata_en(pilot, gold_standard_indicators = 2487)
+translate_metadata_es(pilot, gold_standard_indicators = 2487)
+export_metadata_admin(pilot)
 
+# next loop over rest in indicator group, using pilot as the gold standard for suggested metadata
+run_list <- meta %>% filter(source == "CRED" & id != pilot) %>% pull(id)
+gold_meta <- pilot
+for(i in run_list){
+  suggest_metadata_en(i, gold_standard_indicators = gold_meta)
+}
 
-# next loop over rest in indicator group, using pilot as the gold standard
-suggest_metadata_en(5645, gold_standard_indicators = 5647) 
+# next is human intervention: manually review the suggested metadata
 
-# how to store indicators and their gold standards? is it worth storing/having some record of the inputs?
+# once suggested metadata is verified, translate and export admin file, and update the metadata publicly
+for(i in run_list){
+  translate_metadata_es(i, gold_standard_indicators = gold_meta)
+  export_metadata_admin(i)
+}
