@@ -374,12 +374,17 @@ export_metadata_admin <- function(indicator_id) {
   }
 
   to_html_breaks <- function(text) {
-    # Converts paragraph breaks (blank line between) to <br><br>, and single line breaks
-    # (e.g. within a formula or list) to <br>, for CEPALSTAT's rich text fields.
-    text %>%
+    # Adds <br>/<br><br> tags for CEPALSTAT's rich text field, while keeping the actual line breaks
+    # too so the raw .txt file stays human-readable when opened directly. Paragraph breaks (blank
+    # line between) get <br><br> plus a blank line; single breaks (e.g. within a formula or list)
+    # get <br> plus a line break.
+    paragraphs <- text %>%
       str_trim() %>%
-      str_replace_all("\n{2,}", "<br><br>") %>%
-      str_replace_all("\n", "<br>")
+      str_split("\n{2,}") %>%
+      pluck(1) %>%
+      map_chr(~ str_replace_all(.x, "\n", "<br>\n"))
+
+    paste(paragraphs, collapse = "<br><br>\n\n")
   }
 
   # ---- main ----
@@ -396,12 +401,12 @@ export_metadata_admin <- function(indicator_id) {
   es_fields <- paste(readLines(es_path, warn = FALSE), collapse = "\n") %>% parse_fields("Spanish")
 
   admin_text <- paste0(
-    "***Definición - español:***\n", to_html_breaks(es_fields$definition), "\n\n",
-    "***Definición - inglés:***\n", to_html_breaks(en_fields$definition), "\n\n",
-    "***Metodología - español:***\n", to_html_breaks(es_fields$methodology), "\n\n",
-    "***Metodología - inglés:***\n", to_html_breaks(en_fields$methodology), "\n\n",
-    "***Comentarios - español:***\n", to_html_breaks(es_fields$comments), "\n\n",
-    "***Comentarios - inglés:***\n", to_html_breaks(en_fields$comments), "\n"
+    "### DEFINICIÓN - ESPAÑOL\n", to_html_breaks(es_fields$definition), "\n\n",
+    "### DEFINICIÓN - INGLÉS\n", to_html_breaks(en_fields$definition), "\n\n",
+    "### METODOLOGÍA - ESPAÑOL\n", to_html_breaks(es_fields$methodology), "\n\n",
+    "### METODOLOGÍA - INGLÉS\n", to_html_breaks(en_fields$methodology), "\n\n",
+    "### COMENTARIOS - ESPAÑOL\n", to_html_breaks(es_fields$comments), "\n\n",
+    "### COMENTARIOS - INGLÉS\n", to_html_breaks(en_fields$comments), "\n"
   )
 
   admin_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_admin.txt"))
