@@ -1,5 +1,4 @@
 source(here("Scripts/utils.R"))
-#source(here("Scripts/technical_sheet.R"))
 
 # define indicator specs
 indicator_spec <- function(
@@ -11,7 +10,7 @@ indicator_spec <- function(
 }
 
 # debugging
-# spec <- spec_4046
+# spec <- spec_5647
 # global <- list(diagnostics = TRUE, export = FALSE, qc_check = FALSE, open_qmd = FALSE, metadata = FALSE)
 
 # generic CEPALSTAT indicator processing function
@@ -31,7 +30,6 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   export <- global$export
   qc_check <- global$qc_check
   open_qmd <- global$open_qmd
-  metadata <- global$metadata
   
   message(glue("▶ Processing indicator {indicator_id}..."))
   
@@ -88,12 +86,6 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     render_qc_checks(indicator_id, new_indicator, open_qmd)
     message(glue("✅ Exported quality check file for {indicator_id}"))
   }
-  
-  # suggest metadata with anthropic api
-  # if(metadata) {
-  #   suggest_metadata_en(indicator_id)
-  #   message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
-  # }
   
   message(glue("✅ Indicator {indicator_id} processing complete"))
   return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))
