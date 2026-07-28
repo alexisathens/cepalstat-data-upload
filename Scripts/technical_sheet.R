@@ -14,6 +14,15 @@
 # 2487 - Primary and secondary energy supply -- compound indicator
 # 4174 - Energy intensity measured in terms of primary energy and GDP -- calculated indicator
 
+# Strips any <br>/<br/>/<br /> tags that leaked into CEPALSTAT's published metadata (e.g. from a
+# prior admin export) before it's used as "existing metadata" or a golden-standard example — so the
+# model never sees HTML in its reference material and doesn't echo it into new drafts, and so
+# export_metadata_admin()'s own <br> tags never end up compounding on top of pre-existing ones.
+# Sample usage: strip_html_breaks(m$value[m$variable == "definition"])
+strip_html_breaks <- function(text) {
+  str_remove_all(text, "<br\\s*/?>")
+}
+
 suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)) {
   
   ## setup
@@ -90,9 +99,9 @@ outside these three sections.
         m <- get_indicator_metadata(id, lang = lang)
         glue(
           "--- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
-          "### DEFINITION\n{m$value[m$variable == 'definition']}\n\n",
-          "### METHODOLOGY\n{m$value[m$variable == 'calculation_methodology']}\n\n",
-          "### COMMENTS\n{m$value[m$variable == 'comments']}\n"
+          "### DEFINITION\n{strip_html_breaks(m$value[m$variable == 'definition'])}\n\n",
+          "### METHODOLOGY\n{strip_html_breaks(m$value[m$variable == 'calculation_methodology'])}\n\n",
+          "### COMMENTS\n{strip_html_breaks(m$value[m$variable == 'comments'])}\n"
         )
       }) %>%
       paste(collapse = "\n\n")
@@ -145,7 +154,8 @@ outside these three sections.
     
     result        <- resp_body_json(response)
     response_text <- result$content[[1]]$text %>%
-      str_remove("^[\\s\\S]*?(?=### DEFINITION)") # strip any stray preamble before the first required header
+      str_remove("^[\\s\\S]*?(?=### DEFINITION)") %>% # strip any stray preamble before the first required header
+      strip_html_breaks() # strip any <br> the model echoed from contaminated reference material
     
     draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_en.txt"))
     writeLines(response_text, draft_path)
@@ -171,6 +181,7 @@ outside these three sections.
   ## specify user prompt with current metadata text
   
   existing_metadata <- get_indicator_metadata(indicator_id) %>%
+    mutate(value = strip_html_breaks(value)) %>%
     mutate(line = paste0(variable, ": ", value)) %>%
     pull(line) %>%
     paste(collapse = "\n")
@@ -249,9 +260,9 @@ one. Do not add any other headers, preamble, or commentary outside these three s
         m <- get_indicator_metadata(id, lang = lang)
         glue(
           "--- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
-          "### DEFINITION\n{m$value[m$variable == 'definition']}\n\n",
-          "### METHODOLOGY\n{m$value[m$variable == 'calculation_methodology']}\n\n",
-          "### COMMENTS\n{m$value[m$variable == 'comments']}\n"
+          "### DEFINITION\n{strip_html_breaks(m$value[m$variable == 'definition'])}\n\n",
+          "### METHODOLOGY\n{strip_html_breaks(m$value[m$variable == 'calculation_methodology'])}\n\n",
+          "### COMMENTS\n{strip_html_breaks(m$value[m$variable == 'comments'])}\n"
         )
       }) %>%
       paste(collapse = "\n\n")
@@ -283,7 +294,8 @@ one. Do not add any other headers, preamble, or commentary outside these three s
 
     result        <- resp_body_json(response)
     response_text <- result$content[[1]]$text %>%
-      str_remove("^[\\s\\S]*?(?=### DEFINITION)") # strip any stray preamble before the first required header
+      str_remove("^[\\s\\S]*?(?=### DEFINITION)") %>% # strip any stray preamble before the first required header
+      strip_html_breaks() # strip any <br> the model echoed from contaminated reference material
 
     draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_es.txt"))
     writeLines(response_text, draft_path)
@@ -316,6 +328,7 @@ one. Do not add any other headers, preamble, or commentary outside these three s
 
   ## fetch this indicator's own existing Spanish metadata, for terminology grounding
   existing_es_metadata <- get_indicator_metadata(indicator_id, lang = "es") %>%
+    mutate(value = strip_html_breaks(value)) %>%
     mutate(line = paste0(variable, ": ", value)) %>%
     pull(line) %>%
     paste(collapse = "\n")
@@ -377,8 +390,10 @@ export_metadata_admin <- function(indicator_id) {
     # Adds <br>/<br><br> tags for CEPALSTAT's rich text field, while keeping the actual line breaks
     # too so the raw .txt file stays human-readable when opened directly. Paragraph breaks (blank
     # line between) get <br><br> plus a blank line; single breaks (e.g. within a formula or list)
-    # get <br> plus a line break.
+    # get <br> plus a line break. Strips any pre-existing <br> first so this is idempotent even if
+    # some slipped through upstream (e.g. a hand-edited draft) — it never compounds.
     paragraphs <- text %>%
+      strip_html_breaks() %>%
       str_trim() %>%
       str_split("\n{2,}") %>%
       pluck(1) %>%
