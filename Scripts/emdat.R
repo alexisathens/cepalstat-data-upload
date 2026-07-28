@@ -1,13 +1,5 @@
 # This script cleans and standardizes the EM-DAT disaster indicators
 
-# ---- download ----
-
-## Instructions for DOWNLOADING the EM-DAT data (step 01):
-# Go to https://public.emdat.be/
-# Create a user account
-# Go to "Access Data"
-# Select in 'classification' natural; in 'countries' Americas > LAC; in 'time period' 1970 to the last available year
-
 # ---- setup ----
 
 source(here("Scripts/utils.R"))
