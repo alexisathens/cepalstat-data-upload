@@ -327,9 +327,7 @@ one. Do not add any other headers, preamble, or commentary outside these three s
 
 export_metadata_admin <- function(indicator_id) {
   # Reads the reviewed English and Spanish drafts (written by suggest_metadata_en and
-  # translate_metadata_es) and assembles them into the CEPALSTAT Admin import format: labelled
-  # Spanish/English pairs for Definicion, Metodologia, and Comentarios, with paragraph breaks
-  # converted to <br><br> for CEPALSTAT's rich text fields.
+  # translate_metadata_es) and assembles them into the CEPALSTAT Admin import format.
 
   ## setup
 
@@ -374,7 +372,7 @@ export_metadata_admin <- function(indicator_id) {
 
   # ---- main ----
 
-  message(glue("Assembling CEPALSTAT Admin export for indicator {indicator_id}..."))
+  #message(glue("Assembling CEPALSTAT Admin export for indicator {indicator_id}..."))
 
   en_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_en.txt"))
   es_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_es.txt"))
