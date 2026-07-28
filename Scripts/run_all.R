@@ -59,7 +59,13 @@ run_one_indicator(5645)
 
 
 # ---- export metadata -----
+# run one "pilot" for indicator group, then update the metadata publicly
 suggest_metadata_en(5647, gold_standard_indicators = 2487)
+translate_metadata_es(5647, gold_standard_indicators = 2487)
+export_metadata_admin(5647)
 
-translate_metadata_es()
 
+# next loop over rest in indicator group, using pilot as the gold standard
+suggest_metadata_en(5645, gold_standard_indicators = 5647) 
+
+# how to store indicators and their gold standards? is it worth storing/having some record of the inputs?
