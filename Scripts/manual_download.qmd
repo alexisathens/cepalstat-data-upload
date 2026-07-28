@@ -1,12 +1,26 @@
 ---
-title: "Other Data Download"
+title: "Manual Data Download Instructions"
 format: html
 editor: visual
 ---
 
-# Indicators from "Other" sources
+# Manual Download Instructions by Source
 
-## International Renewable Energy Agency (IRENA)
+## EM-DAT
+
+*EM-DAT: The international disaster database*
+
+Website: https://public.emdat.be/
+
+For the report:
+
+-   Visit the website and create a user account
+-   Navigate to "Access Data"
+-   Set 'Time period' to start in 1970. ('Classification' and 'Countries' can be left blank, as the code will filter this.)
+
+Note this dataset is used to generate all disaster-related indicators.
+
+## IRENA
 
 *Indicator 4244 - Public investment trends in renewable energy*
 
@@ -23,17 +37,13 @@ For the report, select:
 
 Save as: Data/Raw/other/**irena_raw.xlsx**
 
-
 ## International Accreditation Forum (IAF) - ISO Survey
 
-*Indicator 1763 - ISO 14001-certified enterprises* 
-*Indicator 2030 - ISO 14001-certified enterprises by economic activities* (this indicator is to be removed)
-*Indicator ISO 14001-certified enterprises per billion dollars of GDP*
+*Indicator 1763 - ISO 14001-certified enterprises* *Indicator 2030 - ISO 14001-certified enterprises by economic activities* (this indicator is to be removed) *Indicator ISO 14001-certified enterprises per billion dollars of GDP*
 
 **Data source:** IAF/Market Intelligence (ISO Survey)/ISO Survey Data
 
-Website: <https://www.iafcertsearch.org/analytics/iso-survey>
-Note that you'll need to create a free account to access this data.
+Website: <https://www.iafcertsearch.org/analytics/iso-survey> Note that you'll need to create a free account to access this data.
 
 For the report, select the latest year of data:
 
@@ -41,8 +51,7 @@ For the report, select the latest year of data:
 
 Save as: Data/Raw/other/**iso_raw.xlsx**
 
-
-## UN Environment Programme (UNEP)
+## UNEP
 
 *2037 - Consumption of ozone depleting substances (ODS)*
 
@@ -65,7 +74,6 @@ For the report, select:
 -   Rename each xlsx file in the format as follows: ods_cfc_raw.xlsx or ods_mb_raw.xlsx
 
 Save as: Data/Raw/other/**ods_hcfc_raw.xlsx** (in this pattern, x9 files)
-
 
 ## Ramsar
 
