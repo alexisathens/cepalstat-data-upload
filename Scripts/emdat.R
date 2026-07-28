@@ -114,6 +114,25 @@ transform_5647 <- function(data) {
     add_type_rollups()
 }
 
+# Regional strategy for 5647: country-level counts are fine as-is, but the LAC total can't be a
+# sum of country counts -- a single disaster hitting multiple countries would be counted once per
+# country instead of once. Recompute it directly from the raw emdat rows (where DisNo. is still
+# available) as the count of *distinct* DisNo. across all LAC countries combined.
+calculate_regional_5647 <- function(df) {
+  lac_counts <- emdat %>%
+    filter_emdat() %>%
+    select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`) %>%
+    filter(Years <= max_year_emdat) %>% 
+    standardize_emdat() %>%
+    standardize_countries() %>%
+    group_by(Years, Group, Type) %>%
+    summarize(value = n_distinct(`DisNo.`), .groups = "drop") %>%
+    mutate(Years = as.character(Years), Country = "Latin America and the Caribbean") %>%
+    add_type_rollups()
+  
+  bind_rows(df, lac_counts)
+}
+
 spec_5647 <- indicator_spec(
   indicator_id = 5647,
   data = emdat,
@@ -121,7 +140,7 @@ spec_5647 <- indicator_spec(
   dim_config = dim_config_5647,
   filter_data = filter_emdat,
   transform_data = transform_5647,
-  calculate_regional = calculate_regional_sum
+  calculate_regional = calculate_regional_5647 # uses emdat, max_year_emdat df from environment
 )
 
 
