@@ -82,15 +82,17 @@ outside these three sections.
   ## functions
   
   get_formatted_metadata <- function(example_ids, lang = "en") {
-    # Fetches golden standard metadata entries and formats them as labelled example blocks.
+    # Fetches golden standard metadata entries and formats them as labelled example blocks, using
+    # the SAME ### DEFINITION / ### METHODOLOGY / ### COMMENTS format required of the output — so
+    # the examples demonstrate the required structure instead of contradicting it.
     example_ids %>%
       map(function(id) {
         m <- get_indicator_metadata(id, lang = lang)
         glue(
           "--- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
-          "definition:\n{m$value[m$variable == 'definition']}\n\n",
-          "calculation_methodology:\n{m$value[m$variable == 'calculation_methodology']}\n\n",
-          "comments:\n{m$value[m$variable == 'comments']}\n"
+          "### DEFINITION\n{m$value[m$variable == 'definition']}\n\n",
+          "### METHODOLOGY\n{m$value[m$variable == 'calculation_methodology']}\n\n",
+          "### COMMENTS\n{m$value[m$variable == 'comments']}\n"
         )
       }) %>%
       paste(collapse = "\n\n")
@@ -142,7 +144,8 @@ outside these three sections.
       req_perform()
     
     result        <- resp_body_json(response)
-    response_text <- result$content[[1]]$text
+    response_text <- result$content[[1]]$text %>%
+      str_remove("^[\\s\\S]*?(?=### DEFINITION)") # strip any stray preamble before the first required header
     
     draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_en.txt"))
     writeLines(response_text, draft_path)
@@ -175,7 +178,10 @@ outside these three sections.
   user_prompt <- paste0(
     existing_metadata,
     "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
-    "based on the available inputs. Keep other metadata elements exactly as-is."
+    "based on the available inputs. Keep other metadata elements exactly as-is.",
+    "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+    "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
+    "Respond with only the three ### sections, nothing else."
   )
   
   ## store existing (pre-AI) metadata locally
@@ -235,15 +241,17 @@ one. Do not add any other headers, preamble, or commentary outside these three s
   ## functions
 
   get_formatted_metadata <- function(example_ids, lang = "en") {
-    # Fetches golden standard metadata entries and formats them as labelled example blocks.
+    # Fetches golden standard metadata entries and formats them as labelled example blocks, using
+    # the SAME ### DEFINITION / ### METHODOLOGY / ### COMMENTS format required of the output — so
+    # the examples demonstrate the required structure instead of contradicting it.
     example_ids %>%
       map(function(id) {
         m <- get_indicator_metadata(id, lang = lang)
         glue(
           "--- indicator {id}: {m$value[m$variable == 'indicator_name']} ---\n\n",
-          "definition:\n{m$value[m$variable == 'definition']}\n\n",
-          "calculation_methodology:\n{m$value[m$variable == 'calculation_methodology']}\n\n",
-          "comments:\n{m$value[m$variable == 'comments']}\n"
+          "### DEFINITION\n{m$value[m$variable == 'definition']}\n\n",
+          "### METHODOLOGY\n{m$value[m$variable == 'calculation_methodology']}\n\n",
+          "### COMMENTS\n{m$value[m$variable == 'comments']}\n"
         )
       }) %>%
       paste(collapse = "\n\n")
@@ -274,7 +282,8 @@ one. Do not add any other headers, preamble, or commentary outside these three s
       req_perform()
 
     result        <- resp_body_json(response)
-    response_text <- result$content[[1]]$text
+    response_text <- result$content[[1]]$text %>%
+      str_remove("^[\\s\\S]*?(?=### DEFINITION)") # strip any stray preamble before the first required header
 
     draft_path <- file.path(OUTPUT_DIR, glue("metadata_{indicator_id}_es.txt"))
     writeLines(response_text, draft_path)
@@ -315,7 +324,10 @@ one. Do not add any other headers, preamble, or commentary outside these three s
     "ENGLISH TEXT TO TRANSLATE:\n", english_text,
     "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (written by a human, not authoritative — prefer ",
     "its phrasing unless a more internationally accepted Spanish term exists):\n", existing_es_metadata,
-    "\n\nTranslate the English text above into Spanish, following the terminology guidance above."
+    "\n\nTranslate the English text above into Spanish, following the terminology guidance above.",
+    "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+    "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
+    "sections (headers left untranslated), nothing else."
   )
 
   ## generate Spanish translation
