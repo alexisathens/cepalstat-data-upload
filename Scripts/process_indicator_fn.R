@@ -1,5 +1,5 @@
 source(here("Scripts/utils.R"))
-source(here("Scripts/04_technical_sheet.R"))
+#source(here("Scripts/technical_sheet.R"))
 
 # define indicator specs
 indicator_spec <- function(
@@ -90,10 +90,10 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   }
   
   # suggest metadata with anthropic api
-  if(metadata) {
-    suggest_metadata_en(indicator_id)
-    message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
-  }
+  # if(metadata) {
+  #   suggest_metadata_en(indicator_id)
+  #   message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
+  # }
   
   message(glue("✅ Indicator {indicator_id} processing complete"))
   return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))

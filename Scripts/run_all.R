@@ -1,7 +1,6 @@
 source(here("Scripts/process_indicator_fn.R"))
 source(here("Scripts/emdat.R"))
 
-
 # ---- run functions ----
 
 # Run one indicator: look up its spec, process it, and store the result as result_<id>.
