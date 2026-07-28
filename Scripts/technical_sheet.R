@@ -1,6 +1,6 @@
 # Generates a draft metadata template for a given CEPALSTAT indicator.
-# Fetches existing metadata from the CEPALSTAT API and calls the
-# Anthropic API to produce an updated draft in English.
+# Fetches existing metadata from the CEPALSTAT API and calls the Anthropic API to produce 
+# an updated draft in English. Translates to Spanish and exports in a CEPALSTAT Admin-friendly format.
 
 # Development note: I experimented with attaching relevant UN and domain-specific methodological documents
 # and pointing to the indicator's R code. In the end I found the greatest success with the least amount 
