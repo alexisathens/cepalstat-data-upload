@@ -1,14 +1,12 @@
 ---
-title: "Manual Data Download Instructions"
+title: "Manual Download Instructions by Source"
 format: html
 editor: visual
 ---
 
-# Manual Download Instructions by Source
+## EM-DAT - Disaster Indicators
 
-## EM-DAT
-
-*EM-DAT: The international disaster database*
+EM-DAT is the international disaster database. Their dataset is used to generate all disaster-related indicators.
 
 Website: https://public.emdat.be/
 
@@ -16,9 +14,9 @@ For the report:
 
 -   Visit the website and create a user account
 -   Navigate to "Access Data"
--   Set 'Time period' to start in 1970. ('Classification' and 'Countries' can be left blank, as the code will filter this.)
-
-Note this dataset is used to generate all disaster-related indicators.
+-   The fields 'Classification' and 'Countries' can be left blank, as the code will filter them.
+-   Check the acknowledgement to include historical, pre-2000 events. Set 'Time period' to start in 1970.
+-   Save resulting spreadsheet in the Data\>Raw\>emdat folder, keeping the default file name (with the pattern of "public_emdat_incl_hist_202X-XX-XX.xlsx"). The cleaning code will select the most recent dataset matching this pattern.
 
 ## IRENA
 
