@@ -176,7 +176,7 @@ outside these three sections.
     paste(collapse = "\n")
   
   user_prompt <- paste0(
-    existing_metadata,
+    "CURRENT METADATA FOR THIS INDICATOR (indicator_id ", indicator_id, "):\n", existing_metadata,
     "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
     "based on the available inputs. Keep other metadata elements exactly as-is.",
     "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
