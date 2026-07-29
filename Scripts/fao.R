@@ -8,7 +8,7 @@ source(here("Scripts/process_indicator_fn.R"))
 # Define max year of reliable FAO data
 max_year_fao <- 2024 # as of July 2026
 
-# ---- download FAO bulk data ----
+# ---- download data ----
 
 # Load information about all datasets into a data frame
 fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
@@ -23,22 +23,22 @@ get_fao_bulk <- function(filename) {
 }
 
 # download land use (RL) data
-rl <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+use <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 # download climate change (ET) data
-et <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+clim <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 # download land cover (LC) data
-lc <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+cover <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 # download crops and livestock products (QCL) data
-qcl <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+crop <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 # download fertilizers by Nutrient (RFN) data
-rfn <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+fert <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 # download pesticide use (RP) data
-rp <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+pest <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 ## fishstat & aquastat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
@@ -68,6 +68,10 @@ aqua <- aqua %>%
     Country = country_name,
     Area = inlandmarine
   )
+
+
+# ---- shared functions ----
+
 
 
 # FAO LAND USE (RL) INDICATORS -----
