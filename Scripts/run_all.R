@@ -54,4 +54,4 @@ run_many_indicators(run_list)
 beepr::beep(1)
 
 # run single indicator
-run_one_indicator(5647)
+run_one_indicator(2021)
