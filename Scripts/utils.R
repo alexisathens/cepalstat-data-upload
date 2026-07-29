@@ -96,6 +96,13 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
 # dim_config + value/num/denom, and drop years beyond max_year. Stops on failure, else returns data.
 # Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = max_year_emdat)
 assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
+  
+  # filter out extra years and coerce type
+  data %<>%
+    filter(Years <= max_year) %>%
+    mutate(Years = as.character(Years)) %>%
+    arrange(Country, Years)
+  
   # check for NA values
   na_vals <- data %>%
     filter(is.na(value))
@@ -108,7 +115,7 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
   }
 
   # check for extra columns
-  acceptable_cols <- c(dim_config$data_col, "value", "num", "denom")
+  acceptable_cols <- c(dim_config$data_col, "value")
   extra_cols <- setdiff(names(data), acceptable_cols)
 
   if(!is_empty(extra_cols)) {
@@ -118,12 +125,6 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
     )
     stop(msg)
   }
-
-  # filter out extra years and coerce type
-  data %<>%
-    filter(Years <= max_year) %>%
-    mutate(Years = as.character(Years)) %>%
-    arrange(Country, Years)
 
   if (indicator_id == 2031) { # exception for MEA indicator where Years is the value
     data %<>% mutate(Years = as.integer(Years))
@@ -328,9 +329,8 @@ standardize_countries <- function(df) {
     filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) # always remove subregions
 }
 
-# Regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
-# Default calculate_regional option — returns the full replacement df (not just the new total rows).
-# Sample usage: df %>% calculate_regional_sum()
+# Default regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
+# Sample usage: df %>% calculate_regional_sum() # with "value" as col name
 calculate_regional_sum <- function(df) {
   # remove all LAC sub/regional totals
   df %<>%
@@ -349,11 +349,25 @@ calculate_regional_sum <- function(df) {
 }
 
 # Regional strategy: recalculate the LAC total as a weighted average (e.g. sum(num)/sum(denom) across countries).
-# ** not yet implemented — placeholder for indicators like fertilizer intensity that need num/denom columns
-# carried through filter_data()/transform_data() (see assert_data_reqs()'s acceptable_cols).
-# Sample usage: df %>% calculate_regional_wgt_avg()
+# Sample usage: df %>% calculate_regional_wgt_avg() # with "num" and "denom" col names
 calculate_regional_wgt_avg <- function(df) {
-  # ** write this function
+  # remove all LAC sub/regional totals
+  df %<>%
+    filter(!Country %in% c("South America", "Central America", "Caribbean",
+                           "Latin America and the Caribbean", "Latin America"))
+  
+  # calculate LAC region sum
+  lac_total <- df %>%
+    filter(Country != "World") %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
+    summarise(num = sum_or_na(num),
+              denom = sum_or_na(denom), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  df %>% 
+    bind_rows(lac_total) %>% 
+    mutate(value = round((num / denom) * 100, 1)) %>%
+    select(-num, -denom)
 }
 
 # Regional strategy: keep the source's own LAC total as-is (no recalculation).
