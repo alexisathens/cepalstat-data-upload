@@ -1,53 +1,18 @@
-# This script downloads, cleans, and standardizes the second delivery of FAO indicators in a more automated way
+# This script downloads, cleans, and standardizes FAO indicators
 
 # ---- setup ----
 
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-# Read in ISO with cepalstat ids
-iso <- read_xlsx(here("Data/iso_codes.xlsx"))
-
-iso %<>% 
-  filter(ECLACa == "Y") %>% 
-  select(cepalstat, name, std_name)
-
-# Read in indicator metadata
-meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
-
 # Define max year of reliable FAO data
 max_year_fao <- 2024 # as of July 2026
+
+# ---- download FAO bulk data ----
 
 # Load information about all datasets into a data frame
 fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
 # Alternatively go here to see data areas: https://www.fao.org/faostat/en/#data
-
-
-# ---- download FAO bulk data ----
-
-# # download land use (RL) data
-# rl <- get_faostat_bulk(code = "RL")
-# rl %<>% as_tibble()
-# 
-# # download climate change (ET) data
-# et <- get_faostat_bulk(code = "ET")
-# et %<>% as_tibble()
-# 
-# # download land cover (LC) data
-# lc <- get_faostat_bulk(code = "LC")
-# lc %<>% as_tibble()
-# 
-# # download crops and livestock products (QCL) data
-# qcl <- get_faostat_bulk(code = "QCL")
-# qcl %<>% as_tibble()
-# 
-# # download fertilizers by Nutrient (RFN) data
-# rfn <- get_faostat_bulk(code = "RFN")
-# rfn %<>% as_tibble()
-# 
-# # download pesticide use (RP) data
-# rp <- get_faostat_bulk(code = "RP")
-# rp %<>% as_tibble()
 
 ## create custom bulk download function while API is broken
 get_fao_bulk <- function(filename) {
@@ -58,23 +23,22 @@ get_fao_bulk <- function(filename) {
 }
 
 # download land use (RL) data
-rl <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% 
-  as_tibble() %>% filter(year <= max_year & !is.na(value))
+rl <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+
 # download climate change (ET) data
-et <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% 
-  as_tibble() %>% filter(year <= max_year & !is.na(value))
+et <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+
 # download land cover (LC) data
-lc <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% 
-  as_tibble() %>% filter(year <= max_year & !is.na(value))
+lc <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+
 # download crops and livestock products (QCL) data
-qcl <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% 
-  as_tibble() %>% filter(year <= max_year & !is.na(value))
+qcl <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+
 # download fertilizers by Nutrient (RFN) data
-rfn <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% 
-  as_tibble() %>% filter(year <= max_year & !is.na(value))
+rfn <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+
 # download pesticide use (RP) data
-rp <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% 
-  as_tibble() %>% filter(year <= max_year & !is.na(value))
+rp <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
 
 ## fishstat & aquastat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
