@@ -4,7 +4,7 @@ format: html
 editor: visual
 ---
 
-## EM-DAT - Disaster Indicators
+## EM-DAT/CRED - Disaster Indicators
 
 EM-DAT is the international disaster database. Their dataset is used to generate all disaster-related indicators.
 
