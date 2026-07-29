@@ -38,8 +38,8 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     filter_data() %>% 
     transform_data() %>%
     standardize_countries() %>%
-    assert_data_reqs(., dim_config, indicator_id, max_year) %>%
     calculate_regional() %>% # default = recalculate sum
+    assert_data_reqs(., dim_config, indicator_id, max_year) %>%
     assert_no_duplicates()
   
   # get labeled indicator df
