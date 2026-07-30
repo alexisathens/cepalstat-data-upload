@@ -1,5 +1,6 @@
 source(here("Scripts/process_indicator_fn.R"))
 source(here("Scripts/emdat.R"))
+source(here("Scripts/fao.R"))
 
 # ---- run functions ----
 
@@ -43,8 +44,8 @@ run_many_indicators <- function(run_list, global = global_spec) {
 
 # define global specs
 global_spec <- list(diagnostics = TRUE, export = FALSE, qc_check = FALSE, open_qmd = FALSE) # for init testing
-global_spec <- list(diagnostics = TRUE, export = TRUE, qc_check = TRUE, open_qmd = TRUE) # for single export
-global_spec <- list(diagnostics = TRUE, export = TRUE, qc_check = TRUE, open_qmd = FALSE) # for many export
+#global_spec <- list(diagnostics = TRUE, export = TRUE, qc_check = TRUE, open_qmd = TRUE) # for single export
+#global_spec <- list(diagnostics = TRUE, export = TRUE, qc_check = TRUE, open_qmd = FALSE) # for many export
 
 # define run_list and run many
 run_list <- meta %>% filter(source == "CRED") %>% pull(id)
@@ -54,4 +55,4 @@ run_many_indicators(run_list)
 beepr::beep(1)
 
 # run single indicator
-run_one_indicator(2021)
+run_one_indicator(4049)
