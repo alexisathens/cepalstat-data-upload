@@ -6,7 +6,7 @@ source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
 # Define max year of reliable FAO data
-max_year_fao <- 2024 # as of July 2026
+max_year_fao <- 2025 # as of July 2026
 # missing Land area item from RL dataset for year 2025 as of July 2026...
 # hopefully all FAO data will be available for 2025 in time for the yearbook
 
@@ -135,7 +135,7 @@ transform_2021 <- function(data) {
 spec_2021 <- indicator_spec(
   indicator_id = 2021,
   data = use,
-  max_year = max_year_fao,
+  max_year = max_year_fao-1, # "land area" data tends to lag behind forest by 1-2 years, adjust as needed
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
