@@ -181,7 +181,7 @@ get_indicator_metadata <- function(indicator_id, lang = "en") {
 # Get an indicator's currently assigned source(s) from CEPALSTAT
 # Sample usage: get_indicator_source(4046) %>% slice(1) %>% pull(id)
 get_indicator_source <- function(indicator_id) {
-  ## Get footnotes_id from CEPALSTAT
+  # Get sources from CEPALSTAT
   url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
 
   # Send request and parse JSON
@@ -191,6 +191,23 @@ get_indicator_source <- function(indicator_id) {
     as_tibble()
 
   return(sources_tbl)
+}
+
+# Get an indicator's currently published footnotes from CEPALSTAT. This returns the full set of
+# footnotes used anywhere across the indicator's published data, not tied to specific rows -- use it
+# to check whether the set of footnote ids your cleaned data assigns still matches what's live.
+# Sample usage: get_indicator_footnotes(2019)$id
+get_indicator_footnotes <- function(indicator_id) {
+  # Get footnotes from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang=en&format=json")
+
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+
+  footnotes_tbl <- result$body$footnotes %>%
+    as_tibble()
+
+  return(footnotes_tbl)
 }
 
 # Get the full member table (English + Spanish names) for a single CEPALSTAT dimension
