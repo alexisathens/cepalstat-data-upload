@@ -194,8 +194,7 @@ get_indicator_source <- function(indicator_id) {
 }
 
 # Get an indicator's currently published footnotes from CEPALSTAT. This returns the full set of
-# footnotes used anywhere across the indicator's published data, not tied to specific rows -- use it
-# to check whether the set of footnote ids your cleaned data assigns still matches what's live.
+# footnotes used anywhere across the indicator's published data, not tied to specific rows.
 # Sample usage: get_indicator_footnotes(2019)$id
 get_indicator_footnotes <- function(indicator_id) {
   # Get footnotes from CEPALSTAT
