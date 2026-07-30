@@ -502,11 +502,6 @@ transform_4049 <- function(data) {
     select(Country, Years, value)
 }
 
-use %>% 
-  filter_4049() %>% 
-  transform_4049() %>% 
-  standardize_countries()
-
 # note: maintain FAO's regional LAC calculation since the data is lacked to recompute it
 spec_4049 <- indicator_spec(
   indicator_id = 4049,
