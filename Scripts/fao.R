@@ -143,6 +143,7 @@ transform_3381 <- function(data) {
     select(Country, Years, value)
 }
 
+# note: this indicator has a special exception in the standardize_country() function that lets it keep the subregional data
 spec_3381 <- indicator_spec(
   indicator_id = 3381,
   data = clim,
@@ -150,10 +151,8 @@ spec_3381 <- indicator_spec(
   dim_config = dim_config_3381,
   filter_data = filter_3381,
   transform_data = transform_3381,
-  calculate_regional = maintain_regional # ** this should maintain subregional calcs too
+  calculate_regional = maintain_regional # keep FAO sub/regional calculations as-is
 )
-# **fix: dropping Caribbean/Central America/South America and not calculating Latin America & the Caribbean
-
 
 ## ---- indicator 2035 - country area ----
 
@@ -503,6 +502,11 @@ transform_4049 <- function(data) {
     select(Country, Years, value)
 }
 
+use %>% 
+  filter_4049() %>% 
+  transform_4049() %>% 
+  standardize_countries()
+
 # note: maintain FAO's regional LAC calculation since the data is lacked to recompute it
 spec_4049 <- indicator_spec(
   indicator_id = 4049,
@@ -513,7 +517,7 @@ spec_4049 <- indicator_spec(
   transform_data = transform_4049,
   calculate_regional = maintain_regional
 )
-#** fix: do not calculate regional total, not possible with available data (and LAC not in dataset???)
+
 
 ## ---- indicator 1740 - harvested area of main crops ----
 
