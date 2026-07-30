@@ -124,7 +124,7 @@ calculate_regional_5647 <- function(df) {
     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`) %>%
     filter(Years <= max_year_emdat) %>% 
     standardize_emdat() %>%
-    standardize_countries() %>%
+    standardize_countries(indicator_id = 5647) %>%
     #mutate(Dis = str_sub(DisNo., 1, 9)) %>% 
     mutate(Dis = str_remove(`DisNo.`, "-[A-Za-z]+$")) %>% # remove country identifier to keep intl id only
     distinct(Dis, Years, Group, Type) %>% # keep single Dis event across countries

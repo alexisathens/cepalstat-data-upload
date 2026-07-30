@@ -66,9 +66,9 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   
   # get wasabi-formatted indicator df
   df_f <- df_l %>% 
-    add_footnotes(., footnotes, calculate_regional) %>% # default = no footnote
+    add_footnotes(., footnotes, calculate_regional) %>% # default = no footnote, plus auto LAC footnote
     define_source(., indicator_id) %>% # default = existing source
-    compare_metadata(., new_indicator) %>% 
+    compare_metadata(., indicator_id, new_indicator, diagnostics) %>%
     format_for_wasabi(., indicator_id) %>% 
     assert_no_na_cols()
   
