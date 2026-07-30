@@ -45,7 +45,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   
   # get labeled indicator df
   df_l <- df %>% 
-    get_cepalstat_ids(., dim_config) %>% # **store common lookups - create join_labels as wrapper w storage?
+    get_cepalstat_ids(., dim_config) %>%
     assert_no_na_cols()
   
   # get base comparison file
@@ -66,8 +66,9 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   
   # get wasabi-formatted indicator df
   df_f <- df_l %>% 
-    add_footnotes(., footnotes) %>% # default = no footnote
+    add_footnotes(., footnotes, calculate_regional) %>% # default = no footnote
     define_source(., indicator_id) %>% # default = existing source
+    compare_metadata(., new_indicator) %>% 
     format_for_wasabi(., indicator_id) %>% 
     assert_no_na_cols()
   
