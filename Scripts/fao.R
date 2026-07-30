@@ -183,8 +183,7 @@ spec_2035 <- indicator_spec(
   dim_config = dim_config_2035,
   filter_data = filter_2035,
   transform_data = transform_2035,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 ## ---- indicator 2054 - inland waters area ----
@@ -214,8 +213,7 @@ spec_2054 <- indicator_spec(
   dim_config = dim_config_2054,
   filter_data = filter_2054,
   transform_data = transform_2054,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 ## ---- indicator 3355 - area covered by permanent snow and glaciers ----
@@ -299,8 +297,7 @@ spec_2036 <- indicator_spec(
   dim_config = dim_config_2036,
   filter_data = filter_forest,
   transform_data = transform_2036,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 ## ---- indicator 2021 - proportion of forest area ----
@@ -332,8 +329,7 @@ spec_2021 <- indicator_spec(
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
-  calculate_regional = calculate_regional_wgt_avg,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_wgt_avg
 )
 
 
@@ -364,8 +360,7 @@ spec_2530 <- indicator_spec(
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
-  calculate_regional = calculate_regional_wgt_avg,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_wgt_avg
 )
 
 ## ---- indicator 2531 - forest plantations proportion of total forest ----
@@ -398,8 +393,7 @@ spec_2531 <- indicator_spec(
   dim_config = dim_config_2531,
   filter_data = filter_forest,
   transform_data = transform_2531,
-  calculate_regional = calculate_regional_wgt_avg,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_wgt_avg
 )
 
 ## ---- indicator 1739 - irrigated area ----
@@ -430,8 +424,7 @@ spec_1739 <- indicator_spec(
   dim_config = dim_config_1739,
   filter_data = filter_1739,
   transform_data = transform_1739,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 
@@ -477,8 +470,7 @@ spec_1869 <- indicator_spec(
   dim_config = dim_config_1869,
   filter_data = filter_1869,
   transform_data = transform_1869,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 ## ---- indicator 4049 - prop of ag area with organic agriculture ----
@@ -557,8 +549,7 @@ spec_1740 <- indicator_spec(
   dim_config = dim_config_1740,
   filter_data = filter_1740,
   transform_data = transform_1740,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 ## ---- indicator 2038 - fertilizer consumption ----
@@ -584,9 +575,9 @@ transform_2038 <- function(data) {
     select(Country, Years, value)
 }
 
-footnotes_2038 <- c(lac_footnote, list(
+footnotes_2038 <- list(
   "7177" = function(df) df$Years == "2002" # 7177/ La serie de datos de 1961 a 2001 y la serie de 2002 a la fecha deberán analizarse por separado...
-))
+)
 
 spec_2038 <- indicator_spec(
   indicator_id = 2038,
@@ -633,8 +624,7 @@ spec_2022 <- indicator_spec(
   dim_config = dim_config_2022,
   filter_data = filter_2022,
   transform_data = transform_2022,
-  calculate_regional = calculate_regional_intensity,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_intensity
 )
 
 ## ---- indicator 2039 - pesticide consumption ----
@@ -673,8 +663,7 @@ spec_2039 <- indicator_spec(
   dim_config = dim_config_2039,
   filter_data = filter_2039,
   transform_data = transform_2039,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_sum
 )
 
 ## ---- indicator 3382 - pesticide use intensity ----
@@ -709,8 +698,7 @@ spec_3382 <- indicator_spec(
   dim_config = dim_config_3382,
   filter_data = filter_3382,
   transform_data = transform_3382,
-  calculate_regional = calculate_regional_intensity,
-  footnotes = lac_footnote
+  calculate_regional = calculate_regional_intensity
 )
 
 
@@ -850,12 +838,12 @@ transform_2019 <- function(data) {
 
 footnotes_2019 <- list(
   "6545" = function(df) rep(TRUE, nrow(df)), # Incluye la captura en áreas marinas y en aguas continentales. [applies to everyone]
-  "6970" = function(df) df$Country == "Latin America and the Caribbean", # Calculado a partir de la información disponible de los países de la región.
   "7777" = function(df) df$Species == "TOTAL", # El total no incluye ballenas, focas y otros mamíferos acuáticos
   "5518" = function(df) df$Species == "Other" # Incluye peces diádromos, varios animales acuáticos y varios productos de animales acuáticos.
 )
 # ** double check this footnote function works, esp 6465 (might be worth building in NULL option to apply to all rows)
-  
+
+
 spec_2019 <- indicator_spec(
   indicator_id = 2019,
   data = fish,
@@ -899,10 +887,8 @@ transform_2020 <- function(data) {
     bind_rows(total)
 }
 
-# ** change to lac_footnote for 2nd
 footnotes_2020 <- list(
-  "5899" = function(df) rep(TRUE, nrow(df)), # Incluye la producción en áreas marinas y en aguas continentales.
-  "6970" = function(df) df$Country == "Latin America and the Caribbean" # Calculado a partir de la información disponible de los países de la región.
+  "5899" = function(df) rep(TRUE, nrow(df)) # Incluye la producción en áreas marinas y en aguas continentales.
 )
 
 spec_2020 <- indicator_spec(

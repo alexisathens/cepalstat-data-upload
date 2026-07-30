@@ -336,18 +336,18 @@ get_cepalstat_labels <- function(pub, dim_config) {
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
 # Always run for every indicator, right after transform_data().
 # Sample usage: df %>% standardize_countries()
-standardize_countries <- function(df, indicator_id) {
+standardize_countries <- function(df, indicator_id = NULL) {
   df %<>%
     left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
     mutate(Country = coalesce(std_name, Country)) %>%
     select(-std_name) %>%
     filter(Country %in% iso$name)
-    
+
   # remove subregions
-  if (indicator_id != 3381) { # exception for mean temperature change
+  if (!identical(indicator_id, 3381)) { # exception for mean temperature change
     df %<>% filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America"))
   }
-  
+
   df
 }
 
@@ -402,16 +402,28 @@ maintain_regional <- function(df) {
 
 # ---- Footnotes & source ----
 
+# Reusable footnote rule: flags the LAC total row with footnote 6970 (calculated from available country data).
+# Applied automatically by add_footnotes() whenever calculate_regional actually recalculates LAC --
+# no need to list this in a spec's own footnotes.
+lac_footnote <- list("6970" = function(df) df$Country == "Latin America and the Caribbean")
+
 # Apply a named list of footnote rules (id -> predicate function taking df, returning a logical vector)
 # to a labeled indicator dataframe. Initializes footnotes_id and appends every matching rule's id.
-# Sample usage: df_l %>% add_footnotes(footnotes = c(lac_footnote, list("7177" = function(df) df$Years == "2002")))
-add_footnotes <- function(df, footnotes) {
+# Whenever calculate_regional isn't maintain_regional (i.e. it actually recalculates a LAC total from
+# country data, rather than passing through a published one), lac_footnote (6970) is appended
+# automatically.
+# Sample usage: df_l %>% add_footnotes(footnotes = list("7177" = function(df) df$Years == "2002"), calculate_regional)
+add_footnotes <- function(df, footnotes, calculate_regional) {
   append_id <- function(existing, new) {
     case_when(
       is.na(existing) | existing == "" ~ new,
       !grepl(paste0("\\b", new, "\\b"), existing) ~ paste(existing, new, sep = ","),
       TRUE ~ existing
     )
+  }
+
+  if (!identical(calculate_regional, maintain_regional)) {
+    footnotes <- c(footnotes, lac_footnote)
   }
 
   df$footnotes_id <- ""
@@ -421,14 +433,63 @@ add_footnotes <- function(df, footnotes) {
   df
 }
 
-# Reusable footnote rule: flags the LAC total row with footnote 6970 (calculated from available country data).
-# Sample usage: indicator_spec(..., footnotes = lac_footnote)
-lac_footnote <- list("6970" = function(df) df$Country == "Latin America and the Caribbean")
-
 # Default define_source: look up an indicator's existing CEPALSTAT source and assign it as source_id.
 # Sample usage: df_l %>% existing_source(indicator_id = 4046)
 existing_source <- function(df, indicator_id) { # default: get existing source
   df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
+}
+
+# Compare a cleaned indicator's assigned source and footnote ids against what's currently published on
+# CEPALSTAT, printing a diagnostic message -- never stops execution or modifies df. Only runs when
+# diagnostics = TRUE, and skips entirely for new_indicator = TRUE (nothing published yet to compare
+# against). Footnotes are compared as a set across the whole indicator, since CEPALSTAT's /footnotes
+# endpoint isn't row-level -- this catches an id disappearing/appearing entirely, not one landing on
+# the wrong specific row while the overall set stays the same.
+# Sample usage: df_l %>% compare_metadata(indicator_id = 4046, new_indicator = FALSE, diagnostics = TRUE)
+compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
+  if (!diagnostics) return(df)
+
+  if (new_indicator) {
+    message("ℹ️ New indicator -- nothing published yet, skipping footnote/source comparison")
+    return(df)
+  }
+
+  # compare source
+  pub_source <- get_indicator_source(indicator_id) %>% slice(1) %>% pull(id)
+  new_source <- unique(df$source_id)
+
+  if (setequal(new_source, pub_source)) {
+    message(glue("✅ Source unchanged ({paste(pub_source, collapse = ',')})"))
+  } else {
+    message(glue("⚠️ Source changed: {paste(pub_source, collapse = ',')} → {paste(new_source, collapse = ',')}"))
+  }
+
+  # compare footnotes (set-level, across the whole indicator)
+  pub_footnotes <- get_indicator_footnotes(indicator_id)
+  pub_ids <- if ("id" %in% names(pub_footnotes)) sort(pub_footnotes$id) else integer(0)
+
+  new_ids <- df$footnotes_id %>%
+    str_split(",") %>%
+    unlist() %>%
+    trimws() %>%
+    discard(~ .x == "") %>%
+    as.integer() %>%
+    unique() %>%
+    sort()
+
+  added <- setdiff(new_ids, pub_ids)
+  removed <- setdiff(pub_ids, new_ids)
+
+  if (length(added) == 0 && length(removed) == 0) {
+    message(glue("✅ Footnotes unchanged ({paste(new_ids, collapse = ',')})"))
+  } else {
+    message(glue(
+      "⚠️ Footnotes changed -- added: {if (length(added)) paste(added, collapse = ',') else 'none'}, ",
+      "removed: {if (length(removed)) paste(removed, collapse = ',') else 'none'}"
+    ))
+  }
+
+  df
 }
 
 
