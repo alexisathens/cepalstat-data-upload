@@ -17,6 +17,7 @@ indicator_spec <- function(
 process_indicator <- function(spec = indicator_spec, global = global_spec) {
   # get indicator-specific and global variables and functions
   indicator_id   <- spec$indicator_id
+  indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
   data           <- spec$data
   max_year       <- spec$max_year
   dim_config     <- spec$dim_config
@@ -31,13 +32,13 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   qc_check <- global$qc_check
   open_qmd <- global$open_qmd
   
-  message(glue("▶ Processing indicator {indicator_id}..."))
+  message(glue("▶ Processing indicator {indicator_id} - {indicator_name}:"))
   
   # get clean indicator df
   df <- data %>% 
     filter_data() %>% 
     transform_data() %>%
-    standardize_countries() %>%
+    standardize_countries(., indicator_id) %>%
     calculate_regional() %>% # default = recalculate sum
     assert_data_reqs(., dim_config, indicator_id, max_year) %>%
     assert_no_duplicates()
