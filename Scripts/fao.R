@@ -71,10 +71,12 @@ aqua <- aqua %>%
     Area = inlandmarine
   )
 
+## **note: still need to download aquastat (water resources) manually? or is there an API now?
+
 
 # ---- shared functions ----
 
-# Shared filter across all forest indicators
+# Shared filter and dimension rename across all forest indicators
 filter_forest <- function(data) {
   data %>% 
     filter(item %in% c("Forest land", "Naturally regenerating forest", "Planted Forest", "Land area")) %>% 
@@ -120,6 +122,163 @@ calculate_regional_intensity <- function(df) {
     select(-area)
 }
 
+
+## ---- indicator 3381 - mean annual temperature change ----
+
+dim_config_3381 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3381 <- function(data) {
+  data %>% 
+    filter(element == "temperature_change" & months == "Meteorological year") %>% 
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao"))
+}
+
+transform_3381 <- function(data) {
+  data %>%
+    rename(Country = area, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_3381 <- indicator_spec(
+  indicator_id = 3381,
+  data = clim,
+  max_year = max_year_fao,
+  dim_config = dim_config_3381,
+  filter_data = filter_3381,
+  transform_data = transform_3381,
+  calculate_regional = maintain_regional # ** this should maintain subregional calcs too
+)
+# **fix: dropping Caribbean/Central America/South America and not calculating Latin America & the Caribbean
+
+
+## ---- indicator 2035 - country area ----
+
+dim_config_2035 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "21899"),
+  pub_col = c("208_name", "29117_name", "21899_name")
+)
+
+filter_2035 <- function(data) {
+  data %>% 
+    filter(item %in% c("Country area", "Land area", "Inland waters")) %>% 
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_2035 <- function(data) {
+  data %>% 
+    mutate(item = ifelse(item == "Inland waters", "Area of inland waters", item),
+           item = ifelse(item == "Country area", "Total area", item)) %>% 
+    rename(Country = area, Type = item, Years = year) %>% 
+    select(Country, Years, Type, value)
+}
+
+spec_2035 <- indicator_spec(
+  indicator_id = 2035,
+  data = use,
+  max_year = max_year_fao,
+  dim_config = dim_config_2035,
+  filter_data = filter_2035,
+  transform_data = transform_2035,
+  calculate_regional = calculate_regional_sum,
+  footnotes = lac_footnote
+)
+
+## ---- indicator 2054 - inland waters area ----
+
+dim_config_2054 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2054 <- function(data) {
+  data %>% 
+    filter(item %in% c("Inland waters")) %>% 
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_2054 <- function(data) {
+  data %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+spec_2054 <- indicator_spec(
+  indicator_id = 2054,
+  data = use,
+  max_year = max_year_fao,
+  dim_config = dim_config_2054,
+  filter_data = filter_2054,
+  transform_data = transform_2054,
+  calculate_regional = calculate_regional_sum,
+  footnotes = lac_footnote
+)
+
+## ---- indicator 3355 - area covered by permanent snow and glaciers ----
+
+dim_config_3355 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3355 <- function(data) {
+  data %>% 
+    filter(element == "area_from_cci_lc" & item == "Permanent snow and glaciers") %>% 
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao"))
+}
+
+transform_3355 <- function(data) {
+  data %>% 
+    mutate(value = value * 1000) %>% # transform from 1,000 hectares into hectares
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+spec_3355 <- indicator_spec(
+  indicator_id = 3355,
+  data = cover,
+  max_year = max_year_fao,
+  dim_config = dim_config_3355,
+  filter_data = filter_3355,
+  transform_data = transform_3355,
+  calculate_regional = calculate_regional_sum
+)
+
+## ---- indicator 4176 - area covered by mangroves ----
+
+dim_config_4176 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_4176 <- function(data) {
+  data %>%
+    filter(element == "area_from_cci_lc" & item == "Mangroves") %>%
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao"))
+}
+
+transform_4176 <- function(data) {
+  data %>%
+    rename(Country = area, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_4176 <- indicator_spec(
+  indicator_id = 4176,
+  data = cover,
+  max_year = max_year_fao,
+  dim_config = dim_config_4176,
+  filter_data = filter_4176,
+  transform_data = transform_4176,
+  calculate_regional = calculate_regional_sum
+)
 
 ## ---- indicator 2036 - forest area ----
 
@@ -244,118 +403,6 @@ spec_2531 <- indicator_spec(
   footnotes = lac_footnote
 )
 
-## ---- indicator 2035 - country area ----
-
-dim_config_2035 <- tibble(
-  data_col = c("Country", "Years", "Type"),
-  dim_id = c("208", "29117", "21899"),
-  pub_col = c("208_name", "29117_name", "21899_name")
-)
-
-filter_2035 <- function(data) {
-  data %>% 
-    filter(item %in% c("Country area", "Land area", "Inland waters")) %>% 
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
-}
-
-transform_2035 <- function(data) {
-  data %>% 
-    mutate(item = ifelse(item == "Inland waters", "Area of inland waters", item),
-           item = ifelse(item == "Country area", "Total area", item)) %>% 
-    rename(Country = area, Type = item, Years = year) %>% 
-    select(Country, Years, Type, value)
-}
-
-spec_2035 <- indicator_spec(
-  indicator_id = 2035,
-  data = use,
-  max_year = max_year_fao,
-  dim_config = dim_config_2035,
-  filter_data = filter_2035,
-  transform_data = transform_2035,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
-)
-
-
-## ---- indicator 2054 - inland waters area ----
-
-dim_config_2054 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_2054 <- function(data) {
-  data %>% 
-    filter(item %in% c("Inland waters")) %>% 
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
-}
-
-transform_2054 <- function(data) {
-  data %>% 
-    rename(Country = area, Years = year) %>% 
-    select(Country, Years, value)
-}
-
-spec_2054 <- indicator_spec(
-  indicator_id = 2054,
-  data = use,
-  max_year = max_year_fao,
-  dim_config = dim_config_2054,
-  filter_data = filter_2054,
-  transform_data = transform_2054,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
-)
-
-## ---- indicator 1869 - ag area by land type use ----
-
-dim_config_1869 <- tibble(
-  data_col = c("Country", "Years", "Type"),
-  dim_id = c("208", "29117", "26646"),
-  pub_col = c("208_name", "29117_name", "26646_name")
-)
-
-filter_1869 <- function(data) {
-  data %>% 
-    filter(item %in% c("Arable land", "Permanent crops", "Permanent meadows and pastures")) %>% 
-    filter(element == "area") %>% 
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
-}
-
-transform_1869 <- function(data) {
-  data %<>% 
-    mutate(item = case_when(
-      item == "Arable land" ~ "Area of arable land",
-      item == "Permanent crops" ~ "Area of permanent crops",
-      item == "Permanent meadows and pastures" ~ "Area of permanent meadows and pastures",
-      TRUE ~ item
-    )) %>% 
-    rename(Country = area, Type = item, Years = year) %>% 
-    select(Country, Years, Type, value)
-    
-    # create the summed "Agricultural area"
-    agri_sum <- data %>%
-      group_by(Country, Years) %>%
-      summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-      mutate(Type = "Agricultural area")
-    
-    bind_rows(data, agri_sum)
-}
-
-spec_1869 <- indicator_spec(
-  indicator_id = 1869,
-  data = use,
-  max_year = max_year_fao,
-  dim_config = dim_config_1869,
-  filter_data = filter_1869,
-  transform_data = transform_1869,
-  calculate_regional = calculate_regional_sum,
-  footnotes = lac_footnote
-)
-
-
 ## ---- indicator 1739 - irrigated area ----
 
 dim_config_1739 <- tibble(
@@ -389,6 +436,52 @@ spec_1739 <- indicator_spec(
 )
 
 
+## ---- indicator 1869 - ag area by land type use ----
+
+dim_config_1869 <- tibble(
+  data_col = c("Country", "Years", "Type"),
+  dim_id = c("208", "29117", "26646"),
+  pub_col = c("208_name", "29117_name", "26646_name")
+)
+
+filter_1869 <- function(data) {
+  data %>% 
+    filter(item %in% c("Arable land", "Permanent crops", "Permanent meadows and pastures")) %>% 
+    filter(element == "area") %>% 
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao", "Anguilla"))
+}
+
+transform_1869 <- function(data) {
+  data %<>% 
+    mutate(item = case_when(
+      item == "Arable land" ~ "Area of arable land",
+      item == "Permanent crops" ~ "Area of permanent crops",
+      item == "Permanent meadows and pastures" ~ "Area of permanent meadows and pastures",
+      TRUE ~ item
+    )) %>% 
+    rename(Country = area, Type = item, Years = year) %>% 
+    select(Country, Years, Type, value)
+  
+  # create the summed "Agricultural area"
+  agri_sum <- data %>%
+    group_by(Country, Years) %>%
+    summarise(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
+    mutate(Type = "Agricultural area")
+  
+  bind_rows(data, agri_sum)
+}
+
+spec_1869 <- indicator_spec(
+  indicator_id = 1869,
+  data = use,
+  max_year = max_year_fao,
+  dim_config = dim_config_1869,
+  filter_data = filter_1869,
+  transform_data = transform_1869,
+  calculate_regional = calculate_regional_sum,
+  footnotes = lac_footnote
+)
+
 ## ---- indicator 4049 - prop of ag area with organic agriculture ----
 
 dim_config_4049 <- tibble(
@@ -420,115 +513,7 @@ spec_4049 <- indicator_spec(
   transform_data = transform_4049,
   calculate_regional = maintain_regional
 )
-
-## ---- indicator 3381 - mean annual temperature change ----
-
-dim_config_3381 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_3381 <- function(data) {
-  data %>% 
-    filter(element == "temperature_change" & months == "Meteorological year") %>% 
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao"))
-}
-
-## IMPORTANT: (previous comment that I don't understand)
-# comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
-# ***I think this means maintain the regional calc....
-
-transform_3381 <- function(data) {
-  data %>%
-    rename(Country = area, Years = year) %>%
-    select(Country, Years, value)
-}
-
-# result_3381 <- process_fao_indicator(
-#   indicator_id = 3381,
-#   data = et,
-#   dim_config = dim_config_3381,
-#   filter_fn = filter_3381,
-#   transform_fn = transform_3381,
-#   footnotes_fn = footnotes_3381, # was empty
-#   diagnostics = TRUE,
-#   export = TRUE
-# )
-
-spec_3381 <- indicator_spec(
-  indicator_id = 3381,
-  data = clim,
-  max_year = max_year_fao,
-  dim_config = dim_config_3381,
-  filter_data = filter_3381,
-  transform_data = transform_3381,
-  calculate_regional = maintain_regional # **check this
-)
-
-## ---- indicator 3355 - area covered by permanent snow and glaciers ----
-
-dim_config_3355 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_3355 <- function(data) {
-  data %>% 
-    filter(element == "area_from_cci_lc" & item == "Permanent snow and glaciers") %>% 
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermudas", "Curaçao"))
-}
-
-## IMPORTANT: (previous comment***)
-# comment out lines from:  remove regional totals, construct ECLAC total from sum of countries to creating ECLAC totals when running it
-
-transform_3355 <- function(data) {
-  data %>% 
-    mutate(value = value * 1000) %>% # transform from 1,000 hectares into hectares
-    rename(Country = area, Years = year) %>% 
-    select(Country, Years, value)
-}
-
-spec_3355 <- indicator_spec(
-  indicator_id = 3355,
-  data = cover,
-  max_year = max_year_fao,
-  dim_config = dim_config_3355,
-  filter_data = filter_3355,
-  transform_data = transform_3355,
-  calculate_regional = calculate_regional_sum #*** not sure about this
-)
-
-## ---- indicator 4176 - area covered by mangroves ----
-
-dim_config_4176 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_4176 <- function(data) {
-  data %>%
-    filter(element == "area_from_cci_lc" & item == "Mangroves") %>%
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao"))
-}
-
-transform_4176 <- function(data) {
-  data %>%
-    rename(Country = area, Years = year) %>%
-    select(Country, Years, value)
-}
-
-spec_4176 <- indicator_spec(
-  indicator_id = 4176,
-  data = cover,
-  max_year = max_year_fao,
-  dim_config = dim_config_4176,
-  filter_data = filter_4176,
-  transform_data = transform_4176,
-  calculate_regional = calculate_regional_sum
-)
+#** fix: do not calculate regional total, not possible with available data (and LAC not in dataset???)
 
 ## ---- indicator 1740 - harvested area of main crops ----
 
@@ -577,6 +562,45 @@ spec_1740 <- indicator_spec(
   footnotes = lac_footnote
 )
 
+## ---- indicator 2038 - fertilizer consumption ----
+
+dim_config_2038 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2038 <- function(data) {
+  data %>% 
+    filter(element == "agricultural_use") %>% 
+    filter(item %in% c("Nutrient nitrogen N (total)", "Nutrient phosphate P2O5 (total)", "Nutrient potash K2O (total)")) %>% 
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_2038 <- function(data) {
+  data %>% 
+    group_by(area, year) %>% # sum across fertilizer types (items)
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value)
+}
+
+footnotes_2038 <- c(lac_footnote, list(
+  "7177" = function(df) df$Years == "2002" # 7177/ La serie de datos de 1961 a 2001 y la serie de 2002 a la fecha deberán analizarse por separado...
+))
+
+spec_2038 <- indicator_spec(
+  indicator_id = 2038,
+  data = fert,
+  max_year = max_year_fao,
+  dim_config = dim_config_2038,
+  filter_data = filter_2038,
+  transform_data = transform_2038,
+  calculate_regional = calculate_regional_sum,
+  footnotes = footnotes_2038
+)
+
+
 ## ---- indicator 2022 - fertilizer use intensity ----
 
 dim_config_2022 <- tibble(
@@ -613,84 +637,6 @@ spec_2022 <- indicator_spec(
   calculate_regional = calculate_regional_intensity,
   footnotes = lac_footnote
 )
-
-
-## ---- indicator 2038 - fertilizer consumption ----
-
-dim_config_2038 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_2038 <- function(data) {
-  data %>% 
-    filter(element == "agricultural_use") %>% 
-    filter(item %in% c("Nutrient nitrogen N (total)", "Nutrient phosphate P2O5 (total)", "Nutrient potash K2O (total)")) %>% 
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
-}
-
-transform_2038 <- function(data) {
-  data %>% 
-    group_by(area, year) %>% # sum across fertilizer types (items)
-    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    rename(Country = area, Years = year) %>% 
-    select(Country, Years, value)
-}
-
-footnotes_2038 <- c(lac_footnote, list(
-  "7177" = function(df) df$Years == "2002"
-  # 7177/ La serie de datos de 1961 a 2001 y la serie de 2002 a la fecha deberán analizarse por
-  # separado y no en combinación a fin de crear series cronológicas más largas...
-))
-
-spec_2038 <- indicator_spec(
-  indicator_id = 2038,
-  data = fert,
-  max_year = max_year_fao,
-  dim_config = dim_config_2038,
-  filter_data = filter_2038,
-  transform_data = transform_2038,
-  calculate_regional = calculate_regional_sum,
-  footnotes = footnotes_2038
-)
-
-## ---- indicator 3382 - pesticide use intensity ----
-
-dim_config_3382 <- tibble(
-  data_col = c("Country", "Years"),
-  dim_id = c("208", "29117"),
-  pub_col = c("208_name", "29117_name")
-)
-
-filter_3382 <- function(data) {
-  data %<>% 
-    filter(element == "agricultural_use") %>% 
-    filter(item %in% c("Insecticides", "Herbicides", "Fungicides and Bactericides")) %>%
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
-}
-
-transform_3382 <- function(data) {
-  data %<>% 
-    group_by(area, year) %>% # sum across pesticide types (items)
-    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
-    rename(Country = area, Years = year) %>% 
-    select(Country, Years, value) %>% 
-    mutate(Years = as.character(Years)) %>% 
-    left_join(result_cropland, by = c("Country", "Years"))
-}
-
-spec_3382 <- indicator_spec(
-  indicator_id = 3382,
-  data = pest,
-  max_year = max_year_fao,
-  dim_config = dim_config_3382,
-  filter_data = filter_3382,
-  transform_data = transform_3382,
-  calculate_regional = calculate_regional_intensity,
-  footnotes = lac_footnote
-)
-
 
 ## ---- indicator 2039 - pesticide consumption ----
 
@@ -731,6 +677,43 @@ spec_2039 <- indicator_spec(
   calculate_regional = calculate_regional_sum,
   footnotes = lac_footnote
 )
+
+## ---- indicator 3382 - pesticide use intensity ----
+
+dim_config_3382 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_3382 <- function(data) {
+  data %<>% 
+    filter(element == "agricultural_use") %>% 
+    filter(item %in% c("Insecticides", "Herbicides", "Fungicides and Bactericides")) %>%
+    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "Anguilla"))
+}
+
+transform_3382 <- function(data) {
+  data %<>% 
+    group_by(area, year) %>% # sum across pesticide types (items)
+    summarize(value = sum(value, na.rm = T), .groups = "drop") %>% 
+    rename(Country = area, Years = year) %>% 
+    select(Country, Years, value) %>% 
+    mutate(Years = as.character(Years)) %>% 
+    left_join(result_cropland, by = c("Country", "Years"))
+}
+
+spec_3382 <- indicator_spec(
+  indicator_id = 3382,
+  data = pest,
+  max_year = max_year_fao,
+  dim_config = dim_config_3382,
+  filter_data = filter_3382,
+  transform_data = transform_3382,
+  calculate_regional = calculate_regional_intensity,
+  footnotes = lac_footnote
+)
+
 
 ## ---- indicator 2019 - fish capture production ----
 
@@ -866,15 +849,12 @@ transform_2019 <- function(data) {
     bind_rows(total)
 }
 
-# ** double check if moving total here works the same (was in regional before..)
-
 footnotes_2019 <- list(
   "6545" = function(df) rep(TRUE, nrow(df)), # Incluye la captura en áreas marinas y en aguas continentales. [applies to everyone]
   "6970" = function(df) df$Country == "Latin America and the Caribbean", # Calculado a partir de la información disponible de los países de la región.
   "7777" = function(df) df$Species == "TOTAL", # El total no incluye ballenas, focas y otros mamíferos acuáticos
   "5518" = function(df) df$Species == "Other" # Incluye peces diádromos, varios animales acuáticos y varios productos de animales acuáticos.
 )
-
 # ** double check this footnote function works, esp 6465 (might be worth building in NULL option to apply to all rows)
   
 spec_2019 <- indicator_spec(
@@ -937,7 +917,7 @@ spec_2020 <- indicator_spec(
   footnotes = footnotes_2020
 )
 
-## ---- indicator 4185 - sectoral distribution of water extraction ----
+## ---- indicator 4185 - water withdrawal by sector ----
 
 dim_config_4185 <- tibble(
   data_col = c("Country", "Years", "Sector"),
