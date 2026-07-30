@@ -122,8 +122,12 @@ dim_config_2021 <- tibble(
   pub_col = c("208_name", "29117_name", "20722_name")
 )
 
+# note: "land area" data tends to lag behind forest by 1-2 years, but this filters incomplete cases
 transform_2021 <- function(data) {
   data %>% 
+    group_by(Country, Years) %>%
+    filter(any(Type == "Land area")) %>%  # Keep only groups that have "Land area"
+    ungroup() %>% 
     mutate(denom = if_else(Type == "Land area", value, NA)) %>% 
     group_by(Country, Years) %>% 
     fill(denom, .direction = "downup") %>%
@@ -135,7 +139,7 @@ transform_2021 <- function(data) {
 spec_2021 <- indicator_spec(
   indicator_id = 2021,
   data = use,
-  max_year = max_year_fao-1, # "land area" data tends to lag behind forest by 1-2 years, adjust as needed
+  max_year = max_year_fao,
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
@@ -145,11 +149,6 @@ spec_2021 <- indicator_spec(
 
 
 ## ---- indicator 2530 - natural forest proportion of total forest ----
-indicator_id <- 2530
-
-# Fill out dim config table by matching the following info:
-# get_indicator_dimensions(indicator_id)
-# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
 
 dim_config_2530 <- tibble(
   data_col = c("Country", "Years"),
@@ -157,61 +156,30 @@ dim_config_2530 <- tibble(
   pub_col = c("208_name", "29117_name")
 )
 
-filter_2530 <- function(data) {
+transform_2530 <- function(data) { 
   data %>% 
-    filter(item %in% c("Forest land", "Naturally regenerating forest")) %>% #"Planted Forest"
-    filter(element == "area") %>% 
-    # filter out any countries too with inconsistent entries (to not impact LAC total)
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "CuraÃ§ao", "Anguilla"))
+    filter(Type %in% c("Total forest", "Natural forest")) %>% 
+    filter(Country != "Anguilla") %>% # Remove Anguilla because they're the only country without natural or plantation forests detailed
+    mutate(Type = case_when(
+      Type == "Natural forest" ~ "num", # Define numerator and denominator of proportion
+      Type == "Total forest" ~ "denom",
+      TRUE ~ "",
+    )) %>% 
+    pivot_wider(names_from = Type)
 }
 
-transform_2530 <- function(data) {
-  data %>% 
-    select(area, item, year, value) %>% 
-    mutate(item = ifelse(item == "Forest land", "total", "natural")) %>% 
-    pivot_wider(names_from = item, values_from = value) %>% 
-    rename(Country = area, Years = year)
-}
-
-regional_2530 <- function(data) {
-  eclac_totals <- data %>%
-    group_by(Years) %>%
-    summarise(natural = sum(natural, na.rm = TRUE),
-              total = sum(total, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-  
-  data <- bind_rows(data, eclac_totals) %>%
-    mutate(value = round(natural/total * 100, 1)) %>%
-    arrange(Country, Years) %>%
-    select(Country, Years, value)
-  
-  return(data)
-}
-
-footnotes_2530 <- function(data) {
-  data %>% 
-    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
-}
-
-result_2530 <- process_indicator(
+spec_2530 <- indicator_spec(
   indicator_id = 2530,
-  data = rl,
+  data = use,
+  max_year = max_year_fao,
   dim_config = dim_config_2530,
-  filter_fn = filter_2530,
-  transform_fn = transform_2530,
-  regional_fn = regional_2530,
-  footnotes_fn = footnotes_2530,
-  diagnostics = TRUE,
-  export = TRUE
+  filter_data = filter_forest,
+  transform_data = transform_2530,
+  calculate_regional = calculate_regional_wgt_avg,
+  footnotes = lac_footnote
 )
 
 ## ---- indicator 2531 - forest plantations proportion of total forest ----
-indicator_id <- 2531
-
-# Fill out dim config table by matching the following info:
-# get_indicator_dimensions(indicator_id)
-# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
 
 dim_config_2531 <- tibble(
   data_col = c("Country", "Years"),
@@ -219,59 +187,31 @@ dim_config_2531 <- tibble(
   pub_col = c("208_name", "29117_name")
 )
 
-filter_2531 <- function(data) {
+# note: many small countries have "NA" values for Forest plantations, while 100% of their forest is natural.
+# i think it's safe to infer that these cases should be imputed with 0s
+transform_2531 <- function(data) { 
   data %>% 
-    filter(item %in% c("Forest land", "Planted Forest")) %>%
-    filter(element == "area") %>% 
-    # filter out any countries too with inconsistent entries (to not impact LAC total)
-    filter(!area %in% c("Sint Maarten (Dutch part)", "Bermuda", "Curaçao", "CuraÃ§ao", "Anguilla"))
+    filter(Type %in% c("Total forest", "Forest plantations")) %>% 
+    filter(Country != "Anguilla") %>% # Remove Anguilla because they're the only country without natural or plantation forests detailed
+    mutate(Type = case_when(
+      Type == "Forest plantations" ~ "num", # Define numerator and denominator of proportion
+      Type == "Total forest" ~ "denom",
+      TRUE ~ "",
+    )) %>% 
+    pivot_wider(names_from = Type) %>% 
+    mutate(num = replace_na(num, 0))  # Assume NAs to mean no planted forests (generally true)
 }
 
-transform_2531 <- function(data) {
-  data %>% 
-    select(area, item, year, value) %>% 
-    mutate(item = ifelse(item == "Forest land", "total", "planted")) %>% 
-    pivot_wider(names_from = item, values_from = value) %>% 
-    rename(Country = area, Years = year)
-}
-
-regional_2531 <- function(data) {
-  eclac_totals <- data %>%
-    group_by(Years) %>%
-    summarise(planted = sum(planted, na.rm = TRUE),
-              total = sum(total, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-  
-  data <- bind_rows(data, eclac_totals) %>%
-    mutate(value = round(planted/total * 100, 1)) %>%
-    arrange(Country, Years) %>%
-    select(Country, Years, value)  %>% 
-    mutate(value = replace_na(value, 0)) # assume NAs to mean no planted forests (generally true)
-  
-  return(data)
-}
-
-footnotes_2531 <- function(data) {
-  data %>% 
-    mutate(footnotes_id = ifelse(Country == "Latin America and the Caribbean", "6970", footnotes_id))
-  # Says: 6970/ Calculado a partir de la información disponible de los países de la región.
-}
-
-result_2531 <- process_indicator(
+spec_2531 <- indicator_spec(
   indicator_id = 2531,
-  data = rl,
+  data = use,
+  max_year = max_year_fao,
   dim_config = dim_config_2531,
-  filter_fn = filter_2531,
-  transform_fn = transform_2531,
-  regional_fn = regional_2531,
-  footnotes_fn = footnotes_2531,
-  diagnostics = TRUE,
-  export = TRUE
+  filter_data = filter_forest,
+  transform_data = transform_2531,
+  calculate_regional = calculate_regional_wgt_avg,
+  footnotes = lac_footnote
 )
-
-
-
-
 
 
 # FAO LAND USE (RL) INDICATORS -----
