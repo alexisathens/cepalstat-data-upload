@@ -450,16 +450,17 @@ compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
   if (!diagnostics) return(df)
 
   if (new_indicator) {
-    message("ℹ️ New indicator -- nothing published yet, skipping footnote/source comparison")
     return(df)
   }
 
   # compare source
-  pub_source <- get_indicator_source(indicator_id) %>% slice(1) %>% pull(id)
+  pub_source_df <- get_indicator_source(indicator_id) %>% slice(1) 
+  pub_source <- pub_source_df %>% pull(id)
+  pub_source_name <- glue("{pub_source_df$organization_acronym} / {pub_source_df$description}")
   new_source <- unique(df$source_id)
 
   if (setequal(new_source, pub_source)) {
-    message(glue("✅ Source unchanged ({paste(pub_source, collapse = ',')})"))
+    message(glue(" - Source unchanged ({pub_source}): {pub_source_name}"))
   } else {
     message(glue("⚠️ Source changed: {paste(pub_source, collapse = ',')} → {paste(new_source, collapse = ',')}"))
   }
@@ -481,7 +482,7 @@ compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
   removed <- setdiff(pub_ids, new_ids)
 
   if (length(added) == 0 && length(removed) == 0) {
-    message(glue("✅ Footnotes unchanged ({paste(new_ids, collapse = ',')})"))
+    message(glue(" - Footnotes unchanged ({paste(new_ids, collapse = ',')})"))
   } else {
     message(glue(
       "⚠️ Footnotes changed -- added: {if (length(added)) paste(added, collapse = ',') else 'none'}, ",
