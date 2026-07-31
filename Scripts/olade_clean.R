@@ -1,14 +1,3 @@
-library(tidyverse)
-library(magrittr)
-library(readxl)
-library(httr2)
-library(jsonlite)
-library(glue)
-library(writexl)
-library(here)
-library(assertthat)
-library(CepalStatR)
-
 # This script processes OLADE energy indicators using the automated process_indicator() function
 # See data cleaning notes at: cepalstat-data-upload\Data\Raw\olade\energy_indicators_overview.xlsx
 
@@ -17,14 +6,8 @@ library(CepalStatR)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-input_path <- here("Data/Raw/olade")
-
-# read in ISO with cepalstat ids
-iso <- read_xlsx(here("Data/iso_codes.xlsx"))
-
-iso %<>%
-  filter(ECLACa == "Y") %>%
-  select(cepalstat, name, std_name)
+# Define last year of full OLADE data
+max_year_olade <- 2025
 
 # read energy type dimension mappings
 energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))
@@ -32,10 +15,10 @@ energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx
 # get mappings from olade energy sectors to cepalstat energy sectors
 energy_econ_sectors <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"), sheet = "dimensions_crosswalk_78134")
 
-max_year <- 2024 # define most recent year with full data
-
 
 # ---- read downloaded files ----
+
+input_path <- here("Data/Raw/olade")
 
 data_prod <- read_csv(paste0(input_path, "/energy_production_clean.csv"))
 data_supply <- read_csv(paste0(input_path, "/energy_supply_clean.csv"))
