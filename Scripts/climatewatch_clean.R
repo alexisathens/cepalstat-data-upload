@@ -1,23 +1,4 @@
-library(tidyverse)
-library(magrittr)
-library(readxl)
-library(httr2)
-library(jsonlite)
-library(glue)
-library(writexl)
-library(here)
-library(assertthat)
-library(quarto)
-library(CepalStatR)
-
 # This script cleans and standardizes the CAIT-WRI / Climate Watch indicators
-
-# ---- download ----
-
-# run script 01_climatewatch.R to download raw data from API
-
-# Visit: https://www.climatewatchdata.org/data-explorer/historical-emissions? 
-# For information on the API and bulk data downloads
 
 # ---- setup ----
 
@@ -28,10 +9,12 @@ source(here("Scripts/process_indicator_fn.R"))
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 
 iso %<>% 
-  filter(ECLACa == "Y" | name == "World") %>% 
+  filter(ECLACa == "Y" | name == "World") %>% # this includes World
   select(cepalstat, name, std_name)
 
 # ---- read downloaded files ----
+
+# run script 01_climatewatch.R to download raw data from API
 cw_path <- here("Data/Raw/climate watch")
 
 #data_2027 <- read_csv(paste0(cw_path, "/2027_raw.csv")) # note this indicator is HIDDEN in CEPALSTAT and will become deprecated once profiles are linked to new indicators
@@ -48,12 +31,6 @@ data_3387 <- read_csv(paste0(cw_path, "/3387_raw.csv"))
 
 ## ---- indicator 4461 — greenhouse gas (GHG) emissions (per capita) ----
 
-indicator_id <- 4461
-
-# Fill out dim config table by matching the following info:
-# get_indicator_dimensions(indicator_id)
-# print(pub <- get_cepalstat_data(indicator_id) %>% match_cepalstat_labels())
-
 dim_config_4461 <- tibble(
   data_col = c("Country", "Years"),
   dim_id = c("208", "29117"),
@@ -62,10 +39,7 @@ dim_config_4461 <- tibble(
 
 filter_4461 <- function(data) {
   data %>%
-    rename(
-      Country = country,
-      Years = year
-    ) %>% 
+    rename(Country = country, Years = year) %>% 
     select(Country, Years, emissions, population)
 }
 
