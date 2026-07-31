@@ -841,8 +841,6 @@ footnotes_2019 <- list(
   "7777" = function(df) df$Species == "TOTAL", # El total no incluye ballenas, focas y otros mamíferos acuáticos
   "5518" = function(df) df$Species == "Other" # Incluye peces diádromos, varios animales acuáticos y varios productos de animales acuáticos.
 )
-# ** double check this footnote function works, esp 6465 (might be worth building in NULL option to apply to all rows)
-
 
 spec_2019 <- indicator_spec(
   indicator_id = 2019,
