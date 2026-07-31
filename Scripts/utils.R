@@ -336,12 +336,16 @@ get_cepalstat_labels <- function(pub, dim_config) {
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
 # Always run for every indicator, right after transform_data().
 # Sample usage: df %>% standardize_countries()
-standardize_countries <- function(df, indicator_id = NULL) {
+standardize_countries <- function(df, indicator_id) {
   df %<>%
     left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
     mutate(Country = coalesce(std_name, Country)) %>%
-    select(-std_name) %>%
-    filter(Country %in% iso$name)
+    select(-std_name)
+  
+  # allow World entry to persist if it's a climate change indicator
+  ind_source <- meta %>% filter(id == indicator_id) %>% pull(source)
+  if(ind_source == "CAIT - WRI") { df %<>% filter(Country %in% iso$name | Country == "World")} 
+  else { df %<>% filter(Country %in% iso$name | Country == "World")}
 
   # remove subregions
   if (!identical(indicator_id, 3381)) { # exception for mean temperature change
