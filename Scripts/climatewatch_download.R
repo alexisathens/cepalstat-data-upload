@@ -214,7 +214,7 @@ gas_id_co2 <- gases %>%
 
 sector_id_total_no_lucf <- sectors %>% 
   filter(data_source_id == source_id_climate_watch) %>% 
-  filter(name == "Total excluding LUCF") %>% 
+  filter(name == "Total excluding LULUCF") %>% 
   pull(id)
 
 # Create output directory if it doesn't exist
