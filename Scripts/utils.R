@@ -344,8 +344,8 @@ standardize_countries <- function(df, indicator_id) {
   
   # allow World entry to persist if it's a climate change indicator
   ind_source <- meta %>% filter(id == indicator_id) %>% pull(source)
-  if(ind_source == "CAIT - WRI") { df %<>% filter(Country %in% iso$name | Country == "World")} 
-  else { df %<>% filter(Country %in% iso$name | Country == "World")}
+  if(ind_source == "CAIT - WRI") { df %<>% filter(Country %in% iso$name | Country == "World") } 
+  else { df %<>% filter(Country %in% iso$name) }
 
   # remove subregions
   if (!identical(indicator_id, 3381)) { # exception for mean temperature change

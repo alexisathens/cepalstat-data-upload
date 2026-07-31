@@ -1,6 +1,7 @@
 source(here("Scripts/process_indicator_fn.R"))
 source(here("Scripts/emdat.R"))
 source(here("Scripts/fao.R"))
+source(here("Scripts/climatewatch.R"))
 
 # ---- run functions ----
 
@@ -55,4 +56,4 @@ run_many_indicators(run_list)
 beepr::beep(1)
 
 # run single indicator
-run_one_indicator(4049)
+run_one_indicator(3159)
