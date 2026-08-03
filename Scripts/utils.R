@@ -180,9 +180,9 @@ get_indicator_metadata <- function(indicator_id, lang = "en") {
 
 # Get an indicator's currently assigned source(s) from CEPALSTAT
 # Sample usage: get_indicator_source(4046) %>% slice(1) %>% pull(id)
-get_indicator_source <- function(indicator_id) {
+get_indicator_source <- function(indicator_id, lang = "en") {
   # Get sources from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang={lang}&format=json")
 
   # Send request and parse JSON
   result <- fetch_cepalstat_json(url)
