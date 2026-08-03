@@ -1,6 +1,7 @@
 source(here("Scripts/process_indicator_fn.R"))
-source(here("Scripts/emdat.R"))
 source(here("Scripts/fao.R"))
+source(here("Scripts/olade.R"))
+source(here("Scripts/emdat.R"))
 source(here("Scripts/climatewatch.R"))
 
 # ---- run functions ----
