@@ -469,7 +469,7 @@ dim_config_4243 <- tibble(
 
 filter_4243 <- function(data) {
   data %<>%
-    filter(Years >= 1990) %>%  # remove most recent year with only LatAm, and remove data prior to 1990 as that's when the econ series starts
+    filter(Years >= 1990) %>%  # remove data prior to 1990 as that's when the econ series starts
     filter(Type != "Residential") # olade classifies sectors by consumption and so includes residential use; cepalstat calculates gdp by production and so doesn't include
 }
 
@@ -638,7 +638,7 @@ transform_4235 <- function(data) {
   losses <- data_losses
   
   losses %<>% 
-    filter(Years <= max_year) %>% 
+    filter(Years <= max_year_olade) %>% 
     filter(Type == "Electricity") %>% 
     select(-Type) %>% 
     rename(losses = value)
