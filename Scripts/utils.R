@@ -196,9 +196,9 @@ get_indicator_source <- function(indicator_id, lang = "en") {
 # Get an indicator's currently published footnotes from CEPALSTAT. This returns the full set of
 # footnotes used anywhere across the indicator's published data, not tied to specific rows.
 # Sample usage: get_indicator_footnotes(2019)$id
-get_indicator_footnotes <- function(indicator_id) {
+get_indicator_footnotes <- function(indicator_id, lang = "en") {
   # Get footnotes from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang=en&format=json")
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang={lang}&format=json")
 
   # Send request and parse JSON
   result <- fetch_cepalstat_json(url)
