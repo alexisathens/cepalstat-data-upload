@@ -41,7 +41,7 @@ get_indicator_notes_all <- function(indicator_id) {
   # many indicators legitimately have zero technical notes -- treat that as a normal empty
   # result, not a fetch failure
   if (nrow(en) == 0 && nrow(es) == 0) {
-    return(tibble(note_id = character(), description_en = character(),
+    return(tibble(note_id = numeric(), description_en = character(),
                   description_es = character(), indicator_id = numeric()))
   }
 
