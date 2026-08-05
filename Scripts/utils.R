@@ -415,10 +415,9 @@ lac_footnote <- list("6970" = function(df) df$Country == "Latin America and the 
 # to a labeled indicator dataframe. Initializes footnotes_id and appends every matching rule's id.
 # Whenever calculate_regional isn't maintain_regional (i.e. it actually recalculates a LAC total from
 # country data, rather than passing through a published one), lac_footnote (6970) is appended
-# automatically -- unless auto_lac_footnote = FALSE, for the rare indicator that recalculates LAC but
-# needs a different LAC disclaimer (list it in the spec's own footnotes instead; see indicator 2016).
+# automatically.
 # Sample usage: df_l %>% add_footnotes(footnotes = list("7177" = function(df) df$Years == "2002"), calculate_regional)
-add_footnotes <- function(df, footnotes, calculate_regional, auto_lac_footnote = TRUE) {
+add_footnotes <- function(df, footnotes, calculate_regional) {
   append_id <- function(existing, new) {
     case_when(
       is.na(existing) | existing == "" ~ new,
@@ -427,7 +426,7 @@ add_footnotes <- function(df, footnotes, calculate_regional, auto_lac_footnote =
     )
   }
 
-  if (auto_lac_footnote && !identical(calculate_regional, maintain_regional)) {
+  if (!identical(calculate_regional, maintain_regional)) {
     footnotes <- c(footnotes, lac_footnote)
   }
 

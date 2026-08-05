@@ -293,11 +293,11 @@ transform_2016 <- function(data) {
     summarize(value = sum(value, na.rm = TRUE), .groups = "drop")
 }
 
-# this indicator uses footnote 12417 instead of the standard 6970 auto-applied to recalculated LAC
-# totals elsewhere, so auto_lac_footnote is turned off and 12417 is listed explicitly instead
-footnotes_2016 <- list(
-  "12417" = function(df) df$Country == "Latin America and the Caribbean" # Valor total calculado por CEPAL en base a la información disponible en la fuente.
-)
+# note: the old code used footnote 12417 here instead of the standard 6970 ("Valor total calculado
+# por CEPAL en base a la información disponible en la fuente" vs. 6970's "Calculado a partir de la
+# información disponible de los países de la región"). There's no per-indicator override for the
+# auto-applied LAC footnote, so this now gets the standard 6970 like every other recalculated-LAC
+# indicator -- flag if 12417 specifically needs to be preserved instead.
 
 spec_2016 <- indicator_spec(
   indicator_id = 2016,
@@ -306,9 +306,7 @@ spec_2016 <- indicator_spec(
   dim_config = dim_config_2016,
   filter_data = filter_2016,
   transform_data = transform_2016,
-  calculate_regional = calculate_regional_sum,
-  footnotes = footnotes_2016,
-  auto_lac_footnote = FALSE
+  calculate_regional = calculate_regional_sum
 )
 
 
