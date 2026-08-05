@@ -25,10 +25,6 @@ env <- ind %>%
   rename(id = `Indicator ID`, indicator = Indicador.2) %>%
   select(id, indicator)
 
-# make manual adjustments (matches build_metadata_table.R)
-env %<>%
-  filter(!id %in% c(4264, 4252)) # make these invisible
-
 env_ids <- env$id
 
 

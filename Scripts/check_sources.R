@@ -24,10 +24,6 @@ env <- ind %>%
   rename(id = `Indicator ID`, indicator = Indicador.2) %>%
   select(id, indicator)
 
-# make manual adjustments (matches build_metadata_table.R)
-env %<>%
-  filter(!id %in% c(4264, 4252)) # make these invisible
-
 env_ids <- env$id
 
 
@@ -83,11 +79,14 @@ sources_compiled <- source_links %>%
   arrange(source_id) %>%
   mutate(notes = NA_character_) # blank column to append suggested changes
 
+sources_compiled %<>% 
+  filter(organization_acronym_en != "SDG") # remove SDG sources
+
 
 ## 4. Export for manual review ----
 
-out_dir <- here("Data/Checks")
+out_dir <- here("Docs/Árbol Reorganización - 2026 Junio")
 dir.create(out_dir, showWarnings = FALSE, recursive = TRUE)
 
-write_xlsx(sources_compiled, file.path(out_dir, "source_review.xlsx"))
+write_xlsx(sources_compiled, file.path(out_dir, "environmental_source_review_20260803.xlsx"))
 message(glue("✅ Exported {nrow(sources_compiled)} unique sources to Data/Checks/source_review.xlsx"))
