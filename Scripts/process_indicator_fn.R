@@ -2,11 +2,12 @@ source(here("Scripts/utils.R"))
 
 # define indicator specs
 indicator_spec <- function(
-    indicator_id, data, max_year, dim_config, filter_data, transform_data, calculate_regional, 
-    footnotes = list(), define_source = existing_source, new_indicator = FALSE) {
+    indicator_id, data, max_year, dim_config, filter_data, transform_data, calculate_regional,
+    footnotes = list(), define_source = existing_source, new_indicator = FALSE, auto_lac_footnote = TRUE) {
   list(indicator_id = indicator_id, data = data, max_year = max_year, dim_config = dim_config,
        filter_data = filter_data, transform_data = transform_data, calculate_regional = calculate_regional,
-       footnotes = footnotes, define_source = define_source, new_indicator = new_indicator)
+       footnotes = footnotes, define_source = define_source, new_indicator = new_indicator,
+       auto_lac_footnote = auto_lac_footnote)
 }
 
 # debugging
@@ -27,6 +28,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   footnotes    <- spec$footnotes
   define_source      <- spec$define_source
   new_indicator <- spec$new_indicator
+  auto_lac_footnote <- spec$auto_lac_footnote
   diagnostics <- global$diagnostics
   export <- global$export
   qc_check <- global$qc_check
@@ -66,7 +68,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   
   # get wasabi-formatted indicator df
   df_f <- df_l %>% 
-    add_footnotes(., footnotes, calculate_regional) %>% # default = no footnote, plus auto LAC footnote
+    add_footnotes(., footnotes, calculate_regional, auto_lac_footnote) %>% # default = no footnote, plus auto LAC footnote
     define_source(., indicator_id) %>% # default = existing source
     compare_metadata(., indicator_id, new_indicator, diagnostics) %>%
     format_for_wasabi(., indicator_id) %>% 
