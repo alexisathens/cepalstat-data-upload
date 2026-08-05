@@ -30,11 +30,20 @@ env_ids <- env$id
 ## 2. Collect every source attached to each indicator, in English and Spanish ----
 
 get_indicator_sources_all <- function(indicator_id) {
-  en <- get_indicator_source(indicator_id, lang = "en") %>%
+  en <- get_indicator_source(indicator_id, lang = "en")
+  es <- get_indicator_source(indicator_id, lang = "es")
+
+  # guard against an indicator with zero sources (shouldn't normally happen, but avoids a crash/
+  # type-mismatch in the map_dfr() below if it ever does)
+  if (nrow(en) == 0 && nrow(es) == 0) {
+    return(tibble(source_id = numeric(), indicator_id = numeric()))
+  }
+
+  en %<>%
     rename(source_id = id) %>%
     rename_with(~ paste0(.x, "_en"), .cols = -source_id)
 
-  es <- get_indicator_source(indicator_id, lang = "es") %>%
+  es %<>%
     rename(source_id = id) %>%
     rename_with(~ paste0(.x, "_es"), .cols = -source_id)
 
