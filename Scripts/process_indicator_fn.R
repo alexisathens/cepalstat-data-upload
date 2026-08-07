@@ -1,6 +1,3 @@
-source(here("Scripts/utils.R"))
-#source(here("Scripts/technical_sheet.R"))
-
 # define indicator specs
 indicator_spec <- function(
     indicator_id, data, max_year, dim_config, filter_data, transform_data, calculate_regional, 
@@ -11,13 +8,14 @@ indicator_spec <- function(
 }
 
 # debugging
-# spec <- spec_4046
+# spec <- spec_5647
 # global <- list(diagnostics = TRUE, export = FALSE, qc_check = FALSE, open_qmd = FALSE, metadata = FALSE)
 
 # generic CEPALSTAT indicator processing function
 process_indicator <- function(spec = indicator_spec, global = global_spec) {
   # get indicator-specific and global variables and functions
   indicator_id   <- spec$indicator_id
+  indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
   data           <- spec$data
   max_year       <- spec$max_year
   dim_config     <- spec$dim_config
@@ -31,22 +29,21 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   export <- global$export
   qc_check <- global$qc_check
   open_qmd <- global$open_qmd
-  metadata <- global$metadata
   
-  message(glue("▶ Processing indicator {indicator_id}..."))
+  message(glue("▶ Processing indicator {indicator_id} - {indicator_name}:"))
   
   # get clean indicator df
   df <- data %>% 
     filter_data() %>% 
     transform_data() %>%
-    standardize_countries() %>%
-    assert_data_reqs(., dim_config, indicator_id, max_year) %>%
+    standardize_countries(., indicator_id) %>%
     calculate_regional() %>% # default = recalculate sum
+    assert_data_reqs(., dim_config, indicator_id, max_year) %>%
     assert_no_duplicates()
   
   # get labeled indicator df
   df_l <- df %>% 
-    get_cepalstat_ids(., dim_config) %>% # **store common lookups - create join_labels as wrapper w storage?
+    get_cepalstat_ids(., dim_config) %>%
     assert_no_na_cols()
   
   # get base comparison file
@@ -67,8 +64,9 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   
   # get wasabi-formatted indicator df
   df_f <- df_l %>% 
-    add_footnotes(., footnotes) %>% # default = no footnote
+    add_footnotes(., footnotes, calculate_regional) %>% # default = no footnote, plus auto LAC footnote
     define_source(., indicator_id) %>% # default = existing source
+    compare_metadata(., indicator_id, new_indicator, diagnostics) %>%
     format_for_wasabi(., indicator_id) %>% 
     assert_no_na_cols()
   
@@ -88,12 +86,6 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     render_qc_checks(indicator_id, new_indicator, open_qmd)
     message(glue("✅ Exported quality check file for {indicator_id}"))
   }
-  
-  # suggest metadata with anthropic api
-  # if(metadata) {
-  #   suggest_metadata_en(indicator_id)
-  #   message(glue("✅ Exported suggested metadata for {indicator_id} written to Metadata/Outputs/metadata_{indicator_id}_en.txt"))
-  # }
   
   message(glue("✅ Indicator {indicator_id} processing complete"))
   return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))

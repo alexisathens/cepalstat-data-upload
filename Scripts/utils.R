@@ -96,6 +96,15 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
 # dim_config + value/num/denom, and drop years beyond max_year. Stops on failure, else returns data.
 # Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = max_year_emdat)
 assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
+  
+  # filter out extra years and coerce type
+  if (indicator_id != 2031) { # exception for MEA indicator where Years is the value
+    data %<>%
+      filter(Years <= max_year) %>%
+      mutate(Years = as.character(Years)) %>%
+      arrange(Country, Years)
+  }
+  
   # check for NA values
   na_vals <- data %>%
     filter(is.na(value))
@@ -108,7 +117,7 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
   }
 
   # check for extra columns
-  acceptable_cols <- c(dim_config$data_col, "value", "num", "denom")
+  acceptable_cols <- c(dim_config$data_col, "value")
   extra_cols <- setdiff(names(data), acceptable_cols)
 
   if(!is_empty(extra_cols)) {
@@ -117,16 +126,6 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
       paste0(extra_cols, collapse = ", ")
     )
     stop(msg)
-  }
-
-  # filter out extra years and coerce type
-  data %<>%
-    filter(Years <= max_year) %>%
-    mutate(Years = as.character(Years)) %>%
-    arrange(Country, Years)
-
-  if (indicator_id == 2031) { # exception for MEA indicator where Years is the value
-    data %<>% mutate(Years = as.integer(Years))
   }
 
   return(data)
@@ -179,9 +178,9 @@ get_indicator_metadata <- function(indicator_id, lang = "en") {
 
 # Get an indicator's currently assigned source(s) from CEPALSTAT
 # Sample usage: get_indicator_source(4046) %>% slice(1) %>% pull(id)
-get_indicator_source <- function(indicator_id) {
-  ## Get footnotes_id from CEPALSTAT
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang=en&format=json")
+get_indicator_source <- function(indicator_id, lang = "en") {
+  # Get sources from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/sources?lang={lang}&format=json")
 
   # Send request and parse JSON
   result <- fetch_cepalstat_json(url)
@@ -190,6 +189,22 @@ get_indicator_source <- function(indicator_id) {
     as_tibble()
 
   return(sources_tbl)
+}
+
+# Get an indicator's currently published footnotes from CEPALSTAT. This returns the full set of
+# footnotes used anywhere across the indicator's published data, not tied to specific rows.
+# Sample usage: get_indicator_footnotes(2019)$id
+get_indicator_footnotes <- function(indicator_id, lang = "en") {
+  # Get footnotes from CEPALSTAT
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/footnotes?lang={lang}&format=json")
+
+  # Send request and parse JSON
+  result <- fetch_cepalstat_json(url)
+
+  footnotes_tbl <- result$body$footnotes %>%
+    as_tibble()
+
+  return(footnotes_tbl)
 }
 
 # Get the full member table (English + Spanish names) for a single CEPALSTAT dimension
@@ -319,18 +334,27 @@ get_cepalstat_labels <- function(pub, dim_config) {
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
 # Always run for every indicator, right after transform_data().
 # Sample usage: df %>% standardize_countries()
-standardize_countries <- function(df) {
-  df %>%
+standardize_countries <- function(df, indicator_id) {
+  df %<>%
     left_join(iso %>% select(name, std_name), by = c("Country" = "name")) %>%
     mutate(Country = coalesce(std_name, Country)) %>%
-    select(-std_name) %>%
-    filter(Country %in% iso$name) %>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America")) # always remove subregions
+    select(-std_name)
+  
+  # allow World entry to persist if it's a climate change indicator
+  ind_source <- meta %>% filter(id == indicator_id) %>% pull(source)
+  if(ind_source == "CAIT - WRI") { df %<>% filter(Country %in% iso$name | Country == "World") } 
+  else { df %<>% filter(Country %in% iso$name) }
+
+  # remove subregions
+  if (!identical(indicator_id, 3381)) { # exception for mean temperature change
+    df %<>% filter(!Country %in% c("South America", "Central America", "Caribbean", "Latin America"))
+  }
+
+  df
 }
 
-# Regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
-# Default calculate_regional option — returns the full replacement df (not just the new total rows).
-# Sample usage: df %>% calculate_regional_sum()
+# Default regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
+# Sample usage: df %>% calculate_regional_sum() # with "value" as col name
 calculate_regional_sum <- function(df) {
   # remove all LAC sub/regional totals
   df %<>%
@@ -349,11 +373,25 @@ calculate_regional_sum <- function(df) {
 }
 
 # Regional strategy: recalculate the LAC total as a weighted average (e.g. sum(num)/sum(denom) across countries).
-# ** not yet implemented — placeholder for indicators like fertilizer intensity that need num/denom columns
-# carried through filter_data()/transform_data() (see assert_data_reqs()'s acceptable_cols).
-# Sample usage: df %>% calculate_regional_wgt_avg()
+# Sample usage: df %>% calculate_regional_wgt_avg() # with "num" and "denom" col names
 calculate_regional_wgt_avg <- function(df) {
-  # ** write this function
+  # remove all LAC sub/regional totals
+  df %<>%
+    filter(!Country %in% c("South America", "Central America", "Caribbean",
+                           "Latin America and the Caribbean", "Latin America"))
+  
+  # calculate LAC region sum
+  lac_total <- df %>%
+    filter(Country != "World") %>%
+    group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
+    summarise(num = sum_or_na(num),
+              denom = sum_or_na(denom), .groups = "drop") %>%
+    mutate(Country = "Latin America and the Caribbean")
+  
+  df %>% 
+    bind_rows(lac_total) %>% 
+    mutate(value = round((num / denom) * 100, 1)) %>%
+    select(-num, -denom)
 }
 
 # Regional strategy: keep the source's own LAC total as-is (no recalculation).
@@ -366,16 +404,28 @@ maintain_regional <- function(df) {
 
 # ---- Footnotes & source ----
 
+# Reusable footnote rule: flags the LAC total row with footnote 6970 (calculated from available country data).
+# Applied automatically by add_footnotes() whenever calculate_regional actually recalculates LAC --
+# no need to list this in a spec's own footnotes.
+lac_footnote <- list("6970" = function(df) df$Country == "Latin America and the Caribbean")
+
 # Apply a named list of footnote rules (id -> predicate function taking df, returning a logical vector)
 # to a labeled indicator dataframe. Initializes footnotes_id and appends every matching rule's id.
-# Sample usage: df_l %>% add_footnotes(footnotes = c(lac_footnote, list("7177" = function(df) df$Years == "2002")))
-add_footnotes <- function(df, footnotes) {
+# Whenever calculate_regional isn't maintain_regional (i.e. it actually recalculates a LAC total from
+# country data, rather than passing through a published one), lac_footnote (6970) is appended
+# automatically.
+# Sample usage: df_l %>% add_footnotes(footnotes = list("7177" = function(df) df$Years == "2002"), calculate_regional)
+add_footnotes <- function(df, footnotes, calculate_regional) {
   append_id <- function(existing, new) {
     case_when(
       is.na(existing) | existing == "" ~ new,
       !grepl(paste0("\\b", new, "\\b"), existing) ~ paste(existing, new, sep = ","),
       TRUE ~ existing
     )
+  }
+
+  if (!identical(calculate_regional, maintain_regional)) {
+    footnotes <- c(footnotes, lac_footnote)
   }
 
   df$footnotes_id <- ""
@@ -385,14 +435,64 @@ add_footnotes <- function(df, footnotes) {
   df
 }
 
-# Reusable footnote rule: flags the LAC total row with footnote 6970 (calculated from available country data).
-# Sample usage: indicator_spec(..., footnotes = lac_footnote)
-lac_footnote <- list("6970" = function(df) df$Country == "Latin America and the Caribbean")
-
 # Default define_source: look up an indicator's existing CEPALSTAT source and assign it as source_id.
 # Sample usage: df_l %>% existing_source(indicator_id = 4046)
 existing_source <- function(df, indicator_id) { # default: get existing source
   df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
+}
+
+# Compare a cleaned indicator's assigned source and footnote ids against what's currently published on
+# CEPALSTAT, printing a diagnostic message -- never stops execution or modifies df. Only runs when
+# diagnostics = TRUE, and skips entirely for new_indicator = TRUE (nothing published yet to compare
+# against). Footnotes are compared as a set across the whole indicator, since CEPALSTAT's /footnotes
+# endpoint isn't row-level -- this catches an id disappearing/appearing entirely, not one landing on
+# the wrong specific row while the overall set stays the same.
+# Sample usage: df_l %>% compare_metadata(indicator_id = 4046, new_indicator = FALSE, diagnostics = TRUE)
+compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
+  if (!diagnostics) return(df)
+
+  if (new_indicator) {
+    return(df)
+  }
+
+  # compare source
+  pub_source_df <- get_indicator_source(indicator_id) %>% slice(1) 
+  pub_source <- pub_source_df %>% pull(id)
+  pub_source_name <- glue("{pub_source_df$organization_acronym} / {pub_source_df$description}")
+  new_source <- unique(df$source_id)
+
+  if (setequal(new_source, pub_source)) {
+    message(glue(" - Source unchanged ({pub_source}): {pub_source_name}"))
+  } else {
+    message(glue("⚠️ Source changed: {paste(pub_source, collapse = ',')} → {paste(new_source, collapse = ',')}"))
+  }
+
+  # compare footnotes (set-level, across the whole indicator)
+  pub_footnotes <- get_indicator_footnotes(indicator_id)
+  pub_ids <- if ("id" %in% names(pub_footnotes)) sort(pub_footnotes$id) else integer(0)
+
+  new_ids <- df$footnotes_id %>%
+    str_split(",") %>%
+    unlist() %>%
+    trimws() %>%
+    discard(~ .x == "") %>%
+    as.integer() %>%
+    unique() %>%
+    sort()
+
+  added <- setdiff(new_ids, pub_ids)
+  removed <- setdiff(pub_ids, new_ids)
+
+  if (length(added) == 0 && length(removed) == 0) {
+    message(glue(" - Footnotes unchanged ({paste(new_ids, collapse = ',')})"))
+  } else {
+    message(glue(
+      "⚠️ Footnotes changed -- added: {if (length(added)) paste(added, collapse = ',') else 'none'}, ",
+      "removed: {if (length(removed)) paste(removed, collapse = ',') else 'none'}"
+    ))
+  }
+
+  df
 }
 
 
@@ -593,6 +693,43 @@ render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRU
   if(open_qmd == TRUE){
     browseURL(here::here("QC Reports", output_file))
   }
+}
+
+# ---- Bulk processing ----
+
+# Run one indicator: look up its spec, process it, and store the result as result_<id>.
+# Sample usage: run_one_indicator(4046)
+run_one_indicator <- function(id, global = global_spec) {
+  spec <- get(paste0("spec_", id))
+  result <- process_indicator(spec, global)
+  assign(paste0("result_", id), result, envir = .GlobalEnv)
+  invisible(result)
+}
+
+# Run many indicators and cache error messages
+# Sample usage: run_many_indicators(run_list) # where run_list is list of ids
+run_many_indicators <- function(run_list, global = global_spec) {
+  run_log <- tibble(id = numeric(), status = character(), message = character())
+  
+  for (i in seq_along(run_list)) {
+    id <- run_list[i]
+    
+    outcome <- tryCatch({
+      run_one_indicator(id)
+      list(status = "ok", message = NA_character_)
+    }, error = function(e) {
+      message(glue("❌ Indicator {id} failed: {conditionMessage(e)}"))
+      list(status = "error", message = conditionMessage(e))
+    })
+    
+    run_log <- add_row(run_log, id = id, status = outcome$status, message = outcome$message)
+  }
+  
+  message(glue("\n✅ {sum(run_log$status == 'ok')}/{nrow(run_log)} indicators processed successfully"))
+  if (any(run_log$status == "error")) {
+    message("❌ Failed: ", paste(run_log$id[run_log$status == "error"], collapse = ", "))
+  }
+  return(run_log)
 }
 
 

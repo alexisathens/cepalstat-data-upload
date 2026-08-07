@@ -1,13 +1,7 @@
-library(httr2)
-library(jsonlite)
-library(dplyr)
-library(purrr)
-library(tidyr)
-library(stringr)
-library(readxl)
-library(here)
-library(magrittr)
+# This script downloads CAIT-WRI / Climate Watch data from their public API
 
+# Visit: https://www.climatewatchdata.org/data-explorer/historical-emissions? 
+# For information on the API and bulk data downloads
 
 ## ---- define global variables ----
 
@@ -18,13 +12,10 @@ utils::globalVariables(c(
   "countryiso3code", "country", ".", "lookup_iso3"
 ))
 
-# Visit: https://www.climatewatchdata.org/data-explorer/historical-emissions? 
-# For information on the API and bulk data downloads
-
 # Read in ISO with cepalstat ids
-iso <- read_xlsx(here("Data/iso_codes.xlsx"))
+iso_cw <- read_xlsx(here("Data/iso_codes.xlsx"))
 
-iso %<>% 
+iso_cw %<>% 
   filter(ECLACa == "Y" | name == "World") %>% 
   mutate(
     iso3 = ifelse(.data$name == "World", "WORLD", .data$iso3),
@@ -33,10 +24,10 @@ iso %<>%
   distinct(across(all_of(c("iso3", "wb_iso3", "std_name"))))
 
 # Lookup table for converting between WB and CEPAL iso codes
-iso_lookup_wb <- iso %>% select(all_of(c("iso3", "wb_iso3")))
+iso_lookup_wb <- iso_cw %>% select(all_of(c("iso3", "wb_iso3")))
 
 # Get ISO codes for LAC countries and World
-regions_iso <- iso %>% filter(!.data$iso3 %in% c("LAA", "CAA", "CAR")) %>% pull("iso3")
+regions_iso <- iso_cw %>% filter(!.data$iso3 %in% c("LAA", "CAA", "CAR")) %>% pull("iso3")
 
 # Get base API URL
 base <- "https://www.climatewatchdata.org/api/v1/data/historical_emissions"
@@ -223,7 +214,7 @@ gas_id_co2 <- gases %>%
 
 sector_id_total_no_lucf <- sectors %>% 
   filter(data_source_id == source_id_climate_watch) %>% 
-  filter(name == "Total excluding LUCF") %>% 
+  filter(name == "Total excluding LULUCF") %>% 
   pull(id)
 
 # Create output directory if it doesn't exist

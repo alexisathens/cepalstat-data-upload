@@ -1,27 +1,24 @@
 # This script cleans and standardizes the EM-DAT disaster indicators
 
-# ---- download ----
-
-## Instructions for DOWNLOADING the EM-DAT data (step 01):
-# Go to https://public.emdat.be/
-# Create a user account
-# Go to "Access Data"
-# Select in 'classification' natural; in 'countries' Americas > LAC; in 'time period' 1970 to the last available year
-
 # ---- setup ----
 
+library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
+# Define latest year of reliable data
+max_year_emdat <- 2025 # as of July 2026
+
 # ---- data ----
 
-# Read in the downloaded emdat data
-emdat <- read_xlsx(here("Data/Raw/emdat/public_emdat_incl_hist_2026-07-06.xlsx"))
+# Read in the most recently downloaded emdat data file (auto-detects latest by file date)
+emdat_files <- list.files(here("Data/Raw/emdat"), pattern = "^public_emdat_incl_hist_.*\\.xlsx$", full.names = TRUE)
+assert_that(length(emdat_files) > 0, msg = "No EM-DAT file found in Data/Raw/emdat/ matching public_emdat_incl_hist_*.xlsx")
+
+emdat_path <- emdat_files[which.max(file.info(emdat_files)$mtime)]
+emdat <- read_xlsx(emdat_path)
 
 # ---- shared functions ----
-
-# Define latest year of data
-max_year_emdat <- 2025
 
 # Common data filter
 filter_emdat <- function(data, min_year = 1990) {
@@ -118,6 +115,28 @@ transform_5647 <- function(data) {
     add_type_rollups()
 }
 
+# Regional strategy for 5647: country-level counts are fine as-is, but the LAC total can't be a
+# sum of country counts -- a single disaster hitting multiple countries would be counted once per
+# country instead of once. Recompute it directly from the raw emdat rows (where DisNo. is still
+# available) as the count of *distinct* DisNo. across all LAC countries combined.
+calculate_regional_5647 <- function(df) {
+  lac_counts <- emdat %>%
+    filter_emdat() %>%
+    select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`) %>%
+    filter(Years <= max_year_emdat) %>% 
+    standardize_emdat() %>%
+    standardize_countries(indicator_id = 5647) %>%
+    #mutate(Dis = str_sub(DisNo., 1, 9)) %>% 
+    mutate(Dis = str_remove(`DisNo.`, "-[A-Za-z]+$")) %>% # remove country identifier to keep intl id only
+    distinct(Dis, Years, Group, Type) %>% # keep single Dis event across countries
+    group_by(Years, Group, Type) %>%
+    summarize(value = n(), .groups = "drop") %>%
+    mutate(Years = as.character(Years), Country = "Latin America and the Caribbean") %>%
+    add_type_rollups()
+  
+  bind_rows(df, lac_counts)
+}
+
 spec_5647 <- indicator_spec(
   indicator_id = 5647,
   data = emdat,
@@ -125,7 +144,7 @@ spec_5647 <- indicator_spec(
   dim_config = dim_config_5647,
   filter_data = filter_emdat,
   transform_data = transform_5647,
-  calculate_regional = calculate_regional_sum
+  calculate_regional = calculate_regional_5647 # uses emdat, max_year_emdat df from environment
 )
 
 
