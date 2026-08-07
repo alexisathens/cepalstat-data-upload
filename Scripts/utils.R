@@ -98,10 +98,12 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
 assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
   
   # filter out extra years and coerce type
-  data %<>%
-    filter(Years <= max_year) %>%
-    mutate(Years = as.character(Years)) %>%
-    arrange(Country, Years)
+  if (indicator_id != 2031) { # exception for MEA indicator where Years is the value
+    data %<>%
+      filter(Years <= max_year) %>%
+      mutate(Years = as.character(Years)) %>%
+      arrange(Country, Years)
+  }
   
   # check for NA values
   na_vals <- data %>%
@@ -124,10 +126,6 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
       paste0(extra_cols, collapse = ", ")
     )
     stop(msg)
-  }
-
-  if (indicator_id == 2031) { # exception for MEA indicator where Years is the value
-    data %<>% mutate(Years = as.integer(Years))
   }
 
   return(data)
@@ -695,6 +693,43 @@ render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRU
   if(open_qmd == TRUE){
     browseURL(here::here("QC Reports", output_file))
   }
+}
+
+# ---- Bulk processing ----
+
+# Run one indicator: look up its spec, process it, and store the result as result_<id>.
+# Sample usage: run_one_indicator(4046)
+run_one_indicator <- function(id, global = global_spec) {
+  spec <- get(paste0("spec_", id))
+  result <- process_indicator(spec, global)
+  assign(paste0("result_", id), result, envir = .GlobalEnv)
+  invisible(result)
+}
+
+# Run many indicators and cache error messages
+# Sample usage: run_many_indicators(run_list) # where run_list is list of ids
+run_many_indicators <- function(run_list, global = global_spec) {
+  run_log <- tibble(id = numeric(), status = character(), message = character())
+  
+  for (i in seq_along(run_list)) {
+    id <- run_list[i]
+    
+    outcome <- tryCatch({
+      run_one_indicator(id)
+      list(status = "ok", message = NA_character_)
+    }, error = function(e) {
+      message(glue("❌ Indicator {id} failed: {conditionMessage(e)}"))
+      list(status = "error", message = conditionMessage(e))
+    })
+    
+    run_log <- add_row(run_log, id = id, status = outcome$status, message = outcome$message)
+  }
+  
+  message(glue("\n✅ {sum(run_log$status == 'ok')}/{nrow(run_log)} indicators processed successfully"))
+  if (any(run_log$status == "error")) {
+    message("❌ Failed: ", paste(run_log$id[run_log$status == "error"], collapse = ", "))
+  }
+  return(run_log)
 }
 
 
