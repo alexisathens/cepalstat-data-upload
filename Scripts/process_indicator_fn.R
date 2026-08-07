@@ -1,5 +1,3 @@
-source(here("Scripts/utils.R"))
-
 # define indicator specs
 indicator_spec <- function(
     indicator_id, data, max_year, dim_config, filter_data, transform_data, calculate_regional, 
