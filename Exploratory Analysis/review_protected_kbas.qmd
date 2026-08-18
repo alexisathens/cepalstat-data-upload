@@ -1,0 +1,510 @@
+---
+title: "Protected KBA Indicator Comparison"
+format:
+  html:
+    self-contained: true
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: cosmo
+    math: "mathjax"
+params:
+  indicator_a: 5731
+  indicator_b: 3963
+execute:
+  echo: false
+  warning: false
+  message: false
+date: today
+---
+
+## Comparing Indicators `r params$indicator_a` and `r params$indicator_b`
+
+<!--
+This report is an exploratory comparison between two CEPALSTAT indicators that are supposed to
+represent the same underlying concept, following the same methodology (as documented in their
+technical sheets / metadata, both pulled live from the CEPALSTAT API below). In practice their
+published values diverge, and the goal of this notebook is to characterize *how* and *where* they
+diverge -- by country, by year, and structurally (source, methodology, dimensions) -- so that a
+root cause can be identified and written up in the Summary of Findings section at the end.
+-->
+
+```{r setup}
+library(tidyverse)
+library(magrittr)
+library(readxl)
+library(glue)
+library(knitr)
+library(gt)
+library(reactable)
+library(plotly)
+library(scales)
+library(here)
+
+source(here("Scripts/utils.R"))
+
+id_a <- params$indicator_a
+id_b <- params$indicator_b
+
+DIM_COUNTRY <- 208
+DIM_YEAR    <- 29117
+
+# Strip stray <br> tags that sometimes leak into CEPALSTAT's published metadata text, and collapse
+# extra whitespace, so long-form fields (definition, methodology, comments) read cleanly in the report.
+strip_html <- function(x) {
+  x %>% str_remove_all("<br\\s*/?>") %>% str_squish()
+}
+```
+
+## Technical Sheet Comparison
+
+*This section pulls each indicator's live metadata ("technical sheet") from the CEPALSTAT API and
+compares them field by field. Since both indicators are supposed to follow the same methodology,
+any differences here (definition, calculation methodology, data source, dimensions) are the first
+place to look for an explanation of diverging values.*
+
+```{r fetch metadata}
+meta_a <- get_indicator_metadata(id_a) %>% mutate(value = strip_html(value))
+meta_b <- get_indicator_metadata(id_b) %>% mutate(value = strip_html(value))
+
+name_a <- meta_a %>% filter(variable == "indicator_name") %>% pull(value)
+name_b <- meta_b %>% filter(variable == "indicator_name") %>% pull(value)
+
+label_a <- glue("Indicator {id_a}: {name_a}")
+label_b <- glue("Indicator {id_b}: {name_b}")
+```
+
+**`r label_a`**
+
+**`r label_b`**
+
+### Key Fields
+
+The fields below drive the actual calculation and are the most likely source of any methodological
+divergence. A "Match" / "Differs" flag is shown for each.
+
+```{r display key metadata fields, results='asis'}
+key_fields <- c("indicator_name", "definition", "calculation_methodology", "comments",
+                "unit_measurement", "periodicity", "geographic_coverage")
+key_fields <- intersect(key_fields, union(meta_a$variable, meta_b$variable))
+
+get_field <- function(meta, field) {
+  val <- meta$value[meta$variable == field]
+  if (length(val) == 0 || is.na(val) || val == "") "*(not provided)*" else val
+}
+
+for (f in key_fields) {
+  val_a <- get_field(meta_a, f)
+  val_b <- get_field(meta_b, f)
+  differs <- !identical(val_a, val_b)
+
+  field_title <- str_to_title(str_replace_all(f, "_", " "))
+  flag <- if (differs) "&#9888;&#65039; **Differs**" else "&#9989; Match"
+
+  cat(glue("#### {field_title} -- {flag}\n\n"))
+  cat(glue("**Indicator {id_a}:**\n\n{val_a}\n\n"))
+  cat(glue("**Indicator {id_b}:**\n\n{val_b}\n\n"))
+  cat("\n---\n\n")
+}
+```
+
+### Data Source
+
+```{r compare source}
+source_a <- get_indicator_source(id_a) %>% slice(1)
+source_b <- get_indicator_source(id_b) %>% slice(1)
+
+tibble(
+  Indicator = c(as.character(id_a), as.character(id_b)),
+  Source    = c(
+    glue("{source_a$organization_acronym} / {source_a$description}"),
+    glue("{source_b$organization_acronym} / {source_b$description}")
+  )
+) %>%
+  gt() %>%
+  tab_header(title = "Assigned Data Source")
+```
+
+### Dimensions
+
+*If one indicator carries an extra dimension the other doesn't (e.g. a breakdown the other
+collapses or omits), that's a structural difference worth flagging on its own.*
+
+```{r compare dimensions}
+dims_a <- get_indicator_dimensions(id_a)
+dims_b <- get_indicator_dimensions(id_b)
+
+only_dims_a <- setdiff(dims_a$name, dims_b$name)
+only_dims_b <- setdiff(dims_b$name, dims_a$name)
+```
+
+`r if (length(only_dims_a) > 0) glue("Dimensions present **only** in indicator {id_a}: {paste(only_dims_a, collapse = ', ')}.") else glue("No dimensions unique to indicator {id_a}.")`
+
+`r if (length(only_dims_b) > 0) glue("Dimensions present **only** in indicator {id_b}: {paste(only_dims_b, collapse = ', ')}.") else glue("No dimensions unique to indicator {id_b}.")`
+
+### Full Metadata Field Listing (Appendix)
+
+*Every metadata field returned by the API for either indicator, side by side, in case something
+outside the key fields above explains the discrepancy.*
+
+```{r full metadata appendix}
+meta_compare <- full_join(
+  meta_a %>% rename(value_a = value),
+  meta_b %>% rename(value_b = value),
+  by = "variable"
+) %>%
+  mutate(differs = coalesce(value_a, "") != coalesce(value_b, "")) %>%
+  arrange(desc(differs), variable)
+
+reactable(
+  meta_compare %>%
+    rename(!!as.character(glue("Indicator {id_a}")) := value_a, !!as.character(glue("Indicator {id_b}")) := value_b),
+  columns = list(
+    variable = colDef(name = "Field"),
+    differs  = colDef(name = "Differs?")
+  ),
+  defaultPageSize = 8,
+  searchable = TRUE,
+  highlight = TRUE,
+  bordered = TRUE,
+  wrap = TRUE,
+  theme = reactableTheme(
+    style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
+  )
+)
+```
+
+## Data Comparison
+
+*This section pulls the actual published data for both indicators and compares them on a
+country-by-country, year-by-year basis.*
+
+```{r fetch data}
+raw_a <- get_cepalstat_data(id_a)
+raw_b <- get_cepalstat_data(id_b)
+
+base_dim_cols <- paste0("dim_", c(DIM_COUNTRY, DIM_YEAR))
+
+extra_dims_a <- setdiff(raw_a %>% select(starts_with("dim_")) %>% names(), base_dim_cols)
+extra_dims_b <- setdiff(raw_b %>% select(starts_with("dim_")) %>% names(), base_dim_cols)
+```
+
+`r if (length(extra_dims_a) > 0) glue("Indicator {id_a} carries additional dimensions beyond country/year ({paste(extra_dims_a, collapse = ', ')}); these are summed to a single country/year value below.") else ""`
+
+`r if (length(extra_dims_b) > 0) glue("Indicator {id_b} carries additional dimensions beyond country/year ({paste(extra_dims_b, collapse = ', ')}); these are summed to a single country/year value below.") else ""`
+
+```{r summarize and label}
+country_dim <- get_dimension_table(DIM_COUNTRY) %>% transmute(dim_208 = as.character(id), country = name)
+year_dim    <- get_dimension_table(DIM_YEAR)    %>% transmute(dim_29117 = as.character(id), year = name)
+
+# Collapse to a single country/year value (summing over any extra dimensions), then attach labels.
+summarize_indicator <- function(raw) {
+  raw %>%
+    mutate(
+      value = as.numeric(value),
+      dim_208 = as.character(dim_208),
+      dim_29117 = as.character(dim_29117)
+    ) %>%
+    group_by(dim_208, dim_29117) %>%
+    summarize(value = sum_or_na(value), .groups = "drop") %>%
+    left_join(country_dim, by = "dim_208") %>%
+    left_join(year_dim, by = "dim_29117")
+}
+
+sum_a <- summarize_indicator(raw_a)
+sum_b <- summarize_indicator(raw_b)
+```
+
+### Country Coverage
+
+*Before comparing values, it's worth checking whether the two indicators even cover the same set
+of countries -- a coverage mismatch (e.g. one including a "World" or regional aggregate the other
+doesn't) can itself explain part of the apparent divergence.*
+
+```{r country coverage diagnostic}
+countries_a <- sum_a %>% distinct(country) %>% pull()
+countries_b <- sum_b %>% distinct(country) %>% pull()
+
+only_in_a <- setdiff(countries_a, countries_b)
+only_in_b <- setdiff(countries_b, countries_a)
+```
+
+`r if (length(only_in_a) > 0) glue("Entities reported **only** by indicator {id_a}: {paste(only_in_a, collapse = ', ')}.") else glue("No entities unique to indicator {id_a}.")`
+
+`r if (length(only_in_b) > 0) glue("Entities reported **only** by indicator {id_b}: {paste(only_in_b, collapse = ', ')}.") else glue("No entities unique to indicator {id_b}.")`
+
+```{r restrict to lac and build comparison df}
+lac_countries <- iso %>% pull(std_name)
+
+comp <- full_join(
+  sum_a %>% filter(country %in% lac_countries) %>% select(country, year, value_a = value),
+  sum_b %>% filter(country %in% lac_countries) %>% select(country, year, value_b = value),
+  by = c("country", "year")
+) %>%
+  mutate(
+    year_num = as.numeric(year),
+    abs_diff = abs(value_a - value_b),
+    perc_diff = case_when(
+      is.na(value_a) | is.na(value_b) ~ NA_real_,
+      value_a == value_b ~ 0,
+      value_b == 0 ~ NA_real_,
+      TRUE ~ round(abs_diff / abs(value_b) * 100, 1)
+    ),
+    status = case_when(
+      is.na(value_a) & is.na(value_b) ~ "Missing in Both",
+      is.na(value_a) ~ sprintf("Only in Indicator %s", id_b),
+      is.na(value_b) ~ sprintf("Only in Indicator %s", id_a),
+      TRUE ~ "Present in Both"
+    ),
+    flag_large_diff = !is.na(perc_diff) & perc_diff > 20
+  )
+```
+
+### Data Availability by Country and Year
+
+```{r coverage heatmap prep}
+all_combinations <- expand_grid(
+  country = sort(unique(comp$country)),
+  year = as.character(min(comp$year_num, na.rm = TRUE):max(comp$year_num, na.rm = TRUE))
+)
+
+coverage_check <- all_combinations %>%
+  left_join(comp %>% select(country, year, status), by = c("country", "year")) %>%
+  mutate(status = ifelse(is.na(status), "Missing in Both", status))
+```
+
+```{r coverage heatmap}
+status_levels <- c("Present in Both", sprintf("Only in Indicator %s", id_a),
+                    sprintf("Only in Indicator %s", id_b), "Missing in Both")
+status_colors <- setNames(c("#e6e6e6", "#99ccff", "#ffcc99", "white"), status_levels)
+
+p <- coverage_check %>%
+  mutate(
+    country = factor(country, levels = sort(unique(country), decreasing = TRUE)),
+    status = factor(status, levels = status_levels)
+  ) %>%
+  ggplot(aes(x = year, y = country, fill = status,
+             text = paste("Country:", country, "<br>Year:", year, "<br>Status:", status))) +
+  geom_tile(color = "white") +
+  scale_fill_manual(values = status_colors) +
+  labs(title = "Data Availability by Country and Year", x = NULL, y = NULL, fill = "Coverage") +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(face = "bold", size = 14),
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold")
+  )
+
+ggplotly(p, tooltip = "text") %>%
+  layout(legend = list(orientation = "h", y = -0.2))
+```
+
+### Value Comparison
+
+*Comparing values only where both indicators report a country/year. The dashed line marks perfect
+agreement -- points far from it are where the two indicators disagree most.*
+
+```{r summary statistics}
+summary_stats <- comp %>%
+  filter(status == "Present in Both") %>%
+  summarise(
+    "Country-years compared" = n(),
+    "Mean % difference" = round(mean(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
+    "Median % difference" = round(median(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
+    "% of pairs differing by >20%" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
+    "Mean absolute difference" = round(mean(abs_diff[is.finite(abs_diff)], na.rm = TRUE), 2)
+  )
+
+tibble(Metric = names(summary_stats), Value = unlist(summary_stats)) %>%
+  mutate(Value = case_when(
+    grepl("%", Metric) ~ paste0(Value, "%"),
+    TRUE ~ as.character(Value)
+  )) %>%
+  gt() %>%
+  tab_header(title = "Summary of Differences", subtitle = "Country-years present in both indicators")
+```
+
+```{r scatter comparison}
+p <- comp %>%
+  filter(status == "Present in Both") %>%
+  mutate(flag_large_diff = factor(flag_large_diff, levels = c(FALSE, TRUE),
+                                   labels = c("Within ±20%", "Above ±20%"))) %>%
+  ggplot(aes(
+    x = value_a, y = value_b, color = flag_large_diff,
+    text = paste("Country:", country, "<br>Year:", year,
+                 "<br>Indicator", id_a, ":", round(value_a, 2),
+                 "<br>Indicator", id_b, ":", round(value_b, 2),
+                 "<br>% Diff:", perc_diff)
+  )) +
+  geom_point(alpha = 0.8, size = 1.4) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray60") +
+  scale_color_manual(values = c("Within ±20%" = "#99ccff", "Above ±20%" = "#cc6666"), guide = "none") +
+  labs(
+    title = "Value Comparison Between Indicators",
+    x = glue("Indicator {id_a}"), y = glue("Indicator {id_b}")
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+ggplotly(p, tooltip = "text")
+```
+
+```{r percent diff over time}
+p <- comp %>%
+  filter(status == "Present in Both") %>%
+  ggplot(aes(
+    x = year_num, y = perc_diff,
+    text = paste("Country:", country, "<br>Year:", year, "<br>% Diff:", perc_diff)
+  )) +
+  geom_jitter(aes(color = flag_large_diff), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
+  scale_color_manual(values = c("FALSE" = "#99ccff", "TRUE" = "#cc6666"), guide = "none") +
+  labs(
+    title = "Percent Difference Over Time",
+    subtitle = "Red points differ by more than 20% between the two indicators",
+    x = "Year", y = "Percent Difference"
+  ) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14), plot.subtitle = element_text(size = 11))
+
+ggplotly(p, tooltip = "text")
+```
+
+### Country-Level Time Series
+
+*Direct comparison of both indicators' values, country by country, over time. Use this to spot
+whether divergence is a constant offset, a growing gap, or isolated to specific years.*
+
+```{r country time series, fig.height=16, warning=FALSE}
+ts_data <- comp %>%
+  filter(!(is.na(value_a) & is.na(value_b))) %>%
+  select(country, year_num, value_a, value_b) %>%
+  pivot_longer(cols = c(value_a, value_b), names_to = "indicator", values_to = "value") %>%
+  mutate(indicator = recode(indicator, value_a = as.character(id_a), value_b = as.character(id_b))) %>%
+  filter(!is.na(value))
+
+p <- ts_data %>%
+  ggplot(aes(
+    x = year_num, y = value, color = indicator, group = indicator,
+    text = paste("Country:", country, "<br>Year:", year_num,
+                 "<br>Indicator:", indicator, "<br>Value:", round(value, 2))
+  )) +
+  geom_line(linewidth = 0.7, alpha = 0.8) +
+  geom_point(size = 0.9) +
+  facet_wrap(~ country, scales = "free_y", ncol = 3) +
+  scale_color_manual(values = setNames(c("#99ccff", "#cc6666"), c(as.character(id_a), as.character(id_b)))) +
+  labs(title = "Indicator Values by Country", x = "Year", y = "Value", color = "Indicator") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14), legend.position = "bottom")
+
+ggplotly(p, tooltip = "text") %>% layout(legend = list(orientation = "h", y = -0.05))
+```
+
+### Which Countries and Years Diverge Most
+
+```{r country level pct diff}
+country_diff <- comp %>%
+  filter(status == "Present in Both") %>%
+  group_by(country) %>%
+  summarise(mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1),
+            n_years = n(), .groups = "drop") %>%
+  arrange(desc(mean_perc_diff))
+
+p <- country_diff %>%
+  mutate(country = factor(country, levels = rev(country))) %>%
+  ggplot(aes(x = mean_perc_diff, y = country,
+             text = paste("Country:", country, "<br>Mean % Diff:", mean_perc_diff, "<br>N years:", n_years))) +
+  geom_col(fill = "#99ccff") +
+  labs(title = "Mean Percent Difference by Country", x = "Mean % Difference", y = NULL) +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14))
+
+ggplotly(p, tooltip = "text")
+```
+
+```{r year level pct diff}
+year_diff <- comp %>%
+  filter(status == "Present in Both") %>%
+  group_by(year_num) %>%
+  summarise(mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1), n_countries = n(), .groups = "drop")
+
+p <- year_diff %>%
+  ggplot(aes(x = year_num, y = mean_perc_diff,
+             text = paste("Year:", year_num, "<br>Mean % Diff:", mean_perc_diff, "<br>N countries:", n_countries))) +
+  geom_line(color = "#99ccff", linewidth = 0.9) +
+  geom_point(color = "#3377bb", size = 1.6) +
+  labs(title = "Mean Percent Difference by Year",
+       subtitle = "A rising trend suggests the two indicators are drifting apart over time (e.g. differing vintages/updates)",
+       x = "Year", y = "Mean % Difference") +
+  theme_minimal() +
+  theme(plot.title = element_text(face = "bold", size = 14), plot.subtitle = element_text(size = 11))
+
+ggplotly(p, tooltip = "text")
+```
+
+### Most Divergent Country-Years
+
+```{r divergent table}
+reactable(
+  comp %>%
+    filter(status == "Present in Both") %>%
+    mutate(value_a = round(value_a, 2), value_b = round(value_b, 2), abs_diff = round(abs_diff, 2)) %>%
+    arrange(desc(abs(perc_diff))) %>%
+    select(country, year, value_a, value_b, abs_diff, perc_diff) %>%
+    rename(!!as.character(glue("Indicator {id_a}")) := value_a, !!as.character(glue("Indicator {id_b}")) := value_b),
+  defaultPageSize = 10,
+  searchable = TRUE,
+  highlight = TRUE,
+  bordered = TRUE,
+  theme = reactableTheme(
+    style = list(fontFamily = "Segoe UI, Roboto, Helvetica, sans-serif", fontSize = "14px")
+  )
+)
+```
+
+## Summary of Findings
+
+```{r auto summary text, results='asis'}
+n_both <- comp %>% filter(status == "Present in Both") %>% nrow()
+pct_large <- summary_stats[["% of pairs differing by >20%"]]
+mean_pct <- summary_stats[["Mean % difference"]]
+
+fields_differ <- length(key_fields[sapply(key_fields, function(f) !identical(get_field(meta_a, f), get_field(meta_b, f)))]) > 0
+
+coverage_sentence <- if (length(only_in_a) > 0 || length(only_in_b) > 0) {
+  "Coverage also differs between the two indicators (see the Country Coverage section above), which by itself accounts for some of the apparent mismatch."
+} else {
+  "Both indicators cover the same set of entities, so coverage is not driving the divergence."
+}
+
+fields_sentence <- if (fields_differ) {
+  "One or more key technical sheet fields differ between the indicators (flagged above) -- this is the most likely place to start when explaining the gap."
+} else {
+  "The key technical sheet fields (definition, methodology, source, comments) read as identical, so the divergence is likely coming from the underlying data itself rather than a documented methodological change."
+}
+
+cat(glue(
+  "Across **{n_both}** country-year pairs where both indicators report a value, the mean absolute ",
+  "percent difference is **{mean_pct}%**, and **{pct_large}%** of pairs differ by more than 20%. ",
+  "{coverage_sentence} {fields_sentence}"
+))
+```
+
+<!--
+Use this space to record the analyst's own conclusions after reviewing the visuals above. Consider:
+
+- **Theoretical / methodological**: Do the technical sheets actually describe the same calculation?
+  Any differences in scope, formula, or definitions found above?
+- **Data source**: Are the two indicators pulling from different underlying datasets or vintages
+  (see Data Source section)? Could one be using an older/newer release of the same source?
+- **Coverage**: Do the two indicators cover the same countries and years (see Country Coverage)?
+- **Pattern of divergence**: Is the gap a constant offset, growing over time, or concentrated in
+  specific countries (see Country-Level Time Series and the by-country/by-year charts)?
+-->
+
+*(Add manual conclusions here once the visuals above have been reviewed.)*
+
+**Theoretical / methodological:**
+
+**Data source:**
+
+**Coverage / data-related:**
