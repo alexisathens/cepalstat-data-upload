@@ -177,7 +177,7 @@ reactable(
 ## Data Comparison
 
 *This section pulls the actual published data for both indicators and compares them on a
-country-by-country, year-by-year basis.*
+country-by-country basis.*
 
 ```{r fetch data}
 raw_a <- get_cepalstat_data(id_a)
@@ -208,18 +208,50 @@ summarize_indicator <- function(raw) {
     group_by(dim_208, dim_29117) %>%
     summarize(value = sum_or_na(value), .groups = "drop") %>%
     left_join(country_dim, by = "dim_208") %>%
-    left_join(year_dim, by = "dim_29117")
+    left_join(year_dim, by = "dim_29117") %>%
+    mutate(year_num = as.numeric(year))
 }
 
 sum_a <- summarize_indicator(raw_a)
 sum_b <- summarize_indicator(raw_b)
 ```
 
+### Year Coverage
+
+*Before comparing values, it's worth checking whether the two indicators even cover the same
+years -- if they don't, any country-level comparison has to fall back on a proxy year for
+whichever indicator is missing the other's most recent year.*
+
+```{r year coverage}
+year_min_a <- min(sum_a$year_num, na.rm = TRUE)
+year_max_a <- max(sum_a$year_num, na.rm = TRUE)
+year_min_b <- min(sum_b$year_num, na.rm = TRUE)
+year_max_b <- max(sum_b$year_num, na.rm = TRUE)
+
+# The year used for each indicator in the country-level comparison below: its own most recent
+# available year. When the two indicators' year ranges don't overlap, this amounts to a
+# nearest-available-year proxy comparison rather than a true same-year comparison (see note below).
+compare_year_a <- year_max_a
+compare_year_b <- year_max_b
+
+range_label <- function(lo, hi) if (lo == hi) as.character(lo) else glue("{lo}-{hi}")
+
+tibble(
+  Indicator = c(as.character(id_a), as.character(id_b)),
+  `Year Range` = c(range_label(year_min_a, year_max_a), range_label(year_min_b, year_max_b)),
+  `Year Used for Comparison` = c(as.character(compare_year_a), as.character(compare_year_b))
+) %>%
+  gt() %>%
+  tab_header(title = "Year Coverage by Indicator")
+```
+
+`r if (compare_year_a == compare_year_b) glue("Both indicators share year **{compare_year_a}**, so the comparison below is a true same-year comparison.") else glue("**Indicator {id_a}** only has data for **{range_label(year_min_a, year_max_a)}**, while **indicator {id_b}** covers **{range_label(year_min_b, year_max_b)}**. Since the two indicators don't share a common year, the country-level comparison below uses each indicator's own most recent available year as the closest practical cross-check: **{compare_year_a}** for indicator {id_a} against **{compare_year_b}** for indicator {id_b}. This is not a true same-year comparison -- part of any difference below could reflect indicator {id_b}'s own year-over-year change from {compare_year_b} onward (see the Country-Level Time Series below) rather than a genuine methodological discrepancy between the two indicators.")`
+
 ### Country Coverage
 
-*Before comparing values, it's worth checking whether the two indicators even cover the same set
-of countries -- a coverage mismatch (e.g. one including a "World" or regional aggregate the other
-doesn't) can itself explain part of the apparent divergence.*
+*It's also worth checking whether the two indicators cover the same set of countries -- a coverage
+mismatch (e.g. one including a "World" or regional aggregate the other doesn't) can itself explain
+part of the apparent divergence.*
 
 ```{r country coverage diagnostic}
 countries_a <- sum_a %>% distinct(country) %>% pull()
@@ -236,13 +268,14 @@ only_in_b <- setdiff(countries_b, countries_a)
 ```{r restrict to lac and build comparison df}
 lac_countries <- iso %>% pull(std_name)
 
+# Country-level comparison at each indicator's own comparison year (see Year Coverage above) --
+# not a country/year join, since the two indicators' year ranges don't overlap.
 comp <- full_join(
-  sum_a %>% filter(country %in% lac_countries) %>% select(country, year, value_a = value),
-  sum_b %>% filter(country %in% lac_countries) %>% select(country, year, value_b = value),
-  by = c("country", "year")
+  sum_a %>% filter(country %in% lac_countries, year_num == compare_year_a) %>% select(country, value_a = value),
+  sum_b %>% filter(country %in% lac_countries, year_num == compare_year_b) %>% select(country, value_b = value),
+  by = "country"
 ) %>%
   mutate(
-    year_num = as.numeric(year),
     abs_diff = abs(value_a - value_b),
     perc_diff = case_when(
       is.na(value_a) | is.na(value_b) ~ NA_real_,
@@ -262,14 +295,30 @@ comp <- full_join(
 
 ### Data Availability by Country and Year
 
+*This shows each indicator's full published history (not just the single comparison year used
+below) -- useful for seeing the overall shape of the year mismatch described above at a glance.*
+
 ```{r coverage heatmap prep}
+full_status <- full_join(
+  sum_a %>% filter(country %in% lac_countries) %>% select(country, year, year_num, value_a = value),
+  sum_b %>% filter(country %in% lac_countries) %>% select(country, year, year_num, value_b = value),
+  by = c("country", "year", "year_num")
+) %>%
+  mutate(status = case_when(
+    is.na(value_a) & is.na(value_b) ~ "Missing in Both",
+    is.na(value_a) ~ sprintf("Only in Indicator %s", id_b),
+    is.na(value_b) ~ sprintf("Only in Indicator %s", id_a),
+    TRUE ~ "Present in Both"
+  ))
+
 all_combinations <- expand_grid(
-  country = sort(unique(comp$country)),
-  year = as.character(min(comp$year_num, na.rm = TRUE):max(comp$year_num, na.rm = TRUE))
-)
+  country = sort(unique(full_status$country)),
+  year_num = min(full_status$year_num, na.rm = TRUE):max(full_status$year_num, na.rm = TRUE)
+) %>%
+  mutate(year = as.character(year_num))
 
 coverage_check <- all_combinations %>%
-  left_join(comp %>% select(country, year, status), by = c("country", "year")) %>%
+  left_join(full_status %>% select(country, year, status), by = c("country", "year")) %>%
   mutate(status = ifelse(is.na(status), "Missing in Both", status))
 ```
 
@@ -301,17 +350,19 @@ ggplotly(p, tooltip = "text") %>%
 
 ### Value Comparison
 
-*Comparing values only where both indicators report a country/year. The dashed line marks perfect
-agreement -- points far from it are where the two indicators disagree most.*
+*Comparing each country's indicator `r id_a` value in `r compare_year_a` against its indicator
+`r id_b` value in `r compare_year_b` -- the closest available cross-check given the year mismatch
+noted above. The dashed line in the scatter plot marks perfect agreement; points far from it are
+where the two indicators disagree most.*
 
 ```{r summary statistics}
 summary_stats <- comp %>%
   filter(status == "Present in Both") %>%
   summarise(
-    "Country-years compared" = n(),
+    "Countries compared" = n(),
     "Mean % difference" = round(mean(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
     "Median % difference" = round(median(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
-    "% of pairs differing by >20%" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
+    "% of countries differing by >20%" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
     "Mean absolute difference" = round(mean(abs_diff[is.finite(abs_diff)], na.rm = TRUE), 2)
   )
 
@@ -321,7 +372,10 @@ tibble(Metric = names(summary_stats), Value = unlist(summary_stats)) %>%
     TRUE ~ as.character(Value)
   )) %>%
   gt() %>%
-  tab_header(title = "Summary of Differences", subtitle = "Country-years present in both indicators")
+  tab_header(
+    title = "Summary of Differences",
+    subtitle = glue("Indicator {id_a} ({compare_year_a}) vs indicator {id_b} ({compare_year_b})")
+  )
 ```
 
 ```{r scatter comparison}
@@ -331,9 +385,9 @@ p <- comp %>%
                                    labels = c("Within ±20%", "Above ±20%"))) %>%
   ggplot(aes(
     x = value_a, y = value_b, color = flag_large_diff,
-    text = paste("Country:", country, "<br>Year:", year,
-                 "<br>Indicator", id_a, ":", round(value_a, 2),
-                 "<br>Indicator", id_b, ":", round(value_b, 2),
+    text = paste("Country:", country,
+                 "<br>Indicator", id_a, glue("({compare_year_a}):"), round(value_a, 2),
+                 "<br>Indicator", id_b, glue("({compare_year_b}):"), round(value_b, 2),
                  "<br>% Diff:", perc_diff)
   )) +
   geom_point(alpha = 0.8, size = 1.4) +
@@ -341,27 +395,8 @@ p <- comp %>%
   scale_color_manual(values = c("Within ±20%" = "#99ccff", "Above ±20%" = "#cc6666"), guide = "none") +
   labs(
     title = "Value Comparison Between Indicators",
-    x = glue("Indicator {id_a}"), y = glue("Indicator {id_b}")
-  ) +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold", size = 14))
-
-ggplotly(p, tooltip = "text")
-```
-
-```{r percent diff over time}
-p <- comp %>%
-  filter(status == "Present in Both") %>%
-  ggplot(aes(
-    x = year_num, y = perc_diff,
-    text = paste("Country:", country, "<br>Year:", year, "<br>% Diff:", perc_diff)
-  )) +
-  geom_jitter(aes(color = flag_large_diff), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
-  scale_color_manual(values = c("FALSE" = "#99ccff", "TRUE" = "#cc6666"), guide = "none") +
-  labs(
-    title = "Percent Difference Over Time",
-    subtitle = "Red points differ by more than 20% between the two indicators",
-    x = "Year", y = "Percent Difference"
+    subtitle = glue("Indicator {id_a} ({compare_year_a}) vs indicator {id_b} ({compare_year_b})"),
+    x = glue("Indicator {id_a} ({compare_year_a})"), y = glue("Indicator {id_b} ({compare_year_b})")
   ) +
   theme_minimal() +
   theme(plot.title = element_text(face = "bold", size = 14), plot.subtitle = element_text(size = 11))
@@ -371,15 +406,17 @@ ggplotly(p, tooltip = "text")
 
 ### Country-Level Time Series
 
-*Direct comparison of both indicators' values, country by country, over time. Use this to spot
-whether divergence is a constant offset, a growing gap, or isolated to specific years.*
+*Indicator `r id_b`'s full published history plotted against indicator `r id_a`'s single available
+year, country by country. Use this to judge whether indicator `r id_a`'s value looks like a
+plausible continuation of indicator `r id_b`'s trend, or a sharp break from it.*
 
 ```{r country time series, fig.height=16, warning=FALSE}
-ts_data <- comp %>%
-  filter(!(is.na(value_a) & is.na(value_b))) %>%
-  select(country, year_num, value_a, value_b) %>%
-  pivot_longer(cols = c(value_a, value_b), names_to = "indicator", values_to = "value") %>%
-  mutate(indicator = recode(indicator, value_a = as.character(id_a), value_b = as.character(id_b))) %>%
+ts_data <- bind_rows(
+  sum_a %>% filter(country %in% lac_countries) %>% mutate(indicator = as.character(id_a)) %>%
+    select(country, year_num, value, indicator),
+  sum_b %>% filter(country %in% lac_countries) %>% mutate(indicator = as.character(id_b)) %>%
+    select(country, year_num, value, indicator)
+) %>%
   filter(!is.na(value))
 
 p <- ts_data %>%
@@ -399,61 +436,28 @@ p <- ts_data %>%
 ggplotly(p, tooltip = "text") %>% layout(legend = list(orientation = "h", y = -0.05))
 ```
 
-### Which Countries and Years Diverge Most
+### Which Countries Diverge Most
 
 ```{r country level pct diff}
-country_diff <- comp %>%
+p <- comp %>%
   filter(status == "Present in Both") %>%
-  group_by(country) %>%
-  summarise(mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1),
-            n_years = n(), .groups = "drop") %>%
-  arrange(desc(mean_perc_diff))
-
-p <- country_diff %>%
-  mutate(country = factor(country, levels = rev(country))) %>%
-  ggplot(aes(x = mean_perc_diff, y = country,
-             text = paste("Country:", country, "<br>Mean % Diff:", mean_perc_diff, "<br>N years:", n_years))) +
+  arrange(perc_diff) %>%
+  mutate(country = factor(country, levels = country)) %>%
+  ggplot(aes(x = perc_diff, y = country,
+             text = paste("Country:", country, "<br>% Diff:", perc_diff))) +
   geom_col(fill = "#99ccff") +
-  labs(title = "Mean Percent Difference by Country", x = "Mean % Difference", y = NULL) +
+  labs(
+    title = "Percent Difference by Country",
+    subtitle = glue("Indicator {id_a} ({compare_year_a}) vs indicator {id_b} ({compare_year_b})"),
+    x = "Percent Difference", y = NULL
+  ) +
   theme_minimal() +
-  theme(plot.title = element_text(face = "bold", size = 14))
+  theme(plot.title = element_text(face = "bold", size = 14), plot.subtitle = element_text(size = 11))
 
 ggplotly(p, tooltip = "text")
 ```
 
-```{r year level pct diff}
-year_diff <- comp %>%
-  filter(status == "Present in Both") %>%
-  group_by(year_num) %>%
-  summarise(mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1), n_countries = n(), .groups = "drop") %>%
-  arrange(year_num)
-
-# Built directly with plot_ly() rather than ggplot()+ggplotly(): with very few overlapping years
-# (as can happen here when the two indicators barely overlap in time), ggplotly()'s conversion of
-# geom_line() errors out ("argument 1 is not a vector") on a near-single-point line. plot_ly() has
-# no such issue.
-plot_ly(
-  data = year_diff,
-  x = ~year_num,
-  y = ~mean_perc_diff,
-  type = "scatter",
-  mode = "lines+markers",
-  line = list(color = "#99ccff", width = 2),
-  marker = list(color = "#3377bb", size = 8),
-  text = ~paste("Year:", year_num, "<br>Mean % Diff:", mean_perc_diff, "<br>N countries:", n_countries),
-  hoverinfo = "text"
-) %>%
-  layout(
-    title = list(text = paste0(
-      "Mean Percent Difference by Year",
-      "<br><sup>A rising trend suggests the two indicators are drifting apart over time (e.g. differing vintages/updates)</sup>"
-    )),
-    xaxis = list(title = "Year"),
-    yaxis = list(title = "Mean % Difference")
-  )
-```
-
-### Most Divergent Country-Years
+### Most Divergent Countries
 
 ```{r divergent table}
 reactable(
@@ -461,8 +465,11 @@ reactable(
     filter(status == "Present in Both") %>%
     mutate(value_a = round(value_a, 2), value_b = round(value_b, 2), abs_diff = round(abs_diff, 2)) %>%
     arrange(desc(abs(perc_diff))) %>%
-    select(country, year, value_a, value_b, abs_diff, perc_diff) %>%
-    rename(!!as.character(glue("Indicator {id_a}")) := value_a, !!as.character(glue("Indicator {id_b}")) := value_b),
+    select(country, value_a, value_b, abs_diff, perc_diff) %>%
+    rename(
+      !!as.character(glue("Indicator {id_a} ({compare_year_a})")) := value_a,
+      !!as.character(glue("Indicator {id_b} ({compare_year_b})")) := value_b
+    ),
   defaultPageSize = 10,
   searchable = TRUE,
   highlight = TRUE,
@@ -477,15 +484,21 @@ reactable(
 
 ```{r auto summary text, results='asis'}
 n_both <- comp %>% filter(status == "Present in Both") %>% nrow()
-pct_large <- summary_stats[["% of pairs differing by >20%"]]
+pct_large <- summary_stats[["% of countries differing by >20%"]]
 mean_pct <- summary_stats[["Mean % difference"]]
 
 fields_differ <- length(key_fields[sapply(key_fields, function(f) !identical(get_field(meta_a, f), get_field(meta_b, f)))]) > 0
 
-coverage_sentence <- if (length(only_in_a) > 0 || length(only_in_b) > 0) {
-  "Coverage also differs between the two indicators (see the Country Coverage section above), which by itself accounts for some of the apparent mismatch."
+year_sentence <- if (compare_year_a == compare_year_b) {
+  glue("Both indicators share a common year ({compare_year_a}), so this is a true same-year comparison.")
 } else {
-  "Both indicators cover the same set of entities, so coverage is not driving the divergence."
+  glue("Indicators {id_a} and {id_b} do not share a common year -- this comparison uses indicator {id_a}'s {compare_year_a} values against indicator {id_b}'s {compare_year_b} values as the closest available proxy, so some of the gap below could simply reflect one additional year of change rather than a true methodological discrepancy.")
+}
+
+coverage_sentence <- if (length(only_in_a) > 0 || length(only_in_b) > 0) {
+  "Country coverage also differs between the two indicators (see the Country Coverage section above), which by itself accounts for some of the apparent mismatch."
+} else {
+  "Both indicators cover the same set of countries, so coverage is not driving the divergence."
 }
 
 fields_sentence <- if (fields_differ) {
@@ -495,9 +508,9 @@ fields_sentence <- if (fields_differ) {
 }
 
 cat(glue(
-  "Across **{n_both}** country-year pairs where both indicators report a value, the mean absolute ",
-  "percent difference is **{mean_pct}%**, and **{pct_large}%** of pairs differ by more than 20%. ",
-  "{coverage_sentence} {fields_sentence}"
+  "Across **{n_both}** countries compared, the mean absolute percent difference is **{mean_pct}%**, ",
+  "and **{pct_large}%** of countries differ by more than 20%. ",
+  "{year_sentence} {coverage_sentence} {fields_sentence}"
 ))
 ```
 
@@ -508,9 +521,12 @@ Use this space to record the analyst's own conclusions after reviewing the visua
   Any differences in scope, formula, or definitions found above?
 - **Data source**: Are the two indicators pulling from different underlying datasets or vintages
   (see Data Source section)? Could one be using an older/newer release of the same source?
-- **Coverage**: Do the two indicators cover the same countries and years (see Country Coverage)?
-- **Pattern of divergence**: Is the gap a constant offset, growing over time, or concentrated in
-  specific countries (see Country-Level Time Series and the by-country/by-year charts)?
+- **Coverage**: Do the two indicators cover the same countries (see Country Coverage)? Note the two
+  indicators don't share a common year (see Year Coverage) -- part of any gap could simply reflect
+  the newer indicator's own year-over-year change rather than a genuine discrepancy.
+- **Pattern of divergence**: Is the gap concentrated in specific countries (see Which Countries
+  Diverge Most), or does the single-year indicator's value look like a plausible continuation of
+  the other indicator's historical trend (see Country-Level Time Series)?
 -->
 
 *(Add manual conclusions here once the visuals above have been reviewed.)*
