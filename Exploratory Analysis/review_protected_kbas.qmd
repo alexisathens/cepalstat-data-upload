@@ -425,20 +425,32 @@ ggplotly(p, tooltip = "text")
 year_diff <- comp %>%
   filter(status == "Present in Both") %>%
   group_by(year_num) %>%
-  summarise(mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1), n_countries = n(), .groups = "drop")
+  summarise(mean_perc_diff = round(mean(perc_diff, na.rm = TRUE), 1), n_countries = n(), .groups = "drop") %>%
+  arrange(year_num)
 
-p <- year_diff %>%
-  ggplot(aes(x = year_num, y = mean_perc_diff,
-             text = paste("Year:", year_num, "<br>Mean % Diff:", mean_perc_diff, "<br>N countries:", n_countries))) +
-  geom_line(color = "#99ccff", linewidth = 0.9) +
-  geom_point(color = "#3377bb", size = 1.6) +
-  labs(title = "Mean Percent Difference by Year",
-       subtitle = "A rising trend suggests the two indicators are drifting apart over time (e.g. differing vintages/updates)",
-       x = "Year", y = "Mean % Difference") +
-  theme_minimal() +
-  theme(plot.title = element_text(face = "bold", size = 14), plot.subtitle = element_text(size = 11))
-
-ggplotly(p, tooltip = "text")
+# Built directly with plot_ly() rather than ggplot()+ggplotly(): with very few overlapping years
+# (as can happen here when the two indicators barely overlap in time), ggplotly()'s conversion of
+# geom_line() errors out ("argument 1 is not a vector") on a near-single-point line. plot_ly() has
+# no such issue.
+plot_ly(
+  data = year_diff,
+  x = ~year_num,
+  y = ~mean_perc_diff,
+  type = "scatter",
+  mode = "lines+markers",
+  line = list(color = "#99ccff", width = 2),
+  marker = list(color = "#3377bb", size = 8),
+  text = ~paste("Year:", year_num, "<br>Mean % Diff:", mean_perc_diff, "<br>N countries:", n_countries),
+  hoverinfo = "text"
+) %>%
+  layout(
+    title = list(text = paste0(
+      "Mean Percent Difference by Year",
+      "<br><sup>A rising trend suggests the two indicators are drifting apart over time (e.g. differing vintages/updates)</sup>"
+    )),
+    xaxis = list(title = "Year"),
+    yaxis = list(title = "Mean % Difference")
+  )
 ```
 
 ### Most Divergent Country-Years
