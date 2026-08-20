@@ -20,7 +20,18 @@ Everything server-side lives in `context: server` chunks; Quarto assembles them 
 server function in document order regardless of where they sit in the file. They're kept
 next to the page/card markup they power (rather than one giant chunk up top) so each section
 of this file is self-contained to read and edit.
+
+`context: server` chunks are extracted for the server function, not executed during the
+top-to-bottom pass that knits the UI - so any package whose functions are called directly in
+UI chunks (reactableOutput(), plotlyOutput()) has to be loaded outside of context: server, or
+it won't exist yet when the UI chunk referencing it gets knitted.
 -->
+
+```{r}
+# Loaded in a plain (non-server) chunk on purpose - see note above.
+library(reactable)
+library(plotly)
+```
 
 ```{r}
 #| context: server
