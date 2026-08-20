@@ -293,15 +293,8 @@ output$status_ui <- renderUI({
     style = glue("padding:0.65rem 0.8rem; background:{pal$fill_both}; border-radius:8px;"),
     div(style = glue("font-weight:700; font-size:1.05em; color:{pal$ink}; line-height:1.3;"), name_display),
     div(
-      style = "margin-top:0.35rem; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;",
-      span(
-        style = glue("background:white; border-radius:4px; padding:0.05rem 0.45rem; font-size:0.78em; font-weight:600; color:{pal$ink2};"),
-        glue("ID {d$indicator_id}")
-      ),
-      span(
-        style = glue("font-size:0.78em; color:{pal$ink2};"),
-        glue("Vintage {if (is.na(d$data_date)) 'unknown' else d$data_date}")
-      )
+      style = glue("margin-top:0.3rem; font-size:0.78em; color:{pal$ink2};"),
+      glue("Vintage {if (is.na(d$data_date)) 'unknown' else d$data_date}")
     )
   )
 })
@@ -342,12 +335,6 @@ output$highlight_country_ui <- renderUI({
   }
   selectInput("country", "Country", choices = d$all_countries, selected = default_country)
 })
-
-output$dim_selector_ui <- renderUI({
-  d <- qc_data()
-  if (!d$has_extra_dims) return(NULL)
-  selectInput("dim_col", "Breakout Dimension", choices = setNames(d$extra_dims, d$dim_labels))
-})
 ```
 
 ## {.sidebar}
@@ -380,10 +367,6 @@ uiOutput("year_slider_ui")
 
 ```{r}
 uiOutput("dim_filters_ui")
-```
-
-```{r}
-uiOutput("dim_selector_ui")
 ```
 
 ---
@@ -749,7 +732,7 @@ uiOutput("outlier_faceted_ui")
 
 # Dimension Analysis
 
-*Breaks out the selected country's values by the chosen dimension (e.g. sex or age group).* Always shows every member of the chosen dimension, regardless of the dimension filter in the sidebar, since that's the point of this view. Only applies to indicators with extra dimensions beyond country and year.
+*Breaks out the selected country's values by the indicator's extra dimension (e.g. sex or age group).* Always shows every member of that dimension, regardless of the dimension filter in the sidebar, since that's the point of this view. Only applies to indicators with an extra dimension beyond country and year - if there's ever more than one, only the first is used here.
 
 ```{r}
 #| context: server
@@ -758,18 +741,17 @@ no_dims_msg <- "This indicator has no extra dimensions beyond country and year."
 output$dim_plot <- renderPlotly({
   d <- qc_data()
   if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
-  if (is.null(input$country) || is.null(input$dim_col)) {
-    return(empty_plotly("Pick a country and a breakout dimension in the sidebar."))
-  }
-  dim_label <- d$dim_labels[[input$dim_col]]
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
 
   by_extra <- d$comp_detailed %>%
     filter(dim_208_label == input$country, !is.na(value_data)) %>%
-    group_by(across(all_of(c("dim_29117_label", input$dim_col)))) %>%
+    group_by(across(all_of(c("dim_29117_label", dim_col)))) %>%
     summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
     mutate(dim_29117_label = as.numeric(dim_29117_label))
 
-  n_cats <- n_distinct(by_extra[[input$dim_col]])
+  n_cats <- n_distinct(by_extra[[dim_col]])
   color_scale <- if (n_cats <= length(pal$categorical)) {
     scale_color_manual(values = pal$categorical[seq_len(n_cats)])
   } else {
@@ -778,8 +760,8 @@ output$dim_plot <- renderPlotly({
 
   p <- ggplot(by_extra, aes(
     x = dim_29117_label, y = value_data,
-    color = .data[[input$dim_col]], group = .data[[input$dim_col]],
-    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[input$dim_col]], "<br>Value: ", round(value_data, 1))
+    color = .data[[dim_col]], group = .data[[dim_col]],
+    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", round(value_data, 1))
   )) +
     geom_line(linewidth = 0.8) +
     geom_point(size = 1.8) +
@@ -797,16 +779,16 @@ output$dim_plot <- renderPlotly({
 output$dim_faceted <- renderPlotly({
   d <- qc_data()
   if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
-  if (is.null(input$dim_col)) return(empty_plotly("Pick a breakout dimension in the sidebar."))
-  dim_label <- d$dim_labels[[input$dim_col]]
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
 
   by_extra <- d$comp_detailed %>%
     filter(!is.na(value_data)) %>%
-    group_by(across(all_of(c("dim_208_label", "dim_29117_label", input$dim_col)))) %>%
+    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim_col)))) %>%
     summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
     mutate(dim_29117_label = as.numeric(dim_29117_label))
 
-  n_cats <- n_distinct(by_extra[[input$dim_col]])
+  n_cats <- n_distinct(by_extra[[dim_col]])
   color_scale <- if (n_cats <= length(pal$categorical)) {
     scale_color_manual(values = pal$categorical[seq_len(n_cats)])
   } else {
@@ -814,10 +796,10 @@ output$dim_faceted <- renderPlotly({
   }
 
   p <- ggplot(by_extra, aes(
-    x = dim_29117_label, y = value_data, color = .data[[input$dim_col]], group = .data[[input$dim_col]],
+    x = dim_29117_label, y = value_data, color = .data[[dim_col]], group = .data[[dim_col]],
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>", dim_label, ": ", .data[[input$dim_col]], "<br>Value: ", round(value_data, 1)
+      "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", round(value_data, 1)
     )
   )) +
     geom_line(linewidth = 0.7) +
