@@ -1,0 +1,720 @@
+---
+title: "CEPALSTAT QC Dashboard"
+format:
+  dashboard:
+    theme: cosmo
+    scrolling: true
+server: shiny
+---
+
+<!--
+Interactive port of Scripts/qc_report.qmd (the original QC report) into a Quarto Dashboard
+with a Shiny backend. Same checks, same flags (±20% difference threshold, z-score outlier
+threshold of 3), same underlying logic - just reactive instead of static, and driven by
+sidebar filters (Country, Year, and one per extra dimension) instead of facet grids. Because
+the filters let you narrow down to what you actually want to look at, this doesn't need the
+"facet by country" or "first two dimensions only" versions of each chart - an Inspect Country
+dropdown replaces those.
+
+Everything server-side lives in `context: server` chunks; Quarto assembles them into one
+server function in document order regardless of where they sit in the file. They're kept
+next to the page/card markup they power (rather than one giant chunk up top) so each section
+of this file is self-contained to read and edit.
+-->
+
+```{r}
+#| context: server
+# ---- Setup: libraries, palette, and data-loading functions ----
+
+library(shiny)
+library(plotly)
+library(reactable)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(glue)
+library(scales)
+library(readxl)
+library(magrittr)
+library(stringr)
+library(lubridate)
+library(here)
+library(fs)
+
+source(here("Scripts/utils.R")) # also loads the global `meta` and `iso` tables
+
+pal <- list(
+  before = "#2a78d6", after = "#eb6834", flag = "#d03b3b", good = "#0ca30c",
+  neutral = "#c3c2b7", grid = "#e1e0d9", fill_both = "#e1e0d9", fill_missing = "#fcfcfb",
+  ink = "#0b0b0b", ink2 = "#52514e",
+  categorical = c("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
+)
+
+theme_qc <- function() {
+  theme_minimal(base_size = 12) %+replace%
+    theme(
+      plot.title = element_text(face = "bold", size = rel(1.1), color = pal$ink, hjust = 0),
+      axis.text = element_text(color = pal$ink2),
+      axis.title = element_text(color = pal$ink2),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.4),
+      panel.grid.minor = element_blank(),
+      legend.title = element_text(face = "bold", color = pal$ink),
+      legend.text = element_text(color = pal$ink2)
+    )
+}
+
+style_plotly <- function(gp, title = NULL, subtitle = NULL, legend_bottom = TRUE) {
+  if (!is.null(title)) {
+    txt <- if (!is.null(subtitle)) paste0(title, '<br><sup style="color:', pal$ink2, '">', subtitle, '</sup>') else title
+    gp <- gp %>% layout(title = list(text = txt, font = list(size = 15)))
+  }
+  if (legend_bottom) {
+    gp <- gp %>% layout(legend = list(orientation = "h", y = -0.25), margin = list(t = 60))
+  } else {
+    gp <- gp %>% layout(showlegend = FALSE, margin = list(t = 60))
+  }
+  gp
+}
+
+callout <- function(text, type = c("note", "good", "flag")) {
+  type <- match.arg(type)
+  color <- switch(type, note = pal$before, good = pal$good, flag = pal$flag)
+  icon  <- switch(type, note = "ℹ", good = "✓", flag = "⚠")
+  glue(
+    '<div style="border-left:4px solid {color}; background:#f7f7f5; padding:0.7rem 1rem; ',
+    'border-radius:4px; margin:0.5rem 0;"><strong>{icon}</strong>&nbsp; {text}</div>'
+  )
+}
+
+# Cached per indicator_id - the expensive part (read files, resolve dimension names via API).
+.qc_raw_cache <- new.env(parent = emptyenv())
+
+load_qc_raw <- function(indicator_id, use_cache = TRUE) {
+  cache_key <- as.character(indicator_id)
+  if (use_cache && exists(cache_key, envir = .qc_raw_cache)) {
+    return(get(cache_key, envir = .qc_raw_cache))
+  }
+
+  comp_path <- here(glue("Data/Checks/comp_id{indicator_id}.xlsx"))
+  if (!file_exists(comp_path)) {
+    stop(glue(
+      "No comparison file found for indicator {indicator_id} at Data/Checks/comp_id{indicator_id}.xlsx. ",
+      "Run the indicator through the processing pipeline (export = TRUE) first."
+    ))
+  }
+
+  comp_detailed <- read_xlsx(comp_path)
+  comp_detailed %<>%
+    mutate(across(.cols = matches("dim"), .fns = as.character)) %>%
+    mutate(across(.cols = matches("value|^abs_diff$|^perc_diff$"), .fns = as.numeric)) %>%
+    mutate(across(.cols = starts_with("flag_"), .fns = as.logical))
+
+  indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
+  if (length(indicator_name) == 0) indicator_name <- NA_character_
+  source_vals <- meta %>% filter(id == indicator_id) %>% pull(source)
+  source_val <- if (length(source_vals) == 0) NA_character_ else source_vals
+
+  files <- dir_ls(here("Data/Cleaned"), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
+  data_date <- if (length(files) > 0) {
+    latest_file <- tibble(
+      file = files,
+      datetime = str_extract(files, "\\d{4}-\\d{2}-\\d{2}T\\d{6}") %>% ymd_hms(truncated = 1)
+    ) %>% arrange(desc(datetime)) %>% slice(1) %>% pull(file)
+    str_extract(latest_file, "\\d{4}-\\d{2}-\\d{2}T\\d{6}")
+  } else {
+    NA_character_
+  }
+
+  ind_dims <- comp_detailed %>% select(ends_with("_label")) %>% names()
+  base_dims <- c("dim_29117_label", "dim_208_label") # year, country
+  extra_dims <- setdiff(ind_dims, base_dims)
+  extra_dim_ids <- str_extract(extra_dims, "\\d+")
+
+  extra_dim_names <- if (length(extra_dim_ids) > 0) {
+    get_indicator_dimensions(indicator_id) %>% filter(id %in% extra_dim_ids) %>% pull(name)
+  } else {
+    character(0)
+  }
+
+  has_public_data <- any(!is.na(comp_detailed$value_pub))
+  has_extra_dims <- length(extra_dims) >= 1
+  dim_labels <- setNames(extra_dim_names, extra_dims)
+  dim_members <- setNames(
+    lapply(extra_dims, function(dc) sort(unique(na.omit(comp_detailed[[dc]])))),
+    extra_dims
+  )
+
+  all_countries <- sort(unique(comp_detailed$dim_208_label))
+  all_years <- sort(unique(as.numeric(comp_detailed$dim_29117_label)))
+
+  result <- list(
+    indicator_id = indicator_id, indicator_name = indicator_name,
+    source = source_val, data_date = data_date,
+    comp_detailed = comp_detailed, all_countries = all_countries,
+    year_min = min(all_years), year_max = max(all_years),
+    extra_dims = extra_dims, dim_labels = dim_labels, dim_members = dim_members,
+    has_public_data = has_public_data, has_extra_dims = has_extra_dims,
+    n_records = nrow(comp_detailed)
+  )
+  if (use_cache) assign(cache_key, result, envir = .qc_raw_cache)
+  result
+}
+
+# Cheap - filters already-loaded data by country/year/dimension-member selections, then
+# re-aggregates to country/year and recomputes every flag exactly as the original report did
+# (±20% difference threshold, within-country z-score outlier threshold of 3).
+build_filtered_view <- function(raw, countries, dim_selections = list(), year_range) {
+  df <- raw$comp_detailed %>%
+    filter(dim_208_label %in% countries) %>%
+    filter(as.numeric(dim_29117_label) >= year_range[1], as.numeric(dim_29117_label) <= year_range[2])
+
+  for (dc in raw$extra_dims) {
+    sel <- dim_selections[[dc]]
+    if (!is.null(sel) && length(sel) > 0) df <- df %>% filter(.data[[dc]] %in% sel)
+  }
+
+  comp_detailed <- df
+
+  comp <- df %>%
+    group_by(dim_208, dim_29117, dim_208_label, dim_29117_label) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(abs_diff = abs(value_data - value_pub),
+           perc_diff = round((abs_diff / value_pub) * 100, 2)) %>%
+    mutate(
+      flag_large_diff = perc_diff > 20,
+      flag_missing_entry = is.na(value_data),
+      flag_new_entry = is.na(value_pub),
+      flag_some_na = is.na(value_data) | is.na(value_pub)
+    ) %>%
+    mutate(status = case_when(
+      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+      is.na(value_data) ~ "Old Only",
+      is.na(value_pub) ~ "New Only",
+      TRUE ~ "Present in Both"
+    )) %>%
+    group_by(dim_208_label) %>%
+    mutate(
+      z_within_country = round(as.numeric(scale(value_data)), 1),
+      outlier_within_country = abs(z_within_country) > 3
+    ) %>%
+    ungroup() %>%
+    mutate(flag_some_value = ifelse(outlier_within_country == TRUE | flag_large_diff == TRUE, TRUE, FALSE))
+
+  all_combinations <- expand_grid(
+    country = sort(unique(comp$dim_208_label)),
+    year = as.character(year_range[1]:year_range[2])
+  )
+  coverage_check <- all_combinations %>%
+    left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
+    mutate(status = ifelse(is.na(status), "Missing in Both", status))
+
+  countries_with_flags <- comp %>%
+    filter(flag_some_na == FALSE & flag_some_value == TRUE) %>%
+    distinct(dim_208_label) %>%
+    pull()
+
+  list(
+    comp = comp, comp_detailed = comp_detailed, coverage_check = coverage_check,
+    countries = sort(unique(comp$dim_208_label)), countries_with_flags = countries_with_flags
+  )
+}
+
+# Country + Year only, no dimension-member filtering - used by the Dimension Analysis page,
+# since its whole purpose is showing the breakdown across a dimension's members, which a
+# "Total only" default filter on that same dimension would otherwise collapse to one line.
+filter_detailed_by_country_year <- function(raw, countries, year_range) {
+  raw$comp_detailed %>%
+    filter(dim_208_label %in% countries) %>%
+    filter(as.numeric(dim_29117_label) >= year_range[1], as.numeric(dim_29117_label) <= year_range[2])
+}
+```
+
+```{r}
+#| context: server
+# ---- Reactives ----
+
+qc_data <- eventReactive(input$load, {
+  req(input$indicator_id)
+  tryCatch(
+    load_qc_raw(input$indicator_id),
+    error = function(e) validate(need(FALSE, conditionMessage(e)))
+  )
+}, ignoreNULL = FALSE)
+
+filtered_data <- reactive({
+  d <- qc_data()
+  req(d, input$countries, input$year_range)
+  dim_sel <- setNames(
+    lapply(d$extra_dims, function(dc) input[[paste0("dimfilter_", dc)]]),
+    d$extra_dims
+  )
+  build_filtered_view(d, input$countries, dim_sel, input$year_range)
+})
+
+dim_view_detailed <- reactive({
+  d <- qc_data()
+  req(d, input$countries, input$year_range)
+  filter_detailed_by_country_year(d, input$countries, input$year_range)
+})
+```
+
+```{r}
+#| context: server
+# ---- Sidebar filter UI: rebuilt whenever a new indicator loads ----
+
+output$status_ui <- renderUI({
+  d <- qc_data()
+  tagList(
+    strong(if (is.na(d$indicator_name)) glue("Indicator {d$indicator_id}") else d$indicator_name),
+    br(),
+    span(style = glue("color:{pal$ink2}; font-size:0.85em;"),
+         glue("Vintage: {if (is.na(d$data_date)) 'unknown' else d$data_date}"))
+  )
+})
+
+output$country_filter_ui <- renderUI({
+  d <- qc_data()
+  default_countries <- if ("Latin America and the Caribbean" %in% d$all_countries) {
+    "Latin America and the Caribbean"
+  } else {
+    d$all_countries
+  }
+  selectizeInput("countries", "Country", choices = d$all_countries, selected = default_countries, multiple = TRUE)
+})
+
+output$year_slider_ui <- renderUI({
+  d <- qc_data()
+  sliderInput("year_range", "Years", min = d$year_min, max = d$year_max,
+              value = c(d$year_min, d$year_max), step = 1, sep = "")
+})
+
+output$dim_filters_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(NULL)
+  tagList(lapply(d$extra_dims, function(dc) {
+    members <- d$dim_members[[dc]]
+    selectizeInput(
+      inputId = paste0("dimfilter_", dc),
+      label = d$dim_labels[[dc]],
+      choices = members,
+      selected = if ("Total" %in% members) "Total" else NULL,
+      multiple = TRUE,
+      options = list(placeholder = "(None)")
+    )
+  }))
+})
+
+output$inspect_country_ui <- renderUI({
+  fd <- filtered_data()
+  req(length(fd$countries) > 0)
+  default_country <- if (length(fd$countries_with_flags) > 0) fd$countries_with_flags[1] else fd$countries[1]
+  selectInput("country", "Inspect Country", choices = fd$countries, selected = default_country)
+})
+
+output$dim_selector_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(NULL)
+  selectInput("dim_col", "Breakout Dimension", choices = setNames(d$extra_dims, d$dim_labels))
+})
+```
+
+## {.sidebar}
+
+```{r}
+numericInput("indicator_id", "Indicator ID", value = 4243, min = 1, step = 1)
+```
+
+```{r}
+actionButton("load", "Load indicator", class = "btn-primary w-100")
+```
+
+---
+
+```{r}
+uiOutput("status_ui")
+```
+
+---
+
+**Filters**
+
+```{r}
+uiOutput("country_filter_ui")
+```
+
+```{r}
+uiOutput("year_slider_ui")
+```
+
+```{r}
+uiOutput("dim_filters_ui")
+```
+
+---
+
+```{r}
+uiOutput("inspect_country_ui")
+```
+
+```{r}
+uiOutput("dim_selector_ui")
+```
+
+# Summary
+
+This section summarizes key metadata about the indicator and dataset under review.
+
+```{r}
+#| context: server
+output$summary_table <- renderReactable({
+  d <- qc_data()
+  info <- list(
+    "Indicator ID" = d$indicator_id,
+    "Indicator Name" = d$indicator_name,
+    "Data Vintage" = d$data_date,
+    "Data Source" = d$source,
+    "Dimension Names" = if (length(d$dim_labels) > 0) paste(d$dim_labels, collapse = ", ") else "(none)",
+    "Time Coverage" = paste(d$year_min, "-", d$year_max),
+    "Number of Countries" = length(d$all_countries),
+    "Total Records" = d$n_records,
+    "Has Published Data" = ifelse(d$has_public_data, "Yes", "No (new indicator)")
+  )
+  df <- tibble(Metric = names(info), Value = as.character(unlist(info)))
+  reactable(df, columns = list(Metric = colDef(width = 220)), bordered = TRUE, highlight = TRUE)
+})
+```
+
+```{r}
+#| title: Indicator Metadata
+reactableOutput("summary_table")
+```
+
+# Completeness Check
+
+*This section verifies whether the internal dataset covers the same country-year combinations as the public CEPALSTAT version, for the currently filtered countries and years.* It flags "Missing in Both", "Old Only" (removed in this update), "New Only" (added in this update), and "Present in Both".
+
+```{r}
+#| context: server
+plot_coverage <- function(df) {
+  df2 <- df %>%
+    mutate(
+      country = factor(country, levels = sort(unique(country), decreasing = TRUE)),
+      status = factor(status, levels = c("Present in Both", "New Only", "Old Only", "Missing in Both"))
+    )
+  ggplot(df2, aes(
+    x = year, y = country, color = status,
+    text = paste0("Country: ", country, "<br>Year: ", year, "<br>Status: ", status)
+  )) +
+    geom_point(shape = 15, size = 3.2) +
+    scale_color_manual(values = c(
+      "Missing in Both" = pal$fill_missing,
+      "Old Only"        = pal$before,
+      "New Only"        = pal$after,
+      "Present in Both" = pal$fill_both
+    ), drop = FALSE) +
+    labs(title = "Data Availability by Country and Year", x = NULL, y = NULL, color = "Coverage") +
+    theme_qc() +
+    theme(legend.position = "bottom", panel.grid.major = element_line(color = pal$grid, linewidth = 0.2))
+}
+
+output$coverage_plot <- renderPlotly({
+  fd <- filtered_data()
+  ggplotly(plot_coverage(fd$coverage_check), tooltip = "text") %>%
+    style_plotly(subtitle = "Blue = only in previous public data &middot; Orange = only in this update")
+})
+```
+
+```{r}
+#| title: Data Availability by Country and Year
+plotlyOutput("coverage_plot")
+```
+
+# New Values
+
+This section visualizes the values of the new data points, both across every filtered country and for the country selected in the sidebar's Inspect Country dropdown.
+
+```{r}
+#| context: server
+output$new_overview <- renderPlotly({
+  fd <- filtered_data()
+  df2 <- fd$comp %>% filter(!is.na(value_data))
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry
+    )
+  )) +
+    geom_line(alpha = 0.35, color = pal$grid) +
+    geom_point(size = 1.3, alpha = 0.85) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$after)) +
+    labs(title = "Time Series by Country", x = "Year", y = "Value") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>%
+    style_plotly(subtitle = "Orange points indicate new entries not present in the public dataset", legend_bottom = FALSE)
+})
+
+output$new_country <- renderPlotly({
+  fd <- filtered_data()
+  req(input$country)
+  df2 <- fd$comp %>% filter(!is.na(value_data), dim_208_label == input$country)
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, color = flag_new_entry,
+    text = paste0("Year: ", dim_29117_label, "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry)
+  )) +
+    geom_line(color = pal$grid, linewidth = 0.7) +
+    geom_point(size = 2.6, alpha = 0.9) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$after)) +
+    labs(title = input$country, x = "Year", y = "Value") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+```
+
+## Row
+
+```{r}
+#| title: Time Series by Country (All Filtered Countries)
+plotlyOutput("new_overview")
+```
+
+```{r}
+#| title: Inspect Country
+plotlyOutput("new_country")
+```
+
+# Value Comparisons
+
+*This section analyzes changes between values that are available in both the public and internal data sets, for the currently filtered countries/years.* Key statistics include mean and absolute differences, and the share of values with changes greater than ±20%. Red points identify values that exceed this threshold. Skipped automatically for a new indicator with no published data to compare against.
+
+```{r}
+#| context: server
+output$vs_pub_note <- renderUI({
+  d <- qc_data()
+  if (!d$has_public_data) {
+    HTML(callout("This is a new indicator, so there is no previously published data to compare against.", type = "note"))
+  }
+})
+
+output$summary_stats_table <- renderReactable({
+  d <- qc_data()
+  req(d$has_public_data)
+  fd <- filtered_data()
+  stats <- fd$comp %>%
+    filter(status == "Present in Both") %>%
+    summarise(
+      "Mean % difference" = round(mean(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
+      "% of values with large differences (>20%)" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
+      "Mean absolute difference" = round(mean(abs_diff[is.finite(abs_diff)], na.rm = TRUE), 1),
+      "Median reported value" = round(median(value_data, na.rm = TRUE), 1),
+      "Minimum reported value" = round(min(value_data, na.rm = TRUE), 1),
+      "Maximum reported value" = round(max(value_data, na.rm = TRUE), 1)
+    )
+  df <- tibble(Metric = names(stats), Value = as.character(unlist(stats)))
+  reactable(df, columns = list(Metric = colDef(width = 280)), bordered = TRUE, highlight = TRUE)
+})
+
+output$scatter_plot <- renderPlotly({
+  d <- qc_data()
+  req(d$has_public_data)
+  fd <- filtered_data()
+  df2 <- fd$comp %>%
+    filter(!flag_some_na) %>%
+    mutate(flag_large_diff = factor(flag_large_diff, levels = c(FALSE, TRUE), labels = c("Within ±20%", "Above ±20%")))
+  p <- ggplot(df2, aes(
+    x = value_data, y = value_pub, color = flag_large_diff,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Internal: ", round(value_data, 1), "<br>Public: ", round(value_pub, 1)
+    )
+  )) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
+    geom_point(alpha = 0.8, size = 1.5) +
+    scale_color_manual(values = c("Within ±20%" = pal$neutral, "Above ±20%" = pal$flag), guide = "none") +
+    labs(title = "Value Comparison between Public and Internal Data", x = "Internal Data", y = "Public Data") +
+    theme_qc()
+  ggplotly(p, tooltip = "text")
+})
+
+output$pctdiff_plot <- renderPlotly({
+  d <- qc_data()
+  req(d$has_public_data)
+  fd <- filtered_data()
+  yr <- range(as.numeric(fd$comp$dim_29117_label), na.rm = TRUE)
+  df2 <- fd$comp %>% filter(!flag_some_na)
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = perc_diff,
+    text = paste0("Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>% Diff: ", round(perc_diff, 1))
+  )) +
+    annotate("rect", xmin = yr[1] - 0.5, xmax = yr[2] + 0.5, ymin = -20, ymax = 20, fill = pal$good, alpha = 0.08) +
+    geom_jitter(aes(color = abs(perc_diff) > 20), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
+    labs(title = "Percent Change between Public and Internal Data", x = "Year", y = "Percent Difference") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>%
+    style_plotly(subtitle = "Red points are outside of the ±20% tolerance threshold", legend_bottom = FALSE)
+})
+
+output$threshold_table <- renderReactable({
+  d <- qc_data()
+  req(d$has_public_data)
+  fd <- filtered_data()
+  flagged <- fd$comp %>%
+    mutate(
+      z_perc_diff = round(as.numeric(scale(perc_diff)), 1),
+      value_data = round(value_data, 1),
+      value_pub = round(value_pub, 1),
+      perc_diff = round(perc_diff, 1)
+    ) %>%
+    filter(flag_large_diff == TRUE) %>%
+    arrange(desc(z_perc_diff)) %>%
+    select(dim_208_label, dim_29117_label, value_data, value_pub, perc_diff, z_perc_diff)
+  if (nrow(flagged) == 0) {
+    return(reactable(tibble(Message = "No values differ from the published data by more than ±20%.")))
+  }
+  reactable(flagged, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
+})
+```
+
+```{r}
+uiOutput("vs_pub_note")
+```
+
+```{r}
+#| title: Summary Statistics
+reactableOutput("summary_stats_table")
+```
+
+## Row
+
+```{r}
+#| title: Value Comparison (Public vs. Internal)
+plotlyOutput("scatter_plot")
+```
+
+```{r}
+#| title: Percent Change Over Time
+plotlyOutput("pctdiff_plot")
+```
+
+```{r}
+#| title: Records Above ±20% Difference
+reactableOutput("threshold_table")
+```
+
+# Outlier Detection
+
+*This section evaluates the quality of the internal data independently, flagging records where the value is more than 3 standard deviations from the country's own mean.* This works on the internal data alone, so it applies whether or not there is public data to compare against.
+
+```{r}
+#| context: server
+output$outlier_table <- renderReactable({
+  fd <- filtered_data()
+  out <- fd$comp %>%
+    filter(flag_some_na == FALSE, outlier_within_country == TRUE) %>%
+    mutate(value_data = round(value_data, 1)) %>%
+    arrange(desc(abs(z_within_country))) %>%
+    select(dim_208_label, dim_29117_label, value_data, z_within_country)
+  if (nrow(out) == 0) {
+    return(reactable(tibble(Message = "No within-country outliers were found.")))
+  }
+  reactable(out, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
+})
+
+output$outlier_country_plot <- renderPlotly({
+  fd <- filtered_data()
+  req(input$country)
+  df2 <- fd$comp %>% filter(dim_208_label == input$country)
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, color = flag_some_value,
+    text = paste0(
+      "Year: ", dim_29117_label, "<br>Internal: ", round(value_data, 1),
+      "<br>Public: ", round(value_pub, 1), "<br>% Diff: ", round(perc_diff, 1),
+      "<br>Z-Score: ", round(z_within_country, 1)
+    )
+  )) +
+    geom_line(color = pal$grid, linewidth = 0.7) +
+    geom_point(size = 2.6, alpha = 0.9) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag)) +
+    labs(title = input$country, x = "Year", y = "Internal Value") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>%
+    style_plotly(subtitle = "Red points are flagged by percent difference or within-country z-score", legend_bottom = FALSE)
+})
+```
+
+```{r}
+#| title: Z-Score Outliers (Filtered View)
+reactableOutput("outlier_table")
+```
+
+```{r}
+#| title: Inspect Country
+plotlyOutput("outlier_country_plot")
+```
+
+# Dimension Analysis
+
+*Breaks out the selected country's values by the chosen dimension (e.g. sex or age group).* Always shows every member of the chosen dimension, regardless of the dimension filter in the sidebar, since that's the point of this view. Only applies to indicators with extra dimensions beyond country and year.
+
+```{r}
+#| context: server
+output$dim_note <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) {
+    HTML(callout("This indicator has no extra dimensions beyond country and year.", type = "note"))
+  }
+})
+
+output$dim_plot <- renderPlotly({
+  d <- qc_data()
+  req(d$has_extra_dims, input$country, input$dim_col)
+  dim_label <- d$dim_labels[[input$dim_col]]
+
+  by_extra <- dim_view_detailed() %>%
+    filter(dim_208_label == input$country, !is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_29117_label", input$dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  n_cats <- n_distinct(by_extra[[input$dim_col]])
+  color_scale <- if (n_cats <= length(pal$categorical)) {
+    scale_color_manual(values = pal$categorical[seq_len(n_cats)])
+  } else {
+    scale_color_viridis_d(option = "C")
+  }
+
+  p <- ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data,
+    color = .data[[input$dim_col]], group = .data[[input$dim_col]],
+    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[input$dim_col]], "<br>Value: ", round(value_data, 1))
+  )) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.8) +
+    color_scale +
+    scale_x_continuous(n.breaks = 6) +
+    scale_y_continuous(labels = label_number()) +
+    labs(title = glue("{input$country} — {dim_label}"), x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+```
+
+```{r}
+uiOutput("dim_note")
+```
+
+```{r}
+#| title: Country x Dimension Breakout
+plotlyOutput("dim_plot")
+```
