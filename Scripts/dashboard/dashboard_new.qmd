@@ -202,21 +202,16 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
 }
 
 # Cheap - filters already-loaded data by country/year/dimension-member selections, then
-# re-aggregates to country/year and recomputes every flag exactly as the original report did
-# (±20% difference threshold, within-country z-score outlier threshold of 3).
-build_filtered_view <- function(raw, countries, dim_selections = list(), year_range) {
-  df <- raw$comp_detailed %>%
-    filter(dim_208_label %in% countries) %>%
-    filter(as.numeric(dim_29117_label) >= year_range[1], as.numeric(dim_29117_label) <= year_range[2])
+# re-aggregates to country/year and recomputes every flag. Always operates on the FULL data -
+# every country, year, and dimension member - per diff_threshold, adjustable from the sidebar's
+# Threshold control (the original report's ±20% and z-score-of-3 conventions are the defaults).
+# The sidebar's Highlight controls (Country, Year, dimension members) are for spotlighting a
+# slice on top of this, not for narrowing what's included - see the Country control below and
+# the Dimension Analysis page for where that highlighting is currently wired in.
+build_filtered_view <- function(raw, diff_threshold = 20, outlier_z = 3) {
+  comp_detailed <- raw$comp_detailed
 
-  for (dc in raw$extra_dims) {
-    sel <- dim_selections[[dc]]
-    if (!is.null(sel) && length(sel) > 0) df <- df %>% filter(.data[[dc]] %in% sel)
-  }
-
-  comp_detailed <- df
-
-  comp <- df %>%
+  comp <- comp_detailed %>%
     group_by(dim_208, dim_29117, dim_208_label, dim_29117_label) %>%
     summarize(
       value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
@@ -226,7 +221,7 @@ build_filtered_view <- function(raw, countries, dim_selections = list(), year_ra
     mutate(abs_diff = abs(value_data - value_pub),
            perc_diff = round((abs_diff / value_pub) * 100, 2)) %>%
     mutate(
-      flag_large_diff = perc_diff > 20,
+      flag_large_diff = perc_diff > diff_threshold,
       flag_missing_entry = is.na(value_data),
       flag_new_entry = is.na(value_pub),
       flag_some_na = is.na(value_data) | is.na(value_pub)
@@ -240,14 +235,14 @@ build_filtered_view <- function(raw, countries, dim_selections = list(), year_ra
     group_by(dim_208_label) %>%
     mutate(
       z_within_country = round(as.numeric(scale(value_data)), 1),
-      outlier_within_country = abs(z_within_country) > 3
+      outlier_within_country = abs(z_within_country) > outlier_z
     ) %>%
     ungroup() %>%
     mutate(flag_some_value = ifelse(outlier_within_country == TRUE | flag_large_diff == TRUE, TRUE, FALSE))
 
   all_combinations <- expand_grid(
-    country = sort(unique(comp$dim_208_label)),
-    year = as.character(year_range[1]:year_range[2])
+    country = raw$all_countries,
+    year = as.character(raw$year_min:raw$year_max)
   )
   coverage_check <- all_combinations %>%
     left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
@@ -260,17 +255,8 @@ build_filtered_view <- function(raw, countries, dim_selections = list(), year_ra
 
   list(
     comp = comp, comp_detailed = comp_detailed, coverage_check = coverage_check,
-    countries = sort(unique(comp$dim_208_label)), countries_with_flags = countries_with_flags
+    countries = raw$all_countries, countries_with_flags = countries_with_flags
   )
-}
-
-# Country + Year only, no dimension-member filtering - used by the Dimension Analysis page,
-# since its whole purpose is showing the breakdown across a dimension's members, which a
-# "Total only" default filter on that same dimension would otherwise collapse to one line.
-filter_detailed_by_country_year <- function(raw, countries, year_range) {
-  raw$comp_detailed %>%
-    filter(dim_208_label %in% countries) %>%
-    filter(as.numeric(dim_29117_label) >= year_range[1], as.numeric(dim_29117_label) <= year_range[2])
 }
 ```
 
@@ -286,27 +272,13 @@ qc_data <- eventReactive(input$load, {
   )
 }, ignoreNULL = FALSE)
 
-# Resolves the Country filter's selection to an actual country list, treating the special
-# "(All Countries)" choice (sentinel value "__ALL__") as "don't narrow at all."
-resolve_countries <- function(selected, all_countries) {
-  if (is.null(selected) || "__ALL__" %in% selected) return(all_countries)
-  selected
-}
-
+# Always the full dataset (every country/year/dimension member), aggregated at the
+# sidebar's Threshold setting - see build_filtered_view()'s comment for why this no longer
+# takes any country/year/dimension-member narrowing.
 filtered_data <- reactive({
   d <- qc_data()
-  req(d, input$countries, input$year_range)
-  dim_sel <- setNames(
-    lapply(d$extra_dims, function(dc) input[[paste0("dimfilter_", dc)]]),
-    d$extra_dims
-  )
-  build_filtered_view(d, resolve_countries(input$countries, d$all_countries), dim_sel, input$year_range)
-})
-
-dim_view_detailed <- reactive({
-  d <- qc_data()
-  req(d, input$countries, input$year_range)
-  filter_detailed_by_country_year(d, resolve_countries(input$countries, d$all_countries), input$year_range)
+  req(d, input$threshold)
+  build_filtered_view(d, diff_threshold = input$threshold)
 })
 ```
 
@@ -316,25 +288,27 @@ dim_view_detailed <- reactive({
 
 output$status_ui <- renderUI({
   d <- qc_data()
-  tagList(
-    strong(if (is.na(d$indicator_name)) glue("Indicator {d$indicator_id}") else d$indicator_name),
-    br(),
-    span(style = glue("color:{pal$ink2}; font-size:0.85em;"),
-         glue("Vintage: {if (is.na(d$data_date)) 'unknown' else d$data_date}"))
+  name_display <- if (is.na(d$indicator_name)) glue("Indicator {d$indicator_id}") else d$indicator_name
+  div(
+    style = glue("padding:0.65rem 0.8rem; background:{pal$fill_both}; border-radius:8px;"),
+    div(style = glue("font-weight:700; font-size:1.05em; color:{pal$ink}; line-height:1.3;"), name_display),
+    div(
+      style = "margin-top:0.35rem; display:flex; gap:0.4rem; align-items:center; flex-wrap:wrap;",
+      span(
+        style = glue("background:white; border-radius:4px; padding:0.05rem 0.45rem; font-size:0.78em; font-weight:600; color:{pal$ink2};"),
+        glue("ID {d$indicator_id}")
+      ),
+      span(
+        style = glue("font-size:0.78em; color:{pal$ink2};"),
+        glue("Vintage {if (is.na(d$data_date)) 'unknown' else d$data_date}")
+      )
+    )
   )
 })
 
-output$country_filter_ui <- renderUI({
-  d <- qc_data()
-  choices <- c("(All Countries)" = "__ALL__", setNames(d$all_countries, d$all_countries))
-  default_countries <- if ("Latin America and the Caribbean" %in% d$all_countries) {
-    "Latin America and the Caribbean"
-  } else {
-    "__ALL__"
-  }
-  selectizeInput("countries", "Country", choices = choices, selected = default_countries, multiple = TRUE)
-})
-
+# Year range and dimension-member selections here are for spotlighting a slice on the charts
+# (not narrowing the data - see build_filtered_view()); the year control isn't wired into any
+# chart's rendering yet, so it's currently a no-op display default until that's built out.
 output$year_slider_ui <- renderUI({
   d <- qc_data()
   sliderInput("year_range", "Years", min = d$year_min, max = d$year_max,
@@ -346,22 +320,27 @@ output$dim_filters_ui <- renderUI({
   if (!d$has_extra_dims) return(NULL)
   tagList(lapply(d$extra_dims, function(dc) {
     members <- d$dim_members[[dc]]
+    choices <- c("(All)" = "__ALL__", setNames(members, members))
     selectizeInput(
       inputId = paste0("dimfilter_", dc),
       label = d$dim_labels[[dc]],
-      choices = members,
-      selected = if ("Total" %in% members) "Total" else NULL,
-      multiple = TRUE,
-      options = list(placeholder = "(None)")
+      choices = choices,
+      selected = "__ALL__",
+      multiple = TRUE
     )
   }))
 })
 
-output$inspect_country_ui <- renderUI({
-  fd <- filtered_data()
-  req(length(fd$countries) > 0)
-  default_country <- if (length(fd$countries_with_flags) > 0) fd$countries_with_flags[1] else fd$countries[1]
-  selectInput("country", "Inspect Country", choices = fd$countries, selected = default_country)
+# The Highlight section's Country control - defaults to Latin America and the Caribbean, and
+# drives the single-country charts (Inspect Country's old job) across every page.
+output$highlight_country_ui <- renderUI({
+  d <- qc_data()
+  default_country <- if ("Latin America and the Caribbean" %in% d$all_countries) {
+    "Latin America and the Caribbean"
+  } else {
+    d$all_countries[1]
+  }
+  selectInput("country", "Country", choices = d$all_countries, selected = default_country)
 })
 
 output$dim_selector_ui <- renderUI({
@@ -389,10 +368,10 @@ uiOutput("status_ui")
 
 ---
 
-**Filters**
+**Highlight**
 
 ```{r}
-uiOutput("country_filter_ui")
+uiOutput("highlight_country_ui")
 ```
 
 ```{r}
@@ -403,14 +382,16 @@ uiOutput("year_slider_ui")
 uiOutput("dim_filters_ui")
 ```
 
----
-
-```{r}
-uiOutput("inspect_country_ui")
-```
-
 ```{r}
 uiOutput("dim_selector_ui")
+```
+
+---
+
+**Threshold**
+
+```{r}
+sliderInput("threshold", "Difference threshold (%)", min = 0, max = 100, value = 20, step = 1)
 ```
 
 # Summary
@@ -782,7 +763,7 @@ output$dim_plot <- renderPlotly({
   }
   dim_label <- d$dim_labels[[input$dim_col]]
 
-  by_extra <- dim_view_detailed() %>%
+  by_extra <- d$comp_detailed %>%
     filter(dim_208_label == input$country, !is.na(value_data)) %>%
     group_by(across(all_of(c("dim_29117_label", input$dim_col)))) %>%
     summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
@@ -819,7 +800,7 @@ output$dim_faceted <- renderPlotly({
   if (is.null(input$dim_col)) return(empty_plotly("Pick a breakout dimension in the sidebar."))
   dim_label <- d$dim_labels[[input$dim_col]]
 
-  by_extra <- dim_view_detailed() %>%
+  by_extra <- d$comp_detailed %>%
     filter(!is.na(value_data)) %>%
     group_by(across(all_of(c("dim_208_label", "dim_29117_label", input$dim_col)))) %>%
     summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
