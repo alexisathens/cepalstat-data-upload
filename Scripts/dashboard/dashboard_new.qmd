@@ -38,6 +38,7 @@ library(plotly)
 # ---- Setup: libraries, palette, and data-loading functions ----
 
 library(shiny)
+library(bslib)
 library(plotly)
 library(reactable)
 library(ggplot2)
@@ -258,6 +259,27 @@ build_filtered_view <- function(raw, diff_threshold = 20, outlier_z = 3) {
     countries = raw$all_countries, countries_with_flags = countries_with_flags
   )
 }
+
+# Finds member values of one dimension (e.g. a specific year, country, or extra-dimension
+# category) that are ENTIRELY new or entirely missing relative to the public data - i.e. the
+# member never appears with a value on one side at all, not just a few missing rows. Used for
+# the Overview page's "added"/"removed" KPIs. Labels each item with dim_label for display when
+# results from multiple dimensions get combined (e.g. "Year: 2025", "Country: Haiti").
+find_dim_changes <- function(df, dim_col, dim_label) {
+  member_status <- df %>%
+    group_by(.data[[dim_col]]) %>%
+    summarise(
+      has_data = any(!is.na(value_data)),
+      has_pub  = any(!is.na(value_pub)),
+      .groups = "drop"
+    )
+  added <- member_status %>% filter(has_data, !has_pub) %>% pull(.data[[dim_col]])
+  removed <- member_status %>% filter(has_pub, !has_data) %>% pull(.data[[dim_col]])
+  list(
+    added = if (length(added) > 0) paste0(dim_label, ": ", added) else character(0),
+    removed = if (length(removed) > 0) paste0(dim_label, ": ", removed) else character(0)
+  )
+}
 ```
 
 ```{r}
@@ -377,9 +399,7 @@ uiOutput("dim_filters_ui")
 sliderInput("threshold", "Difference threshold (%)", min = 0, max = 100, value = 20, step = 1)
 ```
 
-# Summary
-
-This section summarizes key metadata about the indicator and dataset under review.
+# Overview
 
 ```{r}
 #| context: server
@@ -399,6 +419,70 @@ output$summary_table <- renderReactable({
   df <- tibble(Metric = names(info), Value = as.character(unlist(info)))
   reactable(df, columns = list(Metric = colDef(width = 220)), bordered = TRUE, highlight = TRUE)
 })
+
+# Four KPI callouts: how much changed (large-difference % and mean % difference, both computed
+# on the full data at the sidebar's Threshold), and what changed structurally (dimension
+# members - year, country, or the extra dimension - that are entirely new or entirely gone
+# relative to the public data, not just a few missing rows).
+output$kpi_boxes_ui <- renderUI({
+  d <- qc_data()
+  box_theme <- value_box_theme(bg = pal$fill_both, fg = pal$ink)
+
+  if (d$has_public_data) {
+    fd <- filtered_data()
+    present <- fd$comp %>% filter(status == "Present in Both")
+    pct_large_display <- glue("{round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)}%")
+    mean_diff_display <- glue("{round(mean(present$perc_diff[is.finite(present$perc_diff)], na.rm = TRUE), 1)}%")
+
+    dim_specs <- list(c("dim_29117_label", "Year"), c("dim_208_label", "Country"))
+    if (d$has_extra_dims) {
+      dim_col <- d$extra_dims[1]
+      dim_specs <- c(dim_specs, list(c(dim_col, d$dim_labels[[dim_col]])))
+    }
+    changes <- lapply(dim_specs, function(spec) find_dim_changes(d$comp_detailed, spec[1], spec[2]))
+    added <- unlist(lapply(changes, `[[`, "added"))
+    removed <- unlist(lapply(changes, `[[`, "removed"))
+    added_detail <- if (length(added) == 0) "None" else paste(added, collapse = "; ")
+    removed_detail <- if (length(removed) == 0) "None" else paste(removed, collapse = "; ")
+  } else {
+    pct_large_display <- "N/A"
+    mean_diff_display <- "N/A"
+    added <- character(0)
+    removed <- character(0)
+    added_detail <- "No published data to compare against"
+    removed_detail <- "No published data to compare against"
+  }
+
+  layout_column_wrap(
+    width = 1 / 4,
+    value_box(
+      title = glue("Large Differences (>{input$threshold}%)"),
+      value = pct_large_display,
+      theme = box_theme
+    ),
+    value_box(
+      title = "Mean % Difference",
+      value = mean_diff_display,
+      theme = box_theme
+    ),
+    value_box(
+      title = "Added",
+      value = length(added),
+      p(added_detail),
+      theme = box_theme
+    ),
+    value_box(
+      title = "Removed",
+      value = length(removed),
+      p(removed_detail),
+      theme = box_theme
+    )
+  )
+})
+```
+
+```{r}
+uiOutput("kpi_boxes_ui")
 ```
 
 ```{r}
