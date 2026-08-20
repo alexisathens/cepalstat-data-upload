@@ -107,6 +107,17 @@ facet_height_px <- function(n_facets, ncol = 3, per_row = 170, base = 100) {
   paste0(base + ceiling(max(n_facets, 1) / ncol) * per_row, "px")
 }
 
+# Wraps a tall plotlyOutput in a fixed-height, scrollable container. Keeps the card's own
+# height "regular" (not growing to match a 30+ country facet grid) while the plot itself still
+# renders at its full, correctly-proportioned height inside - capping the container's height
+# directly (instead of this wrapper) would just squish the panels again.
+scrollable_plot <- function(output_id, plot_height_px, max_visible_px = 700) {
+  div(
+    style = glue("max-height:{max_visible_px}px; overflow-y:auto;"),
+    plotlyOutput(output_id, height = plot_height_px)
+  )
+}
+
 callout <- function(text, type = c("note", "good", "flag")) {
   type <- match.arg(type)
   color <- switch(type, note = pal$before, good = pal$good, flag = pal$flag)
@@ -469,7 +480,7 @@ output$coverage_plot <- renderPlotly({
 
 ```{r}
 #| title: Data Availability by Country and Year
-plotlyOutput("coverage_plot")
+plotlyOutput("coverage_plot", height = "650px")
 ```
 
 # New Values
@@ -539,23 +550,23 @@ output$new_faceted <- renderPlotly({
 
 output$new_faceted_ui <- renderUI({
   fd <- filtered_data()
-  plotlyOutput("new_faceted", height = facet_height_px(n_distinct(fd$comp$dim_208_label)))
+  scrollable_plot("new_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label)))
 })
 ```
 
-## Row
+## Row {height=420px}
 
 ```{r}
 #| title: Time Series by Country (All Filtered Countries)
-plotlyOutput("new_overview")
+plotlyOutput("new_overview", height = "420px")
 ```
 
 ```{r}
 #| title: Inspect Country
-plotlyOutput("new_country")
+plotlyOutput("new_country", height = "420px")
 ```
 
-## Row
+## Row {height=740px}
 
 ```{r}
 #| title: All Countries (Faceted)
@@ -655,16 +666,16 @@ output$threshold_table <- renderReactable({
 reactableOutput("summary_stats_table")
 ```
 
-## Row
+## Row {height=420px}
 
 ```{r}
 #| title: Value Comparison (Public vs. Internal)
-plotlyOutput("scatter_plot")
+plotlyOutput("scatter_plot", height = "420px")
 ```
 
 ```{r}
 #| title: Percent Change Over Time
-plotlyOutput("pctdiff_plot")
+plotlyOutput("pctdiff_plot", height = "420px")
 ```
 
 ```{r}
@@ -736,9 +747,11 @@ output$outlier_faceted <- renderPlotly({
 
 output$outlier_faceted_ui <- renderUI({
   fd <- filtered_data()
-  plotlyOutput("outlier_faceted", height = facet_height_px(n_distinct(fd$comp$dim_208_label)))
+  scrollable_plot("outlier_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label)))
 })
 ```
+
+## Row {height=420px}
 
 ```{r}
 #| title: Z-Score Outliers (Filtered View)
@@ -747,10 +760,10 @@ reactableOutput("outlier_table")
 
 ```{r}
 #| title: Inspect Country
-plotlyOutput("outlier_country_plot")
+plotlyOutput("outlier_country_plot", height = "420px")
 ```
 
-## Row
+## Row {height=740px}
 
 ```{r}
 #| title: All Countries (Faceted)
@@ -846,16 +859,16 @@ output$dim_faceted_ui <- renderUI({
   d <- qc_data()
   req(d$has_extra_dims)
   fd <- filtered_data()
-  plotlyOutput("dim_faceted", height = facet_height_px(n_distinct(fd$comp$dim_208_label)))
+  scrollable_plot("dim_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label)))
 })
 ```
 
 ```{r}
 #| title: Country x Dimension Breakout
-plotlyOutput("dim_plot")
+plotlyOutput("dim_plot", height = "480px")
 ```
 
-## Row
+## Row {height=740px}
 
 ```{r}
 #| title: All Countries (Faceted)
