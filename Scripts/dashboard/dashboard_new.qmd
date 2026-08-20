@@ -88,6 +88,25 @@ style_plotly <- function(gp, title = NULL, subtitle = NULL, legend_bottom = TRUE
   gp
 }
 
+# A blank plotly canvas with a centered message - used instead of req()-blocking an output
+# outright, so a card always shows something (the real chart, or a clear reason it's empty)
+# rather than going silently blank with no explanation.
+empty_plotly <- function(msg) {
+  plotly_empty(type = "scatter", mode = "markers") %>%
+    layout(
+      xaxis = list(visible = FALSE), yaxis = list(visible = FALSE),
+      annotations = list(list(text = msg, showarrow = FALSE, font = list(size = 14, color = pal$ink2)))
+    )
+}
+
+# Pixel height for a facet_wrap grid of country panels (3 columns), sized to the number of
+# countries currently in view. Used with plotlyOutput(height=) via a renderUI wrapper, since
+# that's the reliable way to size a Shiny-rendered plotly widget (unlike the fig.height chunk
+# option, which only applies to a chunk's own auto-printed output, not renderPlotly()).
+facet_height_px <- function(n_facets, ncol = 3, per_row = 170, base = 100) {
+  paste0(base + ceiling(max(n_facets, 1) / ncol) * per_row, "px")
+}
+
 callout <- function(text, type = c("note", "good", "flag")) {
   type <- match.arg(type)
   color <- switch(type, note = pal$before, good = pal$good, flag = pal$flag)
@@ -473,7 +492,7 @@ output$new_overview <- renderPlotly({
 
 output$new_country <- renderPlotly({
   fd <- filtered_data()
-  req(input$country)
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
   df2 <- fd$comp %>% filter(!is.na(value_data), dim_208_label == input$country)
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = value_data, color = flag_new_entry,
@@ -486,6 +505,33 @@ output$new_country <- renderPlotly({
     theme_qc() +
     theme(legend.position = "none")
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+# All-countries faceted view (kept alongside the reactive single-country view for now, as a
+# comprehensive cross-check while the filter-driven approach gets a trial run).
+output$new_faceted <- renderPlotly({
+  fd <- filtered_data()
+  df2 <- fd$comp %>% filter(!is.na(value_data))
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry
+    )
+  )) +
+    geom_line(alpha = 0.4, color = pal$grid) +
+    geom_point(size = 1, alpha = 0.85) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$after)) +
+    labs(title = "All Filtered Countries", x = "Year", y = "Value") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+output$new_faceted_ui <- renderUI({
+  fd <- filtered_data()
+  plotlyOutput("new_faceted", height = facet_height_px(n_distinct(fd$comp$dim_208_label)))
 })
 ```
 
@@ -501,22 +547,24 @@ plotlyOutput("new_overview")
 plotlyOutput("new_country")
 ```
 
+## Row
+
+```{r}
+#| title: All Countries (Faceted)
+uiOutput("new_faceted_ui")
+```
+
 # Value Comparisons
 
 *This section analyzes changes between values that are available in both the public and internal data sets, for the currently filtered countries/years.* Key statistics include mean and absolute differences, and the share of values with changes greater than ±20%. Red points identify values that exceed this threshold. Skipped automatically for a new indicator with no published data to compare against.
 
 ```{r}
 #| context: server
-output$vs_pub_note <- renderUI({
-  d <- qc_data()
-  if (!d$has_public_data) {
-    HTML(callout("This is a new indicator, so there is no previously published data to compare against.", type = "note"))
-  }
-})
+no_pub_msg <- "This is a new indicator, so there is no previously published data to compare against."
 
 output$summary_stats_table <- renderReactable({
   d <- qc_data()
-  req(d$has_public_data)
+  if (!d$has_public_data) return(reactable(tibble(Message = no_pub_msg)))
   fd <- filtered_data()
   stats <- fd$comp %>%
     filter(status == "Present in Both") %>%
@@ -534,7 +582,7 @@ output$summary_stats_table <- renderReactable({
 
 output$scatter_plot <- renderPlotly({
   d <- qc_data()
-  req(d$has_public_data)
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
   fd <- filtered_data()
   df2 <- fd$comp %>%
     filter(!flag_some_na) %>%
@@ -556,7 +604,7 @@ output$scatter_plot <- renderPlotly({
 
 output$pctdiff_plot <- renderPlotly({
   d <- qc_data()
-  req(d$has_public_data)
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
   fd <- filtered_data()
   yr <- range(as.numeric(fd$comp$dim_29117_label), na.rm = TRUE)
   df2 <- fd$comp %>% filter(!flag_some_na)
@@ -575,7 +623,7 @@ output$pctdiff_plot <- renderPlotly({
 
 output$threshold_table <- renderReactable({
   d <- qc_data()
-  req(d$has_public_data)
+  if (!d$has_public_data) return(reactable(tibble(Message = no_pub_msg)))
   fd <- filtered_data()
   flagged <- fd$comp %>%
     mutate(
@@ -592,10 +640,6 @@ output$threshold_table <- renderReactable({
   }
   reactable(flagged, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
 })
-```
-
-```{r}
-uiOutput("vs_pub_note")
 ```
 
 ```{r}
@@ -641,7 +685,7 @@ output$outlier_table <- renderReactable({
 
 output$outlier_country_plot <- renderPlotly({
   fd <- filtered_data()
-  req(input$country)
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
   df2 <- fd$comp %>% filter(dim_208_label == input$country)
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = value_data, color = flag_some_value,
@@ -660,6 +704,32 @@ output$outlier_country_plot <- renderPlotly({
   ggplotly(p, tooltip = "text") %>%
     style_plotly(subtitle = "Red points are flagged by percent difference or within-country z-score", legend_bottom = FALSE)
 })
+
+# All-countries faceted view (kept alongside the reactive single-country view for now).
+output$outlier_faceted <- renderPlotly({
+  fd <- filtered_data()
+  p <- ggplot(fd$comp, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_some_value,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Internal: ", round(value_data, 1), "<br>Public: ", round(value_pub, 1),
+      "<br>% Diff: ", round(perc_diff, 1), "<br>Z-Score: ", round(z_within_country, 1)
+    )
+  )) +
+    geom_line(alpha = 0.4, color = pal$grid) +
+    geom_point(size = 1, alpha = 0.85) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag)) +
+    labs(title = "All Filtered Countries", x = "Year", y = "Internal Value") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+output$outlier_faceted_ui <- renderUI({
+  fd <- filtered_data()
+  plotlyOutput("outlier_faceted", height = facet_height_px(n_distinct(fd$comp$dim_208_label)))
+})
 ```
 
 ```{r}
@@ -672,22 +742,27 @@ reactableOutput("outlier_table")
 plotlyOutput("outlier_country_plot")
 ```
 
+## Row
+
+```{r}
+#| title: All Countries (Faceted)
+uiOutput("outlier_faceted_ui")
+```
+
 # Dimension Analysis
 
 *Breaks out the selected country's values by the chosen dimension (e.g. sex or age group).* Always shows every member of the chosen dimension, regardless of the dimension filter in the sidebar, since that's the point of this view. Only applies to indicators with extra dimensions beyond country and year.
 
 ```{r}
 #| context: server
-output$dim_note <- renderUI({
-  d <- qc_data()
-  if (!d$has_extra_dims) {
-    HTML(callout("This indicator has no extra dimensions beyond country and year.", type = "note"))
-  }
-})
+no_dims_msg <- "This indicator has no extra dimensions beyond country and year."
 
 output$dim_plot <- renderPlotly({
   d <- qc_data()
-  req(d$has_extra_dims, input$country, input$dim_col)
+  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
+  if (is.null(input$country) || is.null(input$dim_col)) {
+    return(empty_plotly("Pick a country and a breakout dimension in the sidebar."))
+  }
   dim_label <- d$dim_labels[[input$dim_col]]
 
   by_extra <- dim_view_detailed() %>%
@@ -719,13 +794,62 @@ output$dim_plot <- renderPlotly({
 
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
 })
-```
 
-```{r}
-uiOutput("dim_note")
+# All-countries faceted view (kept alongside the reactive single-country view for now).
+output$dim_faceted <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
+  if (is.null(input$dim_col)) return(empty_plotly("Pick a breakout dimension in the sidebar."))
+  dim_label <- d$dim_labels[[input$dim_col]]
+
+  by_extra <- dim_view_detailed() %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_208_label", "dim_29117_label", input$dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  n_cats <- n_distinct(by_extra[[input$dim_col]])
+  color_scale <- if (n_cats <= length(pal$categorical)) {
+    scale_color_manual(values = pal$categorical[seq_len(n_cats)])
+  } else {
+    scale_color_viridis_d(option = "C")
+  }
+
+  p <- ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data, color = .data[[input$dim_col]], group = .data[[input$dim_col]],
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>", dim_label, ": ", .data[[input$dim_col]], "<br>Value: ", round(value_data, 1)
+    )
+  )) +
+    geom_line(linewidth = 0.7) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    color_scale +
+    scale_x_continuous(n.breaks = 4) +
+    scale_y_continuous(labels = label_number(), n.breaks = 4) +
+    labs(title = glue("All Filtered Countries — {dim_label}"), x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+
+output$dim_faceted_ui <- renderUI({
+  d <- qc_data()
+  req(d$has_extra_dims)
+  fd <- filtered_data()
+  plotlyOutput("dim_faceted", height = facet_height_px(n_distinct(fd$comp$dim_208_label)))
+})
 ```
 
 ```{r}
 #| title: Country x Dimension Breakout
 plotlyOutput("dim_plot")
+```
+
+## Row
+
+```{r}
+#| title: All Countries (Faceted)
+uiOutput("dim_faceted_ui")
 ```
