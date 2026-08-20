@@ -276,6 +276,13 @@ qc_data <- eventReactive(input$load, {
   )
 }, ignoreNULL = FALSE)
 
+# Resolves the Country filter's selection to an actual country list, treating the special
+# "(All Countries)" choice (sentinel value "__ALL__") as "don't narrow at all."
+resolve_countries <- function(selected, all_countries) {
+  if (is.null(selected) || "__ALL__" %in% selected) return(all_countries)
+  selected
+}
+
 filtered_data <- reactive({
   d <- qc_data()
   req(d, input$countries, input$year_range)
@@ -283,13 +290,13 @@ filtered_data <- reactive({
     lapply(d$extra_dims, function(dc) input[[paste0("dimfilter_", dc)]]),
     d$extra_dims
   )
-  build_filtered_view(d, input$countries, dim_sel, input$year_range)
+  build_filtered_view(d, resolve_countries(input$countries, d$all_countries), dim_sel, input$year_range)
 })
 
 dim_view_detailed <- reactive({
   d <- qc_data()
   req(d, input$countries, input$year_range)
-  filter_detailed_by_country_year(d, input$countries, input$year_range)
+  filter_detailed_by_country_year(d, resolve_countries(input$countries, d$all_countries), input$year_range)
 })
 ```
 
@@ -309,12 +316,13 @@ output$status_ui <- renderUI({
 
 output$country_filter_ui <- renderUI({
   d <- qc_data()
+  choices <- c("(All Countries)" = "__ALL__", setNames(d$all_countries, d$all_countries))
   default_countries <- if ("Latin America and the Caribbean" %in% d$all_countries) {
     "Latin America and the Caribbean"
   } else {
-    d$all_countries
+    "__ALL__"
   }
-  selectizeInput("countries", "Country", choices = d$all_countries, selected = default_countries, multiple = TRUE)
+  selectizeInput("countries", "Country", choices = choices, selected = default_countries, multiple = TRUE)
 })
 
 output$year_slider_ui <- renderUI({
