@@ -75,15 +75,14 @@ theme_qc <- function() {
     )
 }
 
-style_plotly <- function(gp, title = NULL, subtitle = NULL, legend_bottom = TRUE) {
-  if (!is.null(title)) {
-    txt <- if (!is.null(subtitle)) paste0(title, '<br><sup style="color:', pal$ink2, '">', subtitle, '</sup>') else title
-    gp <- gp %>% layout(title = list(text = txt, font = list(size = 15)))
-  }
+# No title/subtitle here on purpose: the Quarto Dashboard card already shows a title bar
+# (via each chunk's #| title: option), so a second, plotly-internal title was redundant - and
+# the fixed top margin added to make room for it was the main source of the extra whitespace.
+style_plotly <- function(gp, legend_bottom = TRUE) {
   if (legend_bottom) {
-    gp <- gp %>% layout(legend = list(orientation = "h", y = -0.25), margin = list(t = 60))
+    gp <- gp %>% layout(legend = list(orientation = "h", y = -0.15))
   } else {
-    gp <- gp %>% layout(showlegend = FALSE, margin = list(t = 60))
+    gp <- gp %>% layout(showlegend = FALSE)
   }
   gp
 }
@@ -466,7 +465,7 @@ plot_coverage <- function(df) {
       "New Only"        = pal$after,
       "Present in Both" = pal$fill_both
     ), drop = FALSE) +
-    labs(title = "Data Availability by Country and Year", x = NULL, y = NULL, color = "Coverage") +
+    labs(x = NULL, y = NULL, color = "Coverage") +
     theme_qc() +
     theme(legend.position = "bottom", panel.grid.major = element_line(color = pal$grid, linewidth = 0.2))
 }
@@ -474,7 +473,7 @@ plot_coverage <- function(df) {
 output$coverage_plot <- renderPlotly({
   fd <- filtered_data()
   ggplotly(plot_coverage(fd$coverage_check), tooltip = "text") %>%
-    style_plotly(subtitle = "Blue = only in previous public data &middot; Orange = only in this update")
+    style_plotly()
 })
 ```
 
@@ -505,8 +504,7 @@ output$new_overview <- renderPlotly({
     labs(title = "Time Series by Country", x = "Year", y = "Value") +
     theme_qc() +
     theme(legend.position = "none")
-  ggplotly(p, tooltip = "text") %>%
-    style_plotly(subtitle = "Orange points indicate new entries not present in the public dataset", legend_bottom = FALSE)
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
 
 output$new_country <- renderPlotly({
@@ -636,8 +634,7 @@ output$pctdiff_plot <- renderPlotly({
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
     labs(title = "Percent Change between Public and Internal Data", x = "Year", y = "Percent Difference") +
     theme_qc()
-  ggplotly(p, tooltip = "text") %>%
-    style_plotly(subtitle = "Red points are outside of the ±20% tolerance threshold", legend_bottom = FALSE)
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
 
 output$threshold_table <- renderReactable({
@@ -720,8 +717,7 @@ output$outlier_country_plot <- renderPlotly({
     labs(title = input$country, x = "Year", y = "Internal Value") +
     theme_qc() +
     theme(legend.position = "none")
-  ggplotly(p, tooltip = "text") %>%
-    style_plotly(subtitle = "Red points are flagged by percent difference or within-country z-score", legend_bottom = FALSE)
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
 
 # All-countries faceted view (kept alongside the reactive single-country view for now).
