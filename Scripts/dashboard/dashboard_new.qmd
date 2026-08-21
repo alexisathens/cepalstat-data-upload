@@ -490,12 +490,12 @@ output$kpi_boxes_ui <- renderUI({
   div(
     style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
     kpi_tile(
-      "⚠️", pct_large_display,
+      "📈", pct_large_display,
       glue("% of data with values significantly larger (>{input$threshold}%) than what's currently published"),
       large_color
     ),
     kpi_tile(
-      "Δ", mean_diff_display,
+      "📏", mean_diff_display,
       "Mean % difference between this data and the currently published data",
       mean_color
     ),
