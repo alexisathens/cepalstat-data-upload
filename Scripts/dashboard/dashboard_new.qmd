@@ -282,6 +282,21 @@ find_dim_changes <- function(df, dim_col, dim_label) {
     removed = if (length(removed) > 0) paste0(dim_label, ": ", removed) else character(0)
   )
 }
+
+# Condenses find_dim_changes()'s one-row-per-member output (e.g. "Year: 2020", "Year: 2021",
+# "Economic activity: Construction") down to one row per DIMENSION, with its members
+# comma-joined (e.g. "Year: 2020, 2021", "Economic activity: Construction") - for display only;
+# the un-condensed count of individual members is used for the tile's headline number.
+condense_changes <- function(items) {
+  if (length(items) == 0) return(character(0))
+  dim_label <- sub(":.*$", "", items)
+  member <- sub("^[^:]*: ", "", items)
+  tibble(dim_label = dim_label, member = member) %>%
+    group_by(dim_label) %>%
+    summarise(joined = paste(member, collapse = ", "), .groups = "drop") %>%
+    mutate(line = paste0(dim_label, ": ", joined)) %>%
+    pull(line)
+}
 ```
 
 ```{r}
@@ -429,6 +444,20 @@ severity_color <- function(pct) {
   if (pct < 10) pal$good else if (pct <= 30) "#eda100" else pal$flag
 }
 
+# Small hand-built line icons (thin stroke, no fill) matching the reference gallery's outlined
+# icon style - plain inline SVG rather than an icon font/package, so there's no new dependency
+# and the stroke color always matches the tile exactly.
+svg_icon <- function(name, color) {
+  attrs <- glue('viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"')
+  body <- switch(name,
+    warning = glue('<path d="M12 3 L22 20 L2 20 Z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="1" fill="{color}" stroke="none"/>'),
+    delta   = '<path d="M12 4 L21 19 L3 19 Z"/>',
+    plus    = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    minus   = '<line x1="5" y1="12" x2="19" y2="12"/>'
+  )
+  HTML(glue('<svg {attrs}>{body}</svg>'))
+}
+
 # A stat-card KPI tile in the style of a typical gallery dashboard: a circular outlined icon
 # badge on the left, and to its right a small bold label, the big number, and a small caption
 # below (one line per item, e.g. for a list of added/removed dimension members) - all in the
@@ -437,7 +466,7 @@ kpi_tile <- function(icon, value, label, color, caption = NULL) {
   icon_badge <- div(
     style = glue(
       "flex:0 0 auto; width:46px; height:46px; border-radius:50%; border:2.5px solid {color}; ",
-      "display:flex; align-items:center; justify-content:center; font-size:1.25rem; color:{color};"
+      "display:flex; align-items:center; justify-content:center;"
     ),
     icon
   )
@@ -502,22 +531,26 @@ output$kpi_boxes_ui <- renderUI({
   div(
     style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
     kpi_tile(
-      "📈", pct_large_display, "Large Differences", large_color,
+      svg_icon("warning", large_color), pct_large_display, "Large Differences", large_color,
       caption = glue("of values differ by more than {input$threshold}% from what's published")
     ),
     kpi_tile(
-      "📏", mean_diff_display, "Mean % Difference", mean_color,
+      svg_icon("delta", mean_color), mean_diff_display, "Mean % Difference", mean_color,
       caption = "average % difference vs. what's published"
     ),
-    kpi_tile("➕", length(added), "Added", added_color, caption = added),
-    kpi_tile("➖", length(removed), "Removed", removed_color, caption = removed)
+    kpi_tile(svg_icon("plus", added_color), length(added), "Added", added_color, caption = condense_changes(added)),
+    kpi_tile(svg_icon("minus", removed_color), length(removed), "Removed", removed_color, caption = condense_changes(removed))
   )
 })
 ```
 
+## Row {height=160px}
+
 ```{r}
 uiOutput("kpi_boxes_ui")
 ```
+
+## Row
 
 ```{r}
 #| title: Indicator Metadata
