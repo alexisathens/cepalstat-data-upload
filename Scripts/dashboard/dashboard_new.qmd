@@ -645,13 +645,16 @@ This previews how this data update will change CEPALSTAT's landing graphic.The l
 
 ```{r}
 #| context: server
-plot_published_preview <- function(agg_df, year_range) {
+plot_published_preview <- function(agg_df, year_range, has_dim) {
   long_df <- agg_df %>%
     filter(year >= year_range[1], year <= year_range[2]) %>%
     pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
     mutate(
       vintage = recode(vintage, value_data = "INTERNAL", value_pub = "PUBLIC"),
-      series = paste(member, vintage)
+      # Without a real breakout dimension, `member` is just the "Value" placeholder from
+      # build_published_preview() - drop it from the series label so the legend/tooltip just
+      # read INTERNAL/PUBLIC instead of "Value INTERNAL"/"Value PUBLIC".
+      series = if (has_dim) paste(member, vintage) else vintage
     ) %>%
     filter(!is.na(value))
 
@@ -663,11 +666,9 @@ plot_published_preview <- function(agg_df, year_range) {
   combos <- long_df %>% distinct(member, vintage, series) %>% arrange(member, vintage)
   member_levels <- sort(unique(combos$member))
   n <- length(member_levels)
-  base_colors <- if (n <= length(pal$categorical)) {
-    pal$categorical[seq_len(n)]
-  } else {
-    grDevices::hcl.colors(n, "Dark3")
-  }
+  # Always draw from the categorical palette - recycle it (rather than falling back to a
+  # different generator) if there are more members than swatches.
+  base_colors <- pal$categorical[((seq_len(n) - 1) %% length(pal$categorical)) + 1]
   names(base_colors) <- member_levels
 
   combos <- combos %>%
@@ -681,7 +682,9 @@ plot_published_preview <- function(agg_df, year_range) {
 
   p <- ggplot(long_df, aes(
     x = year, y = value, color = series, linetype = series, group = series,
-    text = paste0("Year: ", year, "<br>", member, " (", vintage, ")", "<br>Value: ", round(value, 1))
+    # Reuse `series` verbatim (rather than rebuilding a similar-looking string) so the tooltip
+    # text always matches the legend exactly.
+    text = paste0("Year: ", year, "<br>", series, "<br>Value: ", round(value, 1))
   )) +
     geom_line(linewidth = 0.9) +
     scale_color_manual(values = color_map) +
@@ -711,14 +714,14 @@ output$published_preview_plot <- renderPlotly({
   agg <- build_published_preview(d, input$country, dim_sel)
   if (nrow(agg) == 0) return(empty_plotly("No data for this selection."))
 
-  p <- plot_published_preview(agg, input$year_range)
+  p <- plot_published_preview(agg, input$year_range, d$has_extra_dims)
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
 })
 ```
 
 ```{r}
 #| title: Internal vs. Public
-plotlyOutput("published_preview_plot", height = "480px")
+plotlyOutput("published_preview_plot", height = "650px")
 ```
 
 # New Values
