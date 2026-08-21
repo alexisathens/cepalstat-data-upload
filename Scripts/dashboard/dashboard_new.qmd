@@ -119,6 +119,15 @@ mute_color <- function(hex, amount = 0.55) {
   grDevices::rgb(muted[1], muted[2], muted[3])
 }
 
+# Blends a hex color toward white at the given strength - the same pale-tint look as the KPI
+# tiles' `{color}22` CSS background (alpha ~0.13 over white), pre-flattened to an opaque hex so
+# it renders identically across plot devices instead of relying on alpha-channel support.
+tint_color <- function(hex, amount = 0.87) {
+  rgb_val <- grDevices::col2rgb(hex) / 255
+  tinted <- rgb_val * (1 - amount) + 1 * amount
+  grDevices::rgb(tinted[1], tinted[2], tinted[3])
+}
+
 # Wraps a tall plotlyOutput in a fixed-height, scrollable container. Keeps the card's own
 # height "regular" (not growing to match a 30+ country facet grid) while the plot itself still
 # renders at its full, correctly-proportioned height inside - capping the container's height
@@ -618,8 +627,8 @@ plot_coverage <- function(df) {
     geom_point(shape = 15, size = 3.2) +
     scale_color_manual(values = c(
       "Missing in Both" = pal$missing,
-      "Old Only"        = pal$flag,
-      "New Only"        = pal$good,
+      "Old Only"        = tint_color(pal$flag),
+      "New Only"        = tint_color(pal$good),
       "Present in Both" = pal$present
     ), drop = FALSE) +
     labs(x = NULL, y = NULL, color = "Coverage") +
