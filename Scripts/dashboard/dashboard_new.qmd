@@ -233,22 +233,36 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
 build_filtered_view <- function(raw, diff_threshold = 20, outlier_z = 3) {
   comp_detailed <- raw$comp_detailed
 
-  comp <- comp_detailed %>%
-    mutate(both_present = !is.na(value_data) & !is.na(value_pub)) %>%
-    group_by(dim_208, dim_29117, dim_208_label, dim_29117_label) %>%
+  group_cols <- c("dim_208", "dim_29117", "dim_208_label", "dim_29117_label")
+
+  # Full totals - every row, whichever side has data - for status/outlier detection/coverage,
+  # which need the real reported amounts regardless of whether a dimension member has a
+  # counterpart on the other side.
+  comp_full <- comp_detailed %>%
+    group_by(across(all_of(group_cols))) %>%
     summarize(
       value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
       value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
-      # Sums restricted to dimension members present on BOTH sides - used only for the
-      # internal-vs-public difference below (abs_diff/perc_diff/flag_large_diff), so a newly
-      # added or removed dimension member doesn't inflate the difference just because it has
-      # no counterpart to compare against (that's tracked separately, via status below and
-      # find_dim_changes() on the Overview page). value_data/value_pub above stay full totals,
-      # since status/outlier detection/coverage need the real reported amounts, not this subset.
-      value_data_matched = if (!any(both_present)) NA_real_ else sum(value_data[both_present], na.rm = TRUE),
-      value_pub_matched  = if (!any(both_present)) NA_real_ else sum(value_pub[both_present],  na.rm = TRUE),
       .groups = "drop"
-    ) %>%
+    )
+
+  # Matched totals - filter to rows with a value on BOTH sides first, then sum. Used only for
+  # the internal-vs-public difference below (abs_diff/perc_diff/flag_large_diff), so a newly
+  # added or removed dimension member doesn't inflate the difference just because it has no
+  # counterpart to compare against (that's tracked separately, via status below and
+  # find_dim_changes() on the Overview page). A country-year with zero matched rows is simply
+  # absent here and picks up NA after the join below.
+  comp_matched <- comp_detailed %>%
+    filter(!is.na(value_data), !is.na(value_pub)) %>%
+    group_by(across(all_of(group_cols))) %>%
+    summarize(
+      value_data_matched = sum(value_data),
+      value_pub_matched = sum(value_pub),
+      .groups = "drop"
+    )
+
+  comp <- comp_full %>%
+    left_join(comp_matched, by = group_cols) %>%
     mutate(abs_diff = abs(value_data_matched - value_pub_matched),
            perc_diff = round((abs_diff / value_pub_matched) * 100, 2)) %>%
     mutate(
@@ -948,8 +962,6 @@ reactableOutput("threshold_table")
 ```
 
 # Value Comparisons New
-
-🔴 **BUILD MARKER — commit 5b910a9 — if you don't see this red text after pulling and re-rendering, the render isn't picking up the current file.** 🔴
 
 *Prototype of five diagnostic ideas for this section - not a final design, just something to react to.* (1) The scatter now colors by signed % difference and adds a fitted trend line against the 1:1 reference, so systematic over/under-statement is visible at a glance. (2) A country ranking surfaces the worst offenders instead of requiring a scan through every point. (3) Small multiples for the top 9 worst countries let you classify *why* they differ - a constant offset, a one-year spike, or a widening drift each imply a different fix. (4) A histogram of the signed % differences shows whether problems are a few outliers or a broad shift. (5) If this indicator has an extra dimension, a table below surfaces the most divergent individual dimension members - since the charts elsewhere on this page sum across members per country/year, a bad value in one member can be masked by the total.
 
