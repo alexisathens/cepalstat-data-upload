@@ -314,10 +314,10 @@ output$status_ui <- renderUI({
   d <- qc_data()
   name_display <- if (is.na(d$indicator_name)) glue("Indicator {d$indicator_id}") else d$indicator_name
   div(
-    style = glue("padding:0.65rem 0.8rem; background:{pal$fill_both}; border-radius:8px;"),
-    div(style = glue("font-weight:700; font-size:1.05em; color:{pal$ink}; line-height:1.3;"), name_display),
+    style = glue("padding:0.65rem 0.8rem; background:{pal$background}; border-radius:8px;"),
+    div(style = glue("font-weight:700; font-size:1.05em; color:{pal$nav}; line-height:1.3;"), name_display),
     div(
-      style = glue("margin-top:0.3rem; font-size:0.78em; color:{pal$ink2};"),
+      style = glue("margin-top:0.3rem; font-size:0.78em; color:{pal$header};"),
       glue("Vintage {if (is.na(d$data_date)) 'unknown' else d$data_date}")
     )
   )
@@ -429,24 +429,35 @@ severity_color <- function(pct) {
   if (pct < 10) pal$good else if (pct <= 30) "#eda100" else pal$flag
 }
 
-# A compact KPI tile: icon, then the big number, then a smaller descriptive label below it
-# (in that order, per spec) - hand-built HTML rather than bslib::value_box() for exact control
-# over sizing/order/color rather than relying on unverified default card styling.
-kpi_tile <- function(icon, value, label, color, sublines = NULL) {
-  div(
+# A stat-card KPI tile in the style of a typical gallery dashboard: a circular outlined icon
+# badge on the left, and to its right a small bold label, the big number, and a small caption
+# below (one line per item, e.g. for a list of added/removed dimension members) - all in the
+# one theme color, on a solid light tint of it rather than a faint wash.
+kpi_tile <- function(icon, value, label, color, caption = NULL) {
+  icon_badge <- div(
     style = glue(
-      "flex:1 1 0; min-width:150px; background:{color}1a; border:1px solid {color}55; ",
-      "border-radius:8px; padding:0.45rem 0.6rem; text-align:center;"
+      "flex:0 0 auto; width:46px; height:46px; border-radius:50%; border:2.5px solid {color}; ",
+      "display:flex; align-items:center; justify-content:center; font-size:1.25rem; color:{color};"
     ),
-    div(style = "font-size:1rem; line-height:1;", icon),
-    div(style = glue("font-size:1.3rem; font-weight:700; color:{color}; margin-top:0.1rem; line-height:1.1;"), value),
-    div(style = glue("font-size:0.72rem; color:{pal$ink2}; margin-top:0.2rem; line-height:1.25;"), label),
-    if (!is.null(sublines) && length(sublines) > 0) {
+    icon
+  )
+  text_col <- div(
+    style = "flex:1 1 auto; min-width:0;",
+    div(style = glue("font-size:0.78rem; font-weight:700; color:{color};"), label),
+    div(style = glue("font-size:1.8rem; font-weight:700; color:{color}; line-height:1.15; margin-top:0.05rem;"), value),
+    if (!is.null(caption) && length(caption) > 0) {
       div(
-        style = glue("font-size:0.7rem; color:{color}; margin-top:0.3rem; line-height:1.4;"),
-        lapply(sublines, function(x) tagList(x, br()))
+        style = glue("font-size:0.7rem; color:{color}; margin-top:0.25rem; line-height:1.4;"),
+        lapply(caption, function(x) tagList(x, br()))
       )
     }
+  )
+  div(
+    style = glue(
+      "flex:1 1 0; min-width:190px; background:{color}22; border-radius:10px; ",
+      "padding:0.75rem 0.9rem; display:flex; align-items:center; gap:0.75rem;"
+    ),
+    icon_badge, text_col
   )
 }
 
@@ -491,17 +502,15 @@ output$kpi_boxes_ui <- renderUI({
   div(
     style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
     kpi_tile(
-      "📈", pct_large_display,
-      glue("% of data with values significantly larger (>{input$threshold}%) than what's currently published"),
-      large_color
+      "📈", pct_large_display, "Large Differences", large_color,
+      caption = glue("of values differ by more than {input$threshold}% from what's published")
     ),
     kpi_tile(
-      "📏", mean_diff_display,
-      "Mean % difference between this data and the currently published data",
-      mean_color
+      "📏", mean_diff_display, "Mean % Difference", mean_color,
+      caption = "average % difference vs. what's published"
     ),
-    kpi_tile("➕", length(added), "New dimensions added", added_color, sublines = added),
-    kpi_tile("➖", length(removed), "Dimensions removed", removed_color, sublines = removed)
+    kpi_tile("➕", length(added), "Added", added_color, caption = added),
+    kpi_tile("➖", length(removed), "Removed", removed_color, caption = removed)
   )
 })
 ```
