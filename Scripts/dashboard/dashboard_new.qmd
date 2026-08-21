@@ -949,6 +949,8 @@ reactableOutput("threshold_table")
 
 # Value Comparisons New
 
+🔴 **BUILD MARKER — commit 5b910a9 — if you don't see this red text after pulling and re-rendering, the render isn't picking up the current file.** 🔴
+
 *Prototype of five diagnostic ideas for this section - not a final design, just something to react to.* (1) The scatter now colors by signed % difference and adds a fitted trend line against the 1:1 reference, so systematic over/under-statement is visible at a glance. (2) A country ranking surfaces the worst offenders instead of requiring a scan through every point. (3) Small multiples for the top 9 worst countries let you classify *why* they differ - a constant offset, a one-year spike, or a widening drift each imply a different fix. (4) A histogram of the signed % differences shows whether problems are a few outliers or a broad shift. (5) If this indicator has an extra dimension, a table below surfaces the most divergent individual dimension members - since the charts elsewhere on this page sum across members per country/year, a bad value in one member can be masked by the total.
 
 ```{r}
