@@ -68,8 +68,8 @@ pal <- list(
 theme_qc <- function() {
   theme_minimal(base_size = 12) %+replace%
     theme(
-      plot.title = element_text(face = "bold", size = rel(1.1), color = pal$ink, hjust = 0),
-      axis.text = element_text(color = pal$ink2, size = rel(0.7)),
+      plot.title = element_text(face = "bold", size = rel(1.0), color = pal$ink, hjust = 0),
+      axis.text = element_text(color = pal$ink2, size = rel(0.9)),
       axis.title = element_text(color = pal$ink2),
       panel.grid.major = element_line(color = pal$grid, linewidth = 0.4),
       panel.grid.minor = element_blank(),
@@ -557,9 +557,9 @@ uiOutput("kpi_boxes_ui")
 reactableOutput("summary_table")
 ```
 
-# Completeness Check
+# Coverage
 
-*This section verifies whether the internal dataset covers the same country-year combinations as the public CEPALSTAT version, for the currently filtered countries and years.* It flags "Missing in Both", "Old Only" (removed in this update), "New Only" (added in this update), and "Present in Both".
+This shows for what country-year combinations data are available. Blue squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is mising from the internal dataset. Gray values show that there is data available in both.
 
 ```{r}
 #| context: server
