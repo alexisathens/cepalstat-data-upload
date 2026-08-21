@@ -864,20 +864,24 @@ output$scatter_plot <- renderPlotly({
   d <- qc_data()
   if (!d$has_public_data) return(empty_plotly(no_pub_msg))
   fd <- filtered_data()
+  # Present in Both + the matched sums (see build_filtered_view()), not the full value_data/
+  # value_pub - otherwise a country-year with a newly added/removed dimension member (or any
+  # member unique to one side) would plot as a false discrepancy here even though it's excluded
+  # from the % difference used for the color/threshold below.
   df2 <- fd$comp %>%
-    filter(!flag_some_na) %>%
+    filter(status == "Present in Both") %>%
     mutate(flag_large_diff = factor(flag_large_diff, levels = c(FALSE, TRUE), labels = c("Within ±20%", "Above ±20%")))
   p <- ggplot(df2, aes(
-    x = value_data, y = value_pub, color = flag_large_diff,
+    x = value_data_matched, y = value_pub_matched, color = flag_large_diff,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>Internal: ", round(value_data, 1), "<br>Public: ", round(value_pub, 1)
+      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1)
     )
   )) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
     geom_point(alpha = 0.8, size = 1.5) +
     scale_color_manual(values = c("Within ±20%" = pal$neutral, "Above ±20%" = pal$flag), guide = "none") +
-    labs(title = "Value Comparison between Public and Internal Data", x = "Internal Data", y = "Public Data") +
+    labs(title = "Value Comparison between Public and Internal Data", x = "Internal Data (matched)", y = "Public Data (matched)") +
     theme_qc()
   ggplotly(p, tooltip = "text")
 })
@@ -887,7 +891,7 @@ output$pctdiff_plot <- renderPlotly({
   if (!d$has_public_data) return(empty_plotly(no_pub_msg))
   fd <- filtered_data()
   yr <- range(as.numeric(fd$comp$dim_29117_label), na.rm = TRUE)
-  df2 <- fd$comp %>% filter(!flag_some_na)
+  df2 <- fd$comp %>% filter(status == "Present in Both")
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = perc_diff,
     text = paste0("Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>% Diff: ", round(perc_diff, 1))
@@ -907,13 +911,13 @@ output$threshold_table <- renderReactable({
   flagged <- fd$comp %>%
     mutate(
       z_perc_diff = round(as.numeric(scale(perc_diff)), 1),
-      value_data = round(value_data, 1),
-      value_pub = round(value_pub, 1),
+      value_data_matched = round(value_data_matched, 1),
+      value_pub_matched = round(value_pub_matched, 1),
       perc_diff = round(perc_diff, 1)
     ) %>%
     filter(flag_large_diff == TRUE) %>%
     arrange(desc(z_perc_diff)) %>%
-    select(dim_208_label, dim_29117_label, value_data, value_pub, perc_diff, z_perc_diff)
+    select(dim_208_label, dim_29117_label, value_data_matched, value_pub_matched, perc_diff, z_perc_diff)
   if (nrow(flagged) == 0) {
     return(reactable(tibble(Message = "No values differ from the published data by more than ±20%.")))
   }
