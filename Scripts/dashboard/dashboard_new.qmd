@@ -38,7 +38,6 @@ library(plotly)
 # ---- Setup: libraries, palette, and data-loading functions ----
 
 library(shiny)
-library(bslib)
 library(plotly)
 library(reactable)
 library(ggplot2)
@@ -422,19 +421,46 @@ output$summary_table <- renderReactable({
   reactable(df, columns = list(Metric = colDef(width = 220)), bordered = TRUE, highlight = TRUE)
 })
 
-# Four KPI callouts: how much changed (large-difference % and mean % difference, both computed
-# on the full data at the sidebar's Threshold), and what changed structurally (dimension
-# members - year, country, or the extra dimension - that are entirely new or entirely gone
-# relative to the public data, not just a few missing rows).
+# Color a percentage by severity: green <10%, yellow 10-30%, red >30% (also used for the
+# large-difference and mean-%-difference tiles, per the same scale).
+severity_color <- function(pct) {
+  if (is.na(pct)) return(pal$muted)
+  if (pct < 10) pal$good else if (pct <= 30) "#eda100" else pal$flag
+}
+
+# A compact KPI tile: icon, then the big number, then a smaller descriptive label below it
+# (in that order, per spec) - hand-built HTML rather than bslib::value_box() for exact control
+# over sizing/order/color rather than relying on unverified default card styling.
+kpi_tile <- function(icon, value, label, color, sublines = NULL) {
+  div(
+    style = glue(
+      "flex:1 1 0; min-width:150px; background:{color}1a; border:1px solid {color}55; ",
+      "border-radius:8px; padding:0.45rem 0.6rem; text-align:center;"
+    ),
+    div(style = "font-size:1rem; line-height:1;", icon),
+    div(style = glue("font-size:1.3rem; font-weight:700; color:{color}; margin-top:0.1rem; line-height:1.1;"), value),
+    div(style = glue("font-size:0.72rem; color:{pal$ink2}; margin-top:0.2rem; line-height:1.25;"), label),
+    if (!is.null(sublines) && length(sublines) > 0) {
+      div(
+        style = glue("font-size:0.7rem; color:{color}; margin-top:0.3rem; line-height:1.4;"),
+        lapply(sublines, function(x) tagList(x, br()))
+      )
+    }
+  )
+}
+
+# Four KPI tiles: how much changed (large-difference % and mean % difference, both computed on
+# the full data at the sidebar's Threshold), and what changed structurally (dimension members -
+# year, country, or the extra dimension - that are entirely new or entirely gone relative to
+# the public data, not just a few missing rows).
 output$kpi_boxes_ui <- renderUI({
   d <- qc_data()
-  box_theme <- value_box_theme(bg = pal$fill_both, fg = pal$ink)
 
   if (d$has_public_data) {
     fd <- filtered_data()
     present <- fd$comp %>% filter(status == "Present in Both")
-    pct_large_display <- glue("{round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)}%")
-    mean_diff_display <- glue("{round(mean(present$perc_diff[is.finite(present$perc_diff)], na.rm = TRUE), 1)}%")
+    pct_large <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
+    mean_diff <- round(mean(present$perc_diff[is.finite(present$perc_diff)], na.rm = TRUE), 1)
 
     dim_specs <- list(c("dim_29117_label", "Year"), c("dim_208_label", "Country"))
     if (d$has_extra_dims) {
@@ -444,41 +470,37 @@ output$kpi_boxes_ui <- renderUI({
     changes <- lapply(dim_specs, function(spec) find_dim_changes(d$comp_detailed, spec[1], spec[2]))
     added <- unlist(lapply(changes, `[[`, "added"))
     removed <- unlist(lapply(changes, `[[`, "removed"))
-    added_detail <- if (length(added) == 0) "None" else paste(added, collapse = "; ")
-    removed_detail <- if (length(removed) == 0) "None" else paste(removed, collapse = "; ")
+
+    pct_large_display <- if (is.na(pct_large)) "N/A" else glue("{pct_large}%")
+    mean_diff_display <- if (is.na(mean_diff)) "N/A" else glue("{mean_diff}%")
+    large_color <- severity_color(pct_large)
+    mean_color <- severity_color(mean_diff)
   } else {
     pct_large_display <- "N/A"
     mean_diff_display <- "N/A"
     added <- character(0)
     removed <- character(0)
-    added_detail <- "No published data to compare against"
-    removed_detail <- "No published data to compare against"
+    large_color <- pal$muted
+    mean_color <- pal$muted
   }
 
-  layout_column_wrap(
-    width = 1 / 4,
-    value_box(
-      title = glue("Large Differences (>{input$threshold}%)"),
-      value = pct_large_display,
-      theme = box_theme
+  added_color <- if (length(added) > 0) pal$good else pal$muted
+  removed_color <- if (length(removed) > 0) pal$flag else pal$muted
+
+  div(
+    style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
+    kpi_tile(
+      "⚠️", pct_large_display,
+      glue("% of data with values significantly larger (>{input$threshold}%) than what's currently published"),
+      large_color
     ),
-    value_box(
-      title = "Mean % Difference",
-      value = mean_diff_display,
-      theme = box_theme
+    kpi_tile(
+      "Δ", mean_diff_display,
+      "Mean % difference between this data and the currently published data",
+      mean_color
     ),
-    value_box(
-      title = "Added",
-      value = length(added),
-      p(added_detail),
-      theme = box_theme
-    ),
-    value_box(
-      title = "Removed",
-      value = length(removed),
-      p(removed_detail),
-      theme = box_theme
-    )
+    kpi_tile("➕", length(added), "New dimensions added", added_color, sublines = added),
+    kpi_tile("➖", length(removed), "Dimensions removed", removed_color, sublines = removed)
   )
 })
 ```
