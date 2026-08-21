@@ -110,8 +110,8 @@ facet_height_px <- function(n_facets, ncol = 3, per_row = 170, base = 100) {
 }
 
 # Blends a hex color toward light gray, for a "duller/muted" version of the same hue - used on
-# the Published Preview page (solid full color = current internal value, muted dot-dash =
-# currently published value), so a before/after pair never needs two hand-picked colors.
+# the Published Preview page (solid full color = INTERNAL, muted dot-dash = PUBLIC), so a
+# before/after pair never needs two hand-picked colors.
 mute_color <- function(hex, amount = 0.55) {
   rgb_val <- grDevices::col2rgb(hex) / 255
   gray_target <- 0.75
@@ -646,32 +646,38 @@ This previews how this data update will change CEPALSTAT's landing graphic.The l
 ```{r}
 #| context: server
 plot_published_preview <- function(agg_df, year_range) {
-  members <- sort(unique(agg_df$member))
-  n <- length(members)
+  long_df <- agg_df %>%
+    filter(year >= year_range[1], year <= year_range[2]) %>%
+    pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
+    mutate(
+      vintage = recode(vintage, value_data = "INTERNAL", value_pub = "PUBLIC"),
+      series = paste(member, vintage)
+    ) %>%
+    filter(!is.na(value))
+
+  # Build the color/linetype lookup from long_df's OWN distinct (member, vintage) combos -
+  # rather than reconstructing the same key strings a second time in a separate loop, which is
+  # what let color_map/linetype_map drift out of sync with the actual plotted `series` values
+  # for some indicators (identical-looking lines, or a vintage silently not matching any scale
+  # entry and disappearing).
+  combos <- long_df %>% distinct(member, vintage, series) %>% arrange(member, vintage)
+  member_levels <- sort(unique(combos$member))
+  n <- length(member_levels)
   base_colors <- if (n <= length(pal$categorical)) {
     pal$categorical[seq_len(n)]
   } else {
     grDevices::hcl.colors(n, "Dark3")
   }
-  names(base_colors) <- members
+  names(base_colors) <- member_levels
 
-  long_df <- agg_df %>%
-    filter(year >= year_range[1], year <= year_range[2]) %>%
-    pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
+  combos <- combos %>%
     mutate(
-      vintage = recode(vintage, value_data = "Current (internal)", value_pub = "Published"),
-      series = paste0(member, " — ", vintage)
-    ) %>%
-    filter(!is.na(value))
-
-  color_map <- character(0)
-  linetype_map <- character(0)
-  for (m in members) {
-    color_map[paste0(m, " (INTERNAL)")] <- base_colors[[m]]
-    color_map[paste0(m, " (PUBLISHED)")] <- mute_color(base_colors[[m]])
-    linetype_map[paste0(m, " (INTERNAL)")] <- "solid"
-    linetype_map[paste0(m, " (PUBLISHED)")] <- "dotdash"
-  }
+      color = unname(base_colors[member]),
+      color = ifelse(vintage == "INTERNAL", color, vapply(color, mute_color, character(1))),
+      linetype = ifelse(vintage == "INTERNAL", "solid", "dotdash")
+    )
+  color_map <- setNames(combos$color, combos$series)
+  linetype_map <- setNames(combos$linetype, combos$series)
 
   p <- ggplot(long_df, aes(
     x = year, y = value, color = series, linetype = series, group = series,
@@ -687,7 +693,7 @@ plot_published_preview <- function(agg_df, year_range) {
     theme(legend.position = "bottom")
 
   p + geom_point(
-    data = function(d) dplyr::filter(d, vintage == "(INTERNAL)"),
+    data = function(d) dplyr::filter(d, vintage == "INTERNAL"),
     size = 1.8, show.legend = FALSE
   )
 }
@@ -711,7 +717,7 @@ output$published_preview_plot <- renderPlotly({
 ```
 
 ```{r}
-#| title: Current vs. Published
+#| title: Internal vs. Public
 plotlyOutput("published_preview_plot", height = "480px")
 ```
 
