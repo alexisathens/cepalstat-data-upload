@@ -1015,14 +1015,18 @@ plot_diagnostic_multiples <- function(long_df, country_order) {
 # and a fitted trend line against the dashed 1:1 reference - if the two diverge, that's a
 # systematic bias, not scattered noise.
 plot_scatter_v2 <- function(comp) {
-  df2 <- comp %>% filter(status == "Present in Both", is.finite(perc_diff))
-  rng <- max(abs(df2$perc_diff), na.rm = TRUE)
+  # fd$comp's own `perc_diff` is built from abs_diff (build_filtered_view()), so it's always
+  # non-negative - recompute a genuinely signed version here rather than reusing it.
+  df2 <- comp %>%
+    filter(status == "Present in Both", is.finite(perc_diff)) %>%
+    mutate(signed_pct_diff = round((value_data - value_pub) / value_pub * 100, 1))
+  rng <- max(abs(df2$signed_pct_diff), na.rm = TRUE)
   ggplot(df2, aes(
-    x = value_data, y = value_pub, color = perc_diff,
+    x = value_data, y = value_pub, color = signed_pct_diff,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
       "<br>Internal: ", round(value_data, 1), "<br>Public: ", round(value_pub, 1),
-      "<br>% Diff: ", round(perc_diff, 1)
+      "<br>% Diff (signed): ", signed_pct_diff
     )
   )) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
@@ -1031,7 +1035,7 @@ plot_scatter_v2 <- function(comp) {
     scale_color_gradient2(low = pal$header, mid = pal$neutral, high = pal$flag, midpoint = 0, limits = c(-rng, rng)) +
     labs(
       title = "Internal vs. Public (colored by signed % difference)",
-      x = "Internal", y = "Public", color = "% Diff"
+      x = "Internal", y = "Public", color = "% Diff (signed)"
     ) +
     theme_qc()
 }
@@ -1040,8 +1044,10 @@ plot_scatter_v2 <- function(comp) {
 # outliers in otherwise-clean data" (a tall spike near 0 with a thin tail) from "the whole
 # distribution is shifted" (the bulk of the mass sitting off to one side of 0).
 plot_diff_distribution <- function(comp, diff_threshold) {
-  df2 <- comp %>% filter(status == "Present in Both", is.finite(perc_diff))
-  ggplot(df2, aes(x = perc_diff)) +
+  df2 <- comp %>%
+    filter(status == "Present in Both", is.finite(perc_diff)) %>%
+    mutate(signed_pct_diff = round((value_data - value_pub) / value_pub * 100, 1))
+  ggplot(df2, aes(x = signed_pct_diff)) +
     geom_histogram(binwidth = 5, fill = pal$header, color = "white", boundary = 0) +
     geom_vline(xintercept = 0, linetype = "dashed", color = pal$ink2) +
     geom_vline(xintercept = c(-diff_threshold, diff_threshold), linetype = "dotted", color = pal$flag) +
