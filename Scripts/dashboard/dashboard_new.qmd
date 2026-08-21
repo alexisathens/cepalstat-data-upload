@@ -934,6 +934,228 @@ plotlyOutput("pctdiff_plot", height = "420px")
 reactableOutput("threshold_table")
 ```
 
+# Value Comparisons New
+
+*Prototype of five diagnostic ideas for this section - not a final design, just something to react to.* (1) The scatter now colors by signed % difference and adds a fitted trend line against the 1:1 reference, so systematic over/under-statement is visible at a glance. (2) A country ranking surfaces the worst offenders instead of requiring a scan through every point. (3) Small multiples for the top 9 worst countries let you classify *why* they differ - a constant offset, a one-year spike, or a widening drift each imply a different fix. (4) A histogram of the signed % differences shows whether problems are a few outliers or a broad shift. (5) If this indicator has an extra dimension, a table below surfaces the most divergent individual dimension members - since the charts elsewhere on this page sum across members per country/year, a bad value in one member can be masked by the total.
+
+```{r}
+#| context: server
+# ---- Value Comparisons New: helpers ----
+
+# One row per country: how often (and how far) it strays from the published data. Used to
+# rank countries by severity and to pick the worst ones for the small-multiples diagnostic
+# below - both grounded in the same sidebar Threshold as the rest of the dashboard.
+build_country_severity <- function(comp) {
+  comp %>%
+    filter(status == "Present in Both") %>%
+    group_by(dim_208_label) %>%
+    summarize(
+      mean_abs_pct = mean(abs(perc_diff[is.finite(perc_diff)]), na.rm = TRUE),
+      pct_flagged = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
+      n = n(),
+      .groups = "drop"
+    ) %>%
+    mutate(mean_abs_pct = ifelse(is.nan(mean_abs_pct), NA_real_, mean_abs_pct)) %>%
+    arrange(pct_flagged)
+}
+
+plot_country_severity <- function(sev_df) {
+  sev_df <- sev_df %>%
+    mutate(
+      dim_208_label = factor(dim_208_label, levels = dim_208_label),
+      color = vapply(pct_flagged, severity_color, character(1))
+    )
+  ggplot(sev_df, aes(
+    x = pct_flagged, y = dim_208_label, fill = color,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>% of years above threshold: ", pct_flagged,
+      "<br>Mean abs % diff: ", round(mean_abs_pct, 1), "<br>N years compared: ", n
+    )
+  )) +
+    geom_col(width = 0.7) +
+    scale_fill_identity() +
+    labs(x = "% of Years Above Threshold", y = NULL) +
+    theme_qc() +
+    theme(panel.grid.major.y = element_blank())
+}
+
+# Internal-vs-public trend lines for the worst `top_n` countries (by build_country_severity()),
+# faceted side by side - lets you eyeball whether each one's gap is a constant offset (likely a
+# unit/definition change), a single-year spike (likely a data-entry error), or a widening drift
+# (likely a revision trend) - each implies a different fix, which a single scatter can't show.
+build_diagnostic_multiples <- function(comp, top_countries) {
+  comp %>%
+    filter(dim_208_label %in% top_countries) %>%
+    select(dim_208_label, dim_29117_label, value_data, value_pub) %>%
+    pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
+    mutate(
+      vintage = recode(vintage, value_data = "INTERNAL", value_pub = "PUBLIC"),
+      year = as.numeric(dim_29117_label)
+    ) %>%
+    filter(!is.na(value))
+}
+
+plot_diagnostic_multiples <- function(long_df, country_order) {
+  long_df <- long_df %>% mutate(dim_208_label = factor(dim_208_label, levels = country_order))
+  ggplot(long_df, aes(
+    x = year, y = value, color = vintage, linetype = vintage,
+    text = paste0("Country: ", dim_208_label, "<br>Year: ", year, "<br>", vintage, ": ", round(value, 1))
+  )) +
+    geom_line(linewidth = 0.8) +
+    scale_color_manual(values = c(INTERNAL = pal$nav, PUBLIC = pal$neutral)) +
+    scale_linetype_manual(values = c(INTERNAL = "solid", PUBLIC = "dotdash")) +
+    facet_wrap(~dim_208_label, scales = "free_y", ncol = 3) +
+    labs(x = NULL, y = NULL, color = NULL, linetype = NULL) +
+    theme_qc() +
+    theme(legend.position = "bottom", strip.text = element_text(face = "bold"))
+}
+
+# Scatter with two additions over the original: color is the signed % difference (so
+# over-statement and under-statement read as different colors, not just "flagged or not"),
+# and a fitted trend line against the dashed 1:1 reference - if the two diverge, that's a
+# systematic bias, not scattered noise.
+plot_scatter_v2 <- function(comp) {
+  df2 <- comp %>% filter(status == "Present in Both", is.finite(perc_diff))
+  rng <- max(abs(df2$perc_diff), na.rm = TRUE)
+  ggplot(df2, aes(
+    x = value_data, y = value_pub, color = perc_diff,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Internal: ", round(value_data, 1), "<br>Public: ", round(value_pub, 1),
+      "<br>% Diff: ", round(perc_diff, 1)
+    )
+  )) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
+    geom_smooth(method = "lm", formula = y ~ x, se = FALSE, color = pal$nav, linewidth = 0.7, linetype = "dotted") +
+    geom_point(alpha = 0.8, size = 1.5) +
+    scale_color_gradient2(low = pal$header, mid = pal$neutral, high = pal$flag, midpoint = 0, limits = c(-rng, rng)) +
+    labs(
+      title = "Internal vs. Public (colored by signed % difference)",
+      x = "Internal", y = "Public", color = "% Diff"
+    ) +
+    theme_qc()
+}
+
+# Histogram of the signed % difference (not the absolute value) - distinguishes "a few extreme
+# outliers in otherwise-clean data" (a tall spike near 0 with a thin tail) from "the whole
+# distribution is shifted" (the bulk of the mass sitting off to one side of 0).
+plot_diff_distribution <- function(comp, diff_threshold) {
+  df2 <- comp %>% filter(status == "Present in Both", is.finite(perc_diff))
+  ggplot(df2, aes(x = perc_diff)) +
+    geom_histogram(binwidth = 5, fill = pal$header, color = "white", boundary = 0) +
+    geom_vline(xintercept = 0, linetype = "dashed", color = pal$ink2) +
+    geom_vline(xintercept = c(-diff_threshold, diff_threshold), linetype = "dotted", color = pal$flag) +
+    labs(x = "% Difference (Internal minus Public, signed)", y = "Count of Country-Years") +
+    theme_qc()
+}
+
+# Country x year x member grain, bypassing build_filtered_view()'s sum-across-members
+# aggregation entirely - so a bad value in one dimension member surfaces here even when it's
+# invisible in every other chart on this page (which all operate on the summed total).
+build_member_divergence <- function(raw, diff_threshold) {
+  dim_col <- raw$extra_dims[1]
+  df <- raw$comp_detailed %>%
+    mutate(
+      perc_diff = round((abs(value_data - value_pub) / value_pub) * 100, 1)
+    ) %>%
+    filter(!is.na(value_data), !is.na(value_pub), is.finite(perc_diff), perc_diff > diff_threshold) %>%
+    arrange(desc(perc_diff)) %>%
+    rename(member = all_of(dim_col)) %>%
+    select(Country = dim_208_label, Year = dim_29117_label, member, Internal = value_data, Public = value_pub, `% Diff` = perc_diff)
+  names(df)[names(df) == "member"] <- raw$dim_labels[[dim_col]]
+  df
+}
+
+output$severity_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  sev <- build_country_severity(fd$comp)
+  if (nrow(sev) == 0) return(empty_plotly("No country has data present in both sources."))
+  ggplotly(plot_country_severity(sev), tooltip = "text")
+})
+
+output$scatter_v2_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  if (nrow(fd$comp %>% filter(status == "Present in Both", is.finite(perc_diff))) == 0) {
+    return(empty_plotly("No country-year has both a finite internal and public value."))
+  }
+  ggplotly(plot_scatter_v2(fd$comp), tooltip = "text")
+})
+
+output$diagnostic_multiples_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  sev <- build_country_severity(fd$comp) %>% filter(pct_flagged > 0)
+  if (nrow(sev) == 0) return(empty_plotly("No country-year is above the current threshold."))
+  top_countries <- sev %>% arrange(desc(pct_flagged)) %>% slice_head(n = 9) %>% pull(dim_208_label)
+  long_df <- build_diagnostic_multiples(fd$comp, top_countries)
+  ggplotly(plot_diagnostic_multiples(long_df, top_countries), tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+
+output$diff_distribution_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  ggplotly(plot_diff_distribution(fd$comp, input$threshold), tooltip = c("x", "y"))
+})
+
+output$member_divergence_table <- renderReactable({
+  d <- qc_data()
+  if (!d$has_public_data) return(reactable(tibble(Message = no_pub_msg)))
+  if (!d$has_extra_dims) {
+    return(reactable(tibble(Message = "This indicator has no extra dimension beyond Country and Year - the charts above already use its finest available grain.")))
+  }
+  flagged <- build_member_divergence(d, input$threshold)
+  if (nrow(flagged) == 0) {
+    return(reactable(tibble(Message = "No individual dimension member differs from the published data by more than the current threshold.")))
+  }
+  reactable(flagged, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
+})
+
+output$severity_plot_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_public_data) return(plotlyOutput("severity_plot", height = "460px"))
+  fd <- filtered_data()
+  n <- n_distinct((build_country_severity(fd$comp))$dim_208_label)
+  scrollable_plot("severity_plot", facet_height_px(n, ncol = 1, per_row = 22, base = 80), max_visible_px = 560)
+})
+```
+
+```{r}
+#| title: Internal vs. Public (Colored by Signed % Difference)
+plotlyOutput("scatter_v2_plot", height = "460px")
+```
+
+## Row {height=580px}
+
+```{r}
+#| title: Country Severity Ranking
+uiOutput("severity_plot_ui")
+```
+
+## Row {height=650px}
+
+```{r}
+#| title: Diagnostic Patterns - Top 9 Problem Countries
+plotlyOutput("diagnostic_multiples_plot", height = "650px")
+```
+
+## Row {height=420px}
+
+```{r}
+#| title: Distribution of Signed % Differences
+plotlyOutput("diff_distribution_plot", height = "420px")
+```
+
+```{r}
+#| title: Most Divergent Dimension Members
+reactableOutput("member_divergence_table")
+```
+
 # Outlier Detection
 
 *This section evaluates the quality of the internal data independently, flagging records where the value is more than 3 standard deviations from the country's own mean.* This works on the internal data alone, so it applies whether or not there is public data to compare against.
