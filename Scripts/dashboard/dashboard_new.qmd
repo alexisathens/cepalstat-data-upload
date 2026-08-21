@@ -440,7 +440,7 @@ output$summary_table <- renderReactable({
 # Color a percentage by severity: green <10%, yellow 10-30%, red >30% (also used for the
 # large-difference and mean-%-difference tiles, per the same scale).
 severity_color <- function(pct) {
-  if (is.na(pct)) return(pal$muted)
+  if (is.na(pct)) return(pal$neutral)
   if (pct < 10) pal$good else if (pct <= 30) "#eda100" else pal$flag
 }
 
@@ -521,12 +521,12 @@ output$kpi_boxes_ui <- renderUI({
     mean_diff_display <- "N/A"
     added <- character(0)
     removed <- character(0)
-    large_color <- pal$muted
-    mean_color <- pal$muted
+    large_color <- pal$neutral
+    mean_color <- pal$neutral
   }
 
-  added_color <- if (length(added) > 0) pal$good else pal$muted
-  removed_color <- if (length(removed) > 0) pal$flag else pal$muted
+  added_color <- if (length(added) > 0) pal$good else pal$neutral
+  removed_color <- if (length(removed) > 0) pal$flag else pal$neutral
 
   div(
     style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
