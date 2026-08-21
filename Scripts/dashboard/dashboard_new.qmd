@@ -641,7 +641,7 @@ plotlyOutput("coverage_plot", height = "650px")
 
 # Published Preview
 
-*Previews how this update will change CEPALSTAT's own published time series graphic, for the Highlight section's selected Country (and dimension member(s), if the indicator has an extra dimension).* Each line pair shares one color: solid is the current internal value, muted dot-dash is the value currently published. If the dimension filter has more than one member selected (or is left at "(All)"), each member gets its own color and line pair - narrow it to one member to see a single line, matching CEPALSTAT's own chart exactly. The x-axis follows the sidebar's Year range.
+This previews how this data update will change CEPALSTAT's landing graphic.The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
 
 ```{r}
 #| context: server
@@ -667,10 +667,10 @@ plot_published_preview <- function(agg_df, year_range) {
   color_map <- character(0)
   linetype_map <- character(0)
   for (m in members) {
-    color_map[paste0(m, " — Current (internal)")] <- base_colors[[m]]
-    color_map[paste0(m, " — Published")] <- mute_color(base_colors[[m]])
-    linetype_map[paste0(m, " — Current (internal)")] <- "solid"
-    linetype_map[paste0(m, " — Published")] <- "dotdash"
+    color_map[paste0(m, " (INTERNAL)")] <- base_colors[[m]]
+    color_map[paste0(m, " (PUBLISHED)")] <- mute_color(base_colors[[m]])
+    linetype_map[paste0(m, " (INTERNAL)")] <- "solid"
+    linetype_map[paste0(m, " (PUBLISHED)")] <- "dotdash"
   }
 
   p <- ggplot(long_df, aes(
@@ -687,7 +687,7 @@ plot_published_preview <- function(agg_df, year_range) {
     theme(legend.position = "bottom")
 
   p + geom_point(
-    data = function(d) dplyr::filter(d, vintage == "Current (internal)"),
+    data = function(d) dplyr::filter(d, vintage == "(INTERNAL)"),
     size = 1.8, show.legend = FALSE
   )
 }
