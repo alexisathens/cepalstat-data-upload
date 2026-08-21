@@ -234,16 +234,25 @@ build_filtered_view <- function(raw, diff_threshold = 20, outlier_z = 3) {
   comp_detailed <- raw$comp_detailed
 
   comp <- comp_detailed %>%
+    mutate(both_present = !is.na(value_data) & !is.na(value_pub)) %>%
     group_by(dim_208, dim_29117, dim_208_label, dim_29117_label) %>%
     summarize(
       value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
       value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      # Sums restricted to dimension members present on BOTH sides - used only for the
+      # internal-vs-public difference below (abs_diff/perc_diff/flag_large_diff), so a newly
+      # added or removed dimension member doesn't inflate the difference just because it has
+      # no counterpart to compare against (that's tracked separately, via status below and
+      # find_dim_changes() on the Overview page). value_data/value_pub above stay full totals,
+      # since status/outlier detection/coverage need the real reported amounts, not this subset.
+      value_data_matched = if (!any(both_present)) NA_real_ else sum(value_data[both_present], na.rm = TRUE),
+      value_pub_matched  = if (!any(both_present)) NA_real_ else sum(value_pub[both_present],  na.rm = TRUE),
       .groups = "drop"
     ) %>%
-    mutate(abs_diff = abs(value_data - value_pub),
-           perc_diff = round((abs_diff / value_pub) * 100, 2)) %>%
+    mutate(abs_diff = abs(value_data_matched - value_pub_matched),
+           perc_diff = round((abs_diff / value_pub_matched) * 100, 2)) %>%
     mutate(
-      flag_large_diff = perc_diff > diff_threshold,
+      flag_large_diff = !is.na(perc_diff) & perc_diff > diff_threshold,
       flag_missing_entry = is.na(value_data),
       flag_new_entry = is.na(value_pub),
       flag_some_na = is.na(value_data) | is.na(value_pub)
@@ -1015,17 +1024,20 @@ plot_diagnostic_multiples <- function(long_df, country_order) {
 # and a fitted trend line against the dashed 1:1 reference - if the two diverge, that's a
 # systematic bias, not scattered noise.
 plot_scatter_v2 <- function(comp) {
-  # fd$comp's own `perc_diff` is built from abs_diff (build_filtered_view()), so it's always
+  # Plot value_data_matched/value_pub_matched (summed over only the dimension members present
+  # on both sides - see build_filtered_view()), not the full value_data/value_pub - otherwise a
+  # newly added member would push a point off the 1:1 line here even though it isn't a real
+  # difference, and fd$comp's own `perc_diff` is built from abs_diff, so it's always
   # non-negative - recompute a genuinely signed version here rather than reusing it.
   df2 <- comp %>%
     filter(status == "Present in Both", is.finite(perc_diff)) %>%
-    mutate(signed_pct_diff = round((value_data - value_pub) / value_pub * 100, 1))
+    mutate(signed_pct_diff = round((value_data_matched - value_pub_matched) / value_pub_matched * 100, 1))
   rng <- max(abs(df2$signed_pct_diff), na.rm = TRUE)
   ggplot(df2, aes(
-    x = value_data, y = value_pub, color = signed_pct_diff,
+    x = value_data_matched, y = value_pub_matched, color = signed_pct_diff,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>Internal: ", round(value_data, 1), "<br>Public: ", round(value_pub, 1),
+      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1),
       "<br>% Diff (signed): ", signed_pct_diff
     )
   )) +
@@ -1035,7 +1047,7 @@ plot_scatter_v2 <- function(comp) {
     scale_color_gradient2(low = pal$header, mid = pal$neutral, high = pal$flag, midpoint = 0, limits = c(-rng, rng)) +
     labs(
       title = "Internal vs. Public (colored by signed % difference)",
-      x = "Internal", y = "Public", color = "% Diff (signed)"
+      x = "Internal (matched)", y = "Public (matched)", color = "% Diff (signed)"
     ) +
     theme_qc()
 }
@@ -1046,7 +1058,7 @@ plot_scatter_v2 <- function(comp) {
 plot_diff_distribution <- function(comp, diff_threshold) {
   df2 <- comp %>%
     filter(status == "Present in Both", is.finite(perc_diff)) %>%
-    mutate(signed_pct_diff = round((value_data - value_pub) / value_pub * 100, 1))
+    mutate(signed_pct_diff = round((value_data_matched - value_pub_matched) / value_pub_matched * 100, 1))
   ggplot(df2, aes(x = signed_pct_diff)) +
     geom_histogram(binwidth = 5, fill = pal$header, color = "white", boundary = 0) +
     geom_vline(xintercept = 0, linetype = "dashed", color = pal$ink2) +
