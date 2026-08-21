@@ -69,7 +69,7 @@ theme_qc <- function() {
   theme_minimal(base_size = 12) %+replace%
     theme(
       plot.title = element_text(face = "bold", size = rel(1.1), color = pal$ink, hjust = 0),
-      axis.text = element_text(color = pal$ink2),
+      axis.text = element_text(color = pal$ink2, size = rel(0.7)),
       axis.title = element_text(color = pal$ink2),
       panel.grid.major = element_line(color = pal$grid, linewidth = 0.4),
       panel.grid.minor = element_blank(),
@@ -542,10 +542,10 @@ plot_coverage <- function(df) {
   )) +
     geom_point(shape = 15, size = 3.2) +
     scale_color_manual(values = c(
-      "Missing in Both" = pal$fill_missing,
-      "Old Only"        = pal$before,
-      "New Only"        = pal$after,
-      "Present in Both" = pal$fill_both
+      "Missing in Both" = pal$missing,
+      "Old Only"        = pal$old_only,
+      "New Only"        = pal$new_only,
+      "Present in Both" = pal$present
     ), drop = FALSE) +
     labs(x = NULL, y = NULL, color = "Coverage") +
     theme_qc() +
