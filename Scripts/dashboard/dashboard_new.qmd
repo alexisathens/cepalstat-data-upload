@@ -610,7 +610,7 @@ reactableOutput("summary_table")
 
 # Coverage
 
-This shows for what country-year combinations data are available. Blue squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is mising from the internal dataset. Gray values show that there is data available in both.
+This shows for what country-year combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is mising from the internal dataset. Gray values show that there is data available in both.
 
 ```{r}
 #| context: server
