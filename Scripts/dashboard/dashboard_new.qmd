@@ -641,7 +641,7 @@ plotlyOutput("coverage_plot", height = "650px")
 
 # Published Preview
 
-This previews how this data update will change CEPALSTAT's landing graphic.The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
+This previews how the data update will change CEPALSTAT's landing graphic. The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
 
 ```{r}
 #| context: server
