@@ -109,6 +109,16 @@ facet_height_px <- function(n_facets, ncol = 3, per_row = 170, base = 100) {
   paste0(base + ceiling(max(n_facets, 1) / ncol) * per_row, "px")
 }
 
+# Blends a hex color toward light gray, for a "duller/muted" version of the same hue - used on
+# the Published Preview page (solid full color = current internal value, muted dot-dash =
+# currently published value), so a before/after pair never needs two hand-picked colors.
+mute_color <- function(hex, amount = 0.55) {
+  rgb_val <- grDevices::col2rgb(hex) / 255
+  gray_target <- 0.75
+  muted <- rgb_val * (1 - amount) + gray_target * amount
+  grDevices::rgb(muted[1], muted[2], muted[3])
+}
+
 # Wraps a tall plotlyOutput in a fixed-height, scrollable container. Keeps the card's own
 # height "regular" (not growing to match a 30+ country facet grid) while the plot itself still
 # renders at its full, correctly-proportioned height inside - capping the container's height
@@ -297,6 +307,37 @@ condense_changes <- function(items) {
     mutate(line = paste0(dim_label, ": ", joined)) %>%
     pull(line)
 }
+
+# Aggregates one highlighted country's values by year for the Published Preview page - one row
+# per year x dimension member (or a single "Value" pseudo-member when the indicator has no
+# extra dimension), mirroring how CEPALSTAT's own published chart aggregates a country/
+# dimension selection down to a single series.
+build_published_preview <- function(raw, country, dim_selections = list()) {
+  df <- raw$comp_detailed %>% filter(dim_208_label == country)
+
+  if (raw$has_extra_dims) {
+    dim_col <- raw$extra_dims[1]
+    sel <- dim_selections[[dim_col]]
+    # "__ALL__" is the dimension filter's "(All)" sentinel (see dim_filters_ui) - not a real
+    # member value, so it means "don't narrow" rather than "match nothing."
+    if (!is.null(sel) && length(sel) > 0 && !("__ALL__" %in% sel)) {
+      df <- df %>% filter(.data[[dim_col]] %in% sel)
+    }
+    df <- df %>% rename(member = all_of(dim_col))
+  } else {
+    df <- df %>% mutate(member = "Value")
+  }
+
+  df %>%
+    group_by(dim_29117_label, member) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(year = as.numeric(dim_29117_label)) %>%
+    select(-dim_29117_label)
+}
 ```
 
 ```{r}
@@ -339,8 +380,9 @@ output$status_ui <- renderUI({
 })
 
 # Year range and dimension-member selections here are for spotlighting a slice on the charts
-# (not narrowing the data - see build_filtered_view()); the year control isn't wired into any
-# chart's rendering yet, so it's currently a no-op display default until that's built out.
+# (not narrowing the data - see build_filtered_view()). Currently wired into the Published
+# Preview page (year zooms its x-axis, dimension members each become their own line there) -
+# not yet connected to any other chart.
 output$year_slider_ui <- renderUI({
   d <- qc_data()
   sliderInput("year_range", "Years", min = d$year_min, max = d$year_max,
@@ -595,6 +637,82 @@ output$coverage_plot <- renderPlotly({
 ```{r}
 #| title: Data Availability by Country and Year
 plotlyOutput("coverage_plot", height = "650px")
+```
+
+# Published Preview
+
+*Previews how this update will change CEPALSTAT's own published time series graphic, for the Highlight section's selected Country (and dimension member(s), if the indicator has an extra dimension).* Each line pair shares one color: solid is the current internal value, muted dot-dash is the value currently published. If the dimension filter has more than one member selected (or is left at "(All)"), each member gets its own color and line pair - narrow it to one member to see a single line, matching CEPALSTAT's own chart exactly. The x-axis follows the sidebar's Year range.
+
+```{r}
+#| context: server
+plot_published_preview <- function(agg_df, year_range) {
+  members <- sort(unique(agg_df$member))
+  n <- length(members)
+  base_colors <- if (n <= length(pal$categorical)) {
+    pal$categorical[seq_len(n)]
+  } else {
+    grDevices::hcl.colors(n, "Dark3")
+  }
+  names(base_colors) <- members
+
+  long_df <- agg_df %>%
+    filter(year >= year_range[1], year <= year_range[2]) %>%
+    pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
+    mutate(
+      vintage = recode(vintage, value_data = "Current (internal)", value_pub = "Published"),
+      series = paste0(member, " — ", vintage)
+    ) %>%
+    filter(!is.na(value))
+
+  color_map <- character(0)
+  linetype_map <- character(0)
+  for (m in members) {
+    color_map[paste0(m, " — Current (internal)")] <- base_colors[[m]]
+    color_map[paste0(m, " — Published")] <- mute_color(base_colors[[m]])
+    linetype_map[paste0(m, " — Current (internal)")] <- "solid"
+    linetype_map[paste0(m, " — Published")] <- "dotdash"
+  }
+
+  p <- ggplot(long_df, aes(
+    x = year, y = value, color = series, linetype = series, group = series,
+    text = paste0("Year: ", year, "<br>", member, " (", vintage, ")", "<br>Value: ", round(value, 1))
+  )) +
+    geom_line(linewidth = 0.9) +
+    scale_color_manual(values = color_map) +
+    scale_linetype_manual(values = linetype_map) +
+    scale_x_continuous(breaks = scales::pretty_breaks()) +
+    scale_y_continuous(labels = label_number()) +
+    labs(x = NULL, y = NULL, color = NULL, linetype = NULL) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  p + geom_point(
+    data = function(d) dplyr::filter(d, vintage == "Current (internal)"),
+    size = 1.8, show.legend = FALSE
+  )
+}
+
+output$published_preview_plot <- renderPlotly({
+  d <- qc_data()
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
+  if (is.null(input$year_range)) return(empty_plotly("Loading..."))
+
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  agg <- build_published_preview(d, input$country, dim_sel)
+  if (nrow(agg) == 0) return(empty_plotly("No data for this selection."))
+
+  p <- plot_published_preview(agg, input$year_range)
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+```
+
+```{r}
+#| title: Current vs. Published
+plotlyOutput("published_preview_plot", height = "480px")
 ```
 
 # New Values
