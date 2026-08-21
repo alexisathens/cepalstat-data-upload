@@ -57,10 +57,12 @@ library(fs)
 source(here("Scripts/utils.R")) # also loads the global `meta` and `iso` tables
 
 pal <- list(
-  before = "#2a78d6", after = "#eb6834", flag = "#d03b3b", good = "#0ca30c",
+  nav = "#17485A", header = "#3F8EAB", highlight = "#20B2B0", background = "#C7DDE4",
+  before = "#2a78d6", after = "#eb6834", 
+  flag = "#d03b3b", good = "#0ca30c",
   neutral = "#c3c2b7", grid = "#e1e0d9", fill_both = "#e1e0d9", fill_missing = "#fcfcfb",
   ink = "#0b0b0b", ink2 = "#52514e",
-  categorical = c("#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948")
+  categorical = c("#C53532", "#2E4655", "#5C9EA9", "#D27F66", "#83B99B", "#B59B93", "#C77D1B",  "#707173", "#759A82", "#617783", "#BBC6CF")
 )
 
 theme_qc <- function() {
