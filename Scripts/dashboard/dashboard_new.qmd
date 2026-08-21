@@ -57,7 +57,7 @@ source(here("Scripts/utils.R")) # also loads the global `meta` and `iso` tables
 
 pal <- list(
   nav = "#17485A", header = "#3F8EAB", highlight = "#20B2B0", background = "#C7DDE4",
-  missing = "white", old_only = "#ff9999", new_only = "#6CAEDA", present = "#e6e6e6",
+  missing = "white", present = "#e6e6e6",
   before = "#2a78d6", after = "#eb6834", 
   flag = "#d03b3b", good = "#0ca30c",
   neutral = "#c3c2b7", grid = "#e1e0d9", fill_both = "#e1e0d9", fill_missing = "#fcfcfb",
@@ -618,13 +618,16 @@ plot_coverage <- function(df) {
     geom_point(shape = 15, size = 3.2) +
     scale_color_manual(values = c(
       "Missing in Both" = pal$missing,
-      "Old Only"        = pal$old_only,
-      "New Only"        = pal$new_only,
+      "Old Only"        = pal$flag,
+      "New Only"        = pal$good,
       "Present in Both" = pal$present
     ), drop = FALSE) +
     labs(x = NULL, y = NULL, color = "Coverage") +
     theme_qc() +
-    theme(legend.position = "bottom", panel.grid.major = element_line(color = pal$grid, linewidth = 0.2))
+    theme(
+      legend.position = "bottom", panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
 }
 
 output$coverage_plot <- renderPlotly({
@@ -645,7 +648,7 @@ This previews how the data update will change CEPALSTAT's landing graphic. The l
 
 ```{r}
 #| context: server
-plot_published_preview <- function(agg_df, year_range, has_dim) {
+plot_published_preview <- function(agg_df, year_range, has_dim, country) {
   long_df <- agg_df %>%
     filter(year >= year_range[1], year <= year_range[2]) %>%
     pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
@@ -691,7 +694,7 @@ plot_published_preview <- function(agg_df, year_range, has_dim) {
     scale_linetype_manual(values = linetype_map) +
     scale_x_continuous(breaks = scales::pretty_breaks()) +
     scale_y_continuous(labels = label_number()) +
-    labs(x = NULL, y = NULL, color = NULL, linetype = NULL) +
+    labs(title = glue("Trend Comparison - {country}"), x = NULL, y = NULL, color = NULL, linetype = NULL) +
     theme_qc() +
     theme(legend.position = "bottom")
 
@@ -714,13 +717,13 @@ output$published_preview_plot <- renderPlotly({
   agg <- build_published_preview(d, input$country, dim_sel)
   if (nrow(agg) == 0) return(empty_plotly("No data for this selection."))
 
-  p <- plot_published_preview(agg, input$year_range, d$has_extra_dims)
+  p <- plot_published_preview(agg, input$year_range, d$has_extra_dims, input$country)
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
 })
 ```
 
 ```{r}
-#| title: Internal vs. Public
+#| title: Trend Comparison
 plotlyOutput("published_preview_plot", height = "650px")
 ```
 
