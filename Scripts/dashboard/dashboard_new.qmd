@@ -640,7 +640,7 @@ plotlyOutput("coverage_plot", height = "650px")
 
 # Published Preview
 
-*Previews how this update will change CEPALSTAT's own published time series graphic, for the Highlight section's selected Country (and dimension member(s), if the indicator has an extra dimension).* Each line pair shares one color: solid is INTERNAL (the current internal value), muted dot-dash is PUBLIC (the value currently published on CEPALSTAT). If the dimension filter has more than one member selected (or is left at "(All)"), each member gets its own color and line pair - narrow it to one member to see a single line, matching CEPALSTAT's own chart exactly. The x-axis follows the sidebar's Year range.
+*This previews how this data update will change CEPALSTAT's landing graphic. The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").* If the dimension filter has more than one member selected (or is left at "(All)"), each member gets its own color and line pair - narrow it to one member to see a single line, matching CEPALSTAT's own chart exactly. The x-axis follows the sidebar's Year range.
 
 ```{r}
 #| context: server
