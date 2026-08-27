@@ -835,7 +835,7 @@ output$new_faceted <- renderPlotly({
     theme_qc() +
     theme(
       legend.position = "none",
-      panel.spacing = unit(0.3, "lines"),
+      panel.spacing = grid::unit(0.3, "lines"),
       panel.grid.major = element_line(color = pal$grid, linewidth = 0.2)
     )
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
