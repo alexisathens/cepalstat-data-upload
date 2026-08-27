@@ -894,7 +894,9 @@ output$new_faceted <- renderPlot({
       legend.position = "none",
       panel.spacing = grid::unit(0.15, "lines"),
       panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
-      plot.margin = margin(2, 2, 2, 2)
+      plot.margin = margin(2, 2, 2, 2),
+      strip.text = element_text(size = rel(1.6), face = "bold"),
+      axis.text = element_text(size = rel(1.1))
     )
 })
 
@@ -925,7 +927,7 @@ plotlyOutput("new_country", height = "420px")
 ## Row {height=740px}
 
 ```{r}
-#| title: "All Faceted Countries · Highlight: Dimension"
+#| title: "All Faceted Countries (Static) · Highlight: Dimension"
 uiOutput("new_faceted_ui")
 ```
 
