@@ -142,14 +142,16 @@ tint_color <- function(hex, amount = 0.55) {
   grDevices::rgb(tinted[1], tinted[2], tinted[3])
 }
 
-# Wraps a tall plotlyOutput in a fixed-height, scrollable container. Keeps the card's own
+# Wraps a tall plot output in a fixed-height, scrollable container. Keeps the card's own
 # height "regular" (not growing to match a 30+ country facet grid) while the plot itself still
 # renders at its full, correctly-proportioned height inside - capping the container's height
-# directly (instead of this wrapper) would just squish the panels again.
-scrollable_plot <- function(output_id, plot_height_px, max_visible_px = 700) {
+# directly (instead of this wrapper) would just squish the panels again. output_fn defaults to
+# plotlyOutput; pass plotOutput for a static ggplot2 render (see new_faceted for why that's
+# sometimes the safer choice for a many-panel facet_wrap grid).
+scrollable_plot <- function(output_id, plot_height_px, max_visible_px = 700, output_fn = plotlyOutput) {
   div(
     style = glue("max-height:{max_visible_px}px; overflow-y:auto;"),
-    plotlyOutput(output_id, height = plot_height_px)
+    output_fn(output_id, height = plot_height_px)
   )
 }
 
@@ -852,8 +854,13 @@ output$new_country <- renderPlotly({
 })
 
 # All-countries faceted view (kept alongside the reactive single-country view for now, as a
-# comprehensive cross-check while the filter-driven approach gets a trial run).
-output$new_faceted <- renderPlotly({
+# comprehensive cross-check while the filter-driven approach gets a trial run). Rendered as a
+# static ggplot2 image (renderPlot, not renderPlotly) rather than through ggplotly()'s
+# facet_wrap conversion, which becomes unreliable for grids with many rows - it rendered fine
+# for indicators with few countries but squished every row past the first for indicators with
+# more. A plain ggplot2 render doesn't go through that conversion at all, at the cost of losing
+# the hover tooltip on this one chart (Inspect Country and All Time Series by Country keep it).
+output$new_faceted <- renderPlot({
   d <- qc_data()
 
   # Highlight: Dimension only - re-aggregates comp_detailed to country x year after narrowing
@@ -874,12 +881,8 @@ output$new_faceted <- renderPlotly({
     ) %>%
     mutate(flag_new_entry = is.na(value_pub) & !is.na(value_data)) %>%
     filter(!is.na(value_data))
-  p <- ggplot(df2, aes(
-    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry,
-    text = paste0(
-      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry
-    )
+  ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry
   )) +
     geom_line(alpha = 0.5, color = pal$neutral, linewidth = 0.4) +
     geom_point(size = 1.8, alpha = 0.9) +
@@ -889,10 +892,10 @@ output$new_faceted <- renderPlotly({
     theme_qc() +
     theme(
       legend.position = "none",
-      panel.spacing = grid::unit(0.3, "lines"),
-      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2)
+      panel.spacing = grid::unit(0.15, "lines"),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      plot.margin = margin(2, 2, 2, 2)
     )
-  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
 
 output$new_faceted_ui <- renderUI({
@@ -903,7 +906,7 @@ output$new_faceted_ui <- renderUI({
     list()
   }
   n <- d$comp_detailed %>% filter_by_dim_highlight(d, dim_sel) %>% pull(dim_208_label) %>% n_distinct()
-  scrollable_plot("new_faceted", facet_height_px(n, per_row = 150))
+  scrollable_plot("new_faceted", facet_height_px(n, per_row = 130), output_fn = plotOutput)
 })
 ```
 
