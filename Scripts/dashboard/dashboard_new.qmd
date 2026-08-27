@@ -694,7 +694,7 @@ output$coverage_plot <- renderPlotly({
 plotlyOutput("coverage_plot", height = "650px")
 ```
 
-# Published Preview
+# Published Comparison
 
 This previews how the data update will change CEPALSTAT's landing graphic. The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
 
@@ -779,9 +779,9 @@ output$published_preview_plot <- renderPlotly({
 plotlyOutput("published_preview_plot", height = "650px")
 ```
 
-# New Values
+# Country Trends
 
-This section visualizes the values of the new data points, both across every filtered country and for the country selected in the sidebar's Inspect Country dropdown.
+This displays trends at the country level and highlights new data points.
 
 ```{r}
 #| context: server
@@ -798,7 +798,7 @@ output$new_overview <- renderPlotly({
     geom_line(alpha = 0.35, color = pal$grid) +
     geom_point(size = 1.3, alpha = 0.85) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
-    labs(title = "Time Series by Country", x = "Year", y = "Value") +
+    labs(title = "", x = "Year", y = "") +
     theme_qc() +
     theme(legend.position = "none")
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
@@ -812,10 +812,10 @@ output$new_country <- renderPlotly({
     x = as.numeric(dim_29117_label), y = value_data, color = flag_new_entry,
     text = paste0("Year: ", dim_29117_label, "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry)
   )) +
-    geom_line(aes(group = 1), color = pal$neutral, linewidth = 0.8) +
-    geom_point(size = 2.6, alpha = 0.9) +
+    geom_line(aes(group = 1), color = pal$neutral, linewidth = 0.4, alpha = 0.5) +
+    geom_point(size = 1.8, alpha = 0.9) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
-    labs(title = input$country, x = "Year", y = "Value") +
+    labs(title = input$country, x = "Year", y = "") +
     theme_qc() +
     theme(legend.position = "none")
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
@@ -837,7 +837,7 @@ output$new_faceted <- renderPlotly({
     geom_point(size = 1.8, alpha = 0.9) +
     facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
-    labs(title = "All Filtered Countries", x = "Year", y = "Value") +
+    labs(title = "", x = "Year", y = "Value") +
     theme_qc() +
     theme(
       legend.position = "none",
@@ -856,7 +856,7 @@ output$new_faceted_ui <- renderUI({
 ## Row {height=420px}
 
 ```{r}
-#| title: Time Series by Country (All Filtered Countries)
+#| title: All Time Series by Country
 plotlyOutput("new_overview", height = "420px")
 ```
 
@@ -868,7 +868,7 @@ plotlyOutput("new_country", height = "420px")
 ## Row {height=740px}
 
 ```{r}
-#| title: All Countries (Faceted)
+#| title: All Faceted Countries
 uiOutput("new_faceted_ui")
 ```
 
