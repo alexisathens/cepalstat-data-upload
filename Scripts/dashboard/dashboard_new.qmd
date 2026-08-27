@@ -33,6 +33,20 @@ library(reactable)
 library(plotly)
 ```
 
+<!--
+Quarto Dashboard pages are navigated via URL hash (e.g. #new-values), with inactive pages kept
+in the DOM but hidden - so a Plotly widget on a page you haven't visited yet gets rendered
+against a hidden (zero-size) container and can't measure it correctly, leaving it laid out
+incorrectly (this is what was causing the "New Values" facet grid to look fine in row 1 then
+squished below - see git history for that fix). Nudging Plotly to recompute its layout on every
+page change fixes it for any page, not just that one.
+-->
+<script>
+window.addEventListener("hashchange", function () {
+  setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 250);
+});
+</script>
+
 ```{r}
 #| context: server
 # ---- Setup: libraries, palette, and data-loading functions ----
@@ -58,7 +72,7 @@ source(here("Scripts/utils.R")) # also loads the global `meta` and `iso` tables
 pal <- list(
   nav = "#17485A", header = "#3F8EAB", highlight = "#20B2B0", background = "#C7DDE4",
   missing = "white", present = "#e6e6e6",
-  before = "#2a78d6", after = "#eb6834", 
+  before = "#2a78d6",
   flag = "#d03b3b", good = "#0ca30c",
   neutral = "#c3c2b7", grid = "#e1e0d9", fill_both = "#e1e0d9", fill_missing = "#fcfcfb",
   ink = "#0b0b0b", ink2 = "#52514e",
@@ -777,7 +791,7 @@ output$new_overview <- renderPlotly({
   )) +
     geom_line(alpha = 0.35, color = pal$grid) +
     geom_point(size = 1.3, alpha = 0.85) +
-    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$after)) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
     labs(title = "Time Series by Country", x = "Year", y = "Value") +
     theme_qc() +
     theme(legend.position = "none")
@@ -792,9 +806,9 @@ output$new_country <- renderPlotly({
     x = as.numeric(dim_29117_label), y = value_data, color = flag_new_entry,
     text = paste0("Year: ", dim_29117_label, "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry)
   )) +
-    geom_line(color = pal$grid, linewidth = 0.7) +
+    geom_line(aes(group = 1), color = pal$neutral, linewidth = 0.8) +
     geom_point(size = 2.6, alpha = 0.9) +
-    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$after)) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
     labs(title = input$country, x = "Year", y = "Value") +
     theme_qc() +
     theme(legend.position = "none")
@@ -816,7 +830,7 @@ output$new_faceted <- renderPlotly({
     geom_line(alpha = 0.4, color = pal$grid) +
     geom_point(size = 1, alpha = 0.85) +
     facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
-    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$after)) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
     labs(title = "All Filtered Countries", x = "Year", y = "Value") +
     theme_qc() +
     theme(legend.position = "none")
