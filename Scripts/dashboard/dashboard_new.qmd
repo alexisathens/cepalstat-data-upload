@@ -354,21 +354,30 @@ condense_changes <- function(items) {
     pull(line)
 }
 
-# Aggregates one highlighted country's values by year for the Published Preview page - one row
-# per year x dimension member (or a single "Value" pseudo-member when the indicator has no
+# Narrows comp_detailed (or any data frame with the indicator's first extra-dimension column)
+# to the sidebar Highlight section's selected member(s), honoring the dimension filter's "(All)"
+# sentinel "__ALL__" (see dim_filters_ui) - not a real member value, so it means "don't narrow"
+# rather than "match nothing." A no-op if the indicator has no extra dimension. Shared by every
+# chart whose card title says it highlights on Dimension.
+filter_by_dim_highlight <- function(df, raw, dim_selections = list()) {
+  if (!raw$has_extra_dims) return(df)
+  dim_col <- raw$extra_dims[1]
+  sel <- dim_selections[[dim_col]]
+  if (is.null(sel) || length(sel) == 0 || "__ALL__" %in% sel) return(df)
+  df %>% filter(.data[[dim_col]] %in% sel)
+}
+
+# Aggregates one highlighted country's values by year for the Published Comparison page - one
+# row per year x dimension member (or a single "Value" pseudo-member when the indicator has no
 # extra dimension), mirroring how CEPALSTAT's own published chart aggregates a country/
 # dimension selection down to a single series.
 build_published_preview <- function(raw, country, dim_selections = list()) {
-  df <- raw$comp_detailed %>% filter(dim_208_label == country)
+  df <- raw$comp_detailed %>%
+    filter(dim_208_label == country) %>%
+    filter_by_dim_highlight(raw, dim_selections)
 
   if (raw$has_extra_dims) {
     dim_col <- raw$extra_dims[1]
-    sel <- dim_selections[[dim_col]]
-    # "__ALL__" is the dimension filter's "(All)" sentinel (see dim_filters_ui) - not a real
-    # member value, so it means "don't narrow" rather than "match nothing."
-    if (!is.null(sel) && length(sel) > 0 && !("__ALL__" %in% sel)) {
-      df <- df %>% filter(.data[[dim_col]] %in% sel)
-    }
     df <- df %>% rename(member = all_of(dim_col))
   } else {
     df <- df %>% mutate(member = "Value")
@@ -805,12 +814,33 @@ output$new_overview <- renderPlotly({
 })
 
 output$new_country <- renderPlotly({
-  fd <- filtered_data()
+  d <- qc_data()
   if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
-  df2 <- fd$comp %>% filter(!is.na(value_data), dim_208_label == input$country)
+  if (is.null(input$year_range)) return(empty_plotly("Loading..."))
+
+  # Highlight: Country, Year, Dimension - reuses build_published_preview()'s per-member
+  # aggregation (Country + Dimension already applied there), then collapses any remaining
+  # members down to one line per year and applies the Year range, since this chart (unlike
+  # Published Comparison) shows a single series rather than one line per dimension member.
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  df2 <- build_published_preview(d, input$country, dim_sel) %>%
+    group_by(year) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(flag_new_entry = is.na(value_pub) & !is.na(value_data)) %>%
+    filter(!is.na(value_data), year >= input$year_range[1], year <= input$year_range[2])
+  if (nrow(df2) == 0) return(empty_plotly("No data for this selection."))
+
   p <- ggplot(df2, aes(
-    x = as.numeric(dim_29117_label), y = value_data, color = flag_new_entry,
-    text = paste0("Year: ", dim_29117_label, "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry)
+    x = year, y = value_data, color = flag_new_entry,
+    text = paste0("Year: ", year, "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry)
   )) +
     geom_line(aes(group = 1), color = pal$neutral, linewidth = 0.4, alpha = 0.5) +
     geom_point(size = 1.8, alpha = 0.9) +
@@ -824,8 +854,26 @@ output$new_country <- renderPlotly({
 # All-countries faceted view (kept alongside the reactive single-country view for now, as a
 # comprehensive cross-check while the filter-driven approach gets a trial run).
 output$new_faceted <- renderPlotly({
-  fd <- filtered_data()
-  df2 <- fd$comp %>% filter(!is.na(value_data))
+  d <- qc_data()
+
+  # Highlight: Dimension only - re-aggregates comp_detailed to country x year after narrowing
+  # to the selected member(s) (filter_by_dim_highlight()), rather than using filtered_data()'s
+  # fd$comp, which sums across every member regardless of the sidebar's Dimension selection.
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  df2 <- d$comp_detailed %>%
+    filter_by_dim_highlight(d, dim_sel) %>%
+    group_by(dim_208_label, dim_29117_label) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(flag_new_entry = is.na(value_pub) & !is.na(value_data)) %>%
+    filter(!is.na(value_data))
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry,
     text = paste0(
@@ -848,27 +896,33 @@ output$new_faceted <- renderPlotly({
 })
 
 output$new_faceted_ui <- renderUI({
-  fd <- filtered_data()
-  scrollable_plot("new_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label), per_row = 150))
+  d <- qc_data()
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  n <- d$comp_detailed %>% filter_by_dim_highlight(d, dim_sel) %>% pull(dim_208_label) %>% n_distinct()
+  scrollable_plot("new_faceted", facet_height_px(n, per_row = 150))
 })
 ```
 
 ## Row {height=420px}
 
 ```{r}
-#| title: All Time Series by Country
+#| title: All Time Series by Country · Highlight: None
 plotlyOutput("new_overview", height = "420px")
 ```
 
 ```{r}
-#| title: Inspect Country
+#| title: Inspect Country · Highlight: Country, Year, Dimension
 plotlyOutput("new_country", height = "420px")
 ```
 
 ## Row {height=740px}
 
 ```{r}
-#| title: All Faceted Countries
+#| title: All Faceted Countries · Highlight: Dimension
 uiOutput("new_faceted_ui")
 ```
 
