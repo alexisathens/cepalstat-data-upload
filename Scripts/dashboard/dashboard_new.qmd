@@ -910,19 +910,19 @@ output$new_faceted_ui <- renderUI({
 ## Row {height=420px}
 
 ```{r}
-#| title: All Time Series by Country · Highlight: None
+#| title: "All Time Series by Country · Highlight: None"
 plotlyOutput("new_overview", height = "420px")
 ```
 
 ```{r}
-#| title: Inspect Country · Highlight: Country, Year, Dimension
+#| title: "Inspect Country · Highlight: Country, Year, Dimension"
 plotlyOutput("new_country", height = "420px")
 ```
 
 ## Row {height=740px}
 
 ```{r}
-#| title: All Faceted Countries · Highlight: Dimension
+#| title: "All Faceted Countries · Highlight: Dimension"
 uiOutput("new_faceted_ui")
 ```
 
