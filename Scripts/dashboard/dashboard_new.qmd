@@ -827,19 +827,23 @@ output$new_faceted <- renderPlotly({
       "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry
     )
   )) +
-    geom_line(alpha = 0.4, color = pal$grid) +
-    geom_point(size = 1, alpha = 0.85) +
+    geom_line(alpha = 0.5, color = pal$neutral, linewidth = 0.4) +
+    geom_point(size = 1.8, alpha = 0.9) +
     facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
     labs(title = "All Filtered Countries", x = "Year", y = "Value") +
     theme_qc() +
-    theme(legend.position = "none")
+    theme(
+      legend.position = "none",
+      panel.spacing = unit(0.3, "lines"),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2)
+    )
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
 
 output$new_faceted_ui <- renderUI({
   fd <- filtered_data()
-  scrollable_plot("new_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label)))
+  scrollable_plot("new_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label), per_row = 150))
 })
 ```
 
