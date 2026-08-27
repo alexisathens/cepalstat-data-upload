@@ -394,7 +394,13 @@ qc_data <- eventReactive(input$load, {
   req(input$indicator_id)
   tryCatch(
     load_qc_raw(input$indicator_id),
-    error = function(e) validate(need(FALSE, conditionMessage(e)))
+    # Explicitly namespaced - jsonlite::validate() (a JSON-syntax checker, unrelated to Shiny)
+    # gets attached after shiny and masks shiny::validate() by name, so a bare validate() call
+    # here silently returns a plain boolean instead of signaling a Shiny validation error -
+    # which then makes qc_data() resolve to that boolean, breaking every "d$..." access
+    # downstream with a confusing "$ operator is invalid for atomic vectors" instead of
+    # showing the actual underlying error message.
+    error = function(e) shiny::validate(shiny::need(FALSE, conditionMessage(e)))
   )
 }, ignoreNULL = FALSE)
 
