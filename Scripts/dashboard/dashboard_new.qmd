@@ -115,6 +115,14 @@ empty_plotly <- function(msg) {
     )
 }
 
+# Same as empty_plotly(), for a renderPlot()/plotOutput() static ggplot2 card (see
+# dim_faceted for why that's sometimes the safer choice over renderPlotly/ggplotly).
+empty_plot <- function(msg) {
+  ggplot() +
+    annotate("text", x = 0, y = 0, label = msg, size = 4, color = pal$ink2) +
+    theme_void()
+}
+
 # Pixel height for a facet_wrap grid of country panels (3 columns), sized to the number of
 # countries currently in view. Used with plotlyOutput(height=) via a renderUI wrapper, since
 # that's the reliable way to size a Shiny-rendered plotly widget (unlike the fig.height chunk
@@ -960,6 +968,148 @@ plotlyOutput("new_country", height = "420px")
 uiOutput("new_faceted_ui")
 ```
 
+# Dimension Trends
+
+*Breaks out this indicator's extra dimension (e.g. sex or age group) three ways: summed across every country, for the sidebar's Highlight Country, and faceted across every country.* Always shows every member of that dimension, regardless of the dimension filter in the sidebar, since comparing members side by side is the point of this page. Only applies to indicators with an extra dimension beyond country and year - if there's ever more than one, only the first is used here. Every chart uses the same color for a given member throughout, drawn from (and recycled across) the app's categorical palette.
+
+```{r}
+#| context: server
+no_dims_msg <- "This indicator has no extra dimensions beyond country and year."
+
+# A stable member -> color mapping shared by every chart on this page, drawn from the
+# indicator's FULL member list (not whatever subset happens to appear in one chart's own
+# filtered data) - so the same dimension member is always the same color everywhere on this
+# page. Recycles the categorical palette rather than falling back to a different generator if
+# there are more members than swatches, same convention as build_published_preview()/etc.
+dim_color_map <- function(raw) {
+  dim_col <- raw$extra_dims[1]
+  members <- raw$dim_members[[dim_col]]
+  n <- length(members)
+  setNames(pal$categorical[((seq_len(n) - 1) %% length(pal$categorical)) + 1], members)
+}
+
+output$dim_overview_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
+
+  by_extra <- d$comp_detailed %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_29117_label", dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  p <- ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data, color = .data[[dim_col]], group = .data[[dim_col]],
+    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", scales::comma(value_data, accuracy = 0.1))
+  )) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.8) +
+    scale_color_manual(values = dim_color_map(d)) +
+    scale_x_continuous(n.breaks = 6) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = "", x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+
+output$dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
+
+  by_extra <- d$comp_detailed %>%
+    filter(dim_208_label == input$country, !is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_29117_label", dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  p <- ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data,
+    color = .data[[dim_col]], group = .data[[dim_col]],
+    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", scales::comma(value_data, accuracy = 0.1))
+  )) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.8) +
+    scale_color_manual(values = dim_color_map(d)) +
+    scale_x_continuous(n.breaks = 6) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = glue("{input$country} — {dim_label}"), x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+
+# Rendered as a static ggplot2 image (renderPlot, not renderPlotly) rather than through
+# ggplotly()'s facet_wrap conversion - same reasoning as Country Trends' All Faceted Countries:
+# that conversion is unreliable for grids with many rows (fine for a few countries, squished
+# past the first row for more).
+output$dim_faceted <- renderPlot({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plot(no_dims_msg))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
+
+  by_extra <- d$comp_detailed %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data, color = .data[[dim_col]], group = .data[[dim_col]]
+  )) +
+    geom_line(linewidth = 0.7) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    scale_color_manual(values = dim_color_map(d)) +
+    scale_x_continuous(n.breaks = 4) +
+    scale_y_continuous(labels = scales::comma, n.breaks = 4) +
+    labs(title = "", x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(
+      legend.position = "bottom",
+      panel.spacing = grid::unit(0.15, "lines"),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      plot.margin = margin(2, 2, 2, 2),
+      strip.text = element_text(size = rel(1.6), face = "bold"),
+      axis.text = element_text(size = rel(1.1))
+    )
+})
+
+output$dim_faceted_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(plotOutput("dim_faceted", height = "300px"))
+  fd <- filtered_data()
+  n <- n_distinct(fd$comp$dim_208_label)
+  scrollable_plot("dim_faceted", facet_height_px(n, per_row = 130), output_fn = plotOutput)
+})
+```
+
+## Row {height=480px}
+
+```{r}
+#| title: "All Time Series by Dimension · Highlight: None"
+plotlyOutput("dim_overview_plot", height = "480px")
+```
+
+```{r}
+#| title: "Inspect Country · Highlight: Country"
+plotlyOutput("dim_plot", height = "480px")
+```
+
+## Row {height=740px}
+
+```{r}
+#| title: "All Faceted Countries · Highlight: None"
+uiOutput("dim_faceted_ui")
+```
+
 # Value Comparisons
 
 *This section analyzes changes between values that are available in both the public and internal data sets, for the currently filtered countries/years.* Key statistics include mean and absolute differences, and the share of values with changes greater than ±20%. Red points identify values that exceed this threshold. Skipped automatically for a new indicator with no published data to compare against.
@@ -1364,106 +1514,3 @@ plotlyOutput("outlier_plot", height = "500px")
 plotlyOutput("outlier_dim_plot", height = "500px")
 ```
 
-# Dimension Analysis
-
-*Breaks out the selected country's values by the indicator's extra dimension (e.g. sex or age group).* Always shows every member of that dimension, regardless of the dimension filter in the sidebar, since that's the point of this view. Only applies to indicators with an extra dimension beyond country and year - if there's ever more than one, only the first is used here.
-
-```{r}
-#| context: server
-no_dims_msg <- "This indicator has no extra dimensions beyond country and year."
-
-output$dim_plot <- renderPlotly({
-  d <- qc_data()
-  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
-  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
-  dim_col <- d$extra_dims[1]
-  dim_label <- d$dim_labels[[dim_col]]
-
-  by_extra <- d$comp_detailed %>%
-    filter(dim_208_label == input$country, !is.na(value_data)) %>%
-    group_by(across(all_of(c("dim_29117_label", dim_col)))) %>%
-    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
-    mutate(dim_29117_label = as.numeric(dim_29117_label))
-
-  n_cats <- n_distinct(by_extra[[dim_col]])
-  color_scale <- if (n_cats <= length(pal$categorical)) {
-    scale_color_manual(values = pal$categorical[seq_len(n_cats)])
-  } else {
-    scale_color_viridis_d(option = "C")
-  }
-
-  p <- ggplot(by_extra, aes(
-    x = dim_29117_label, y = value_data,
-    color = .data[[dim_col]], group = .data[[dim_col]],
-    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", round(value_data, 1))
-  )) +
-    geom_line(linewidth = 0.8) +
-    geom_point(size = 1.8) +
-    color_scale +
-    scale_x_continuous(n.breaks = 6) +
-    scale_y_continuous(labels = label_number()) +
-    labs(title = glue("{input$country} — {dim_label}"), x = NULL, y = NULL, color = dim_label) +
-    theme_qc() +
-    theme(legend.position = "bottom")
-
-  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
-})
-
-# All-countries faceted view (kept alongside the reactive single-country view for now).
-output$dim_faceted <- renderPlotly({
-  d <- qc_data()
-  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
-  dim_col <- d$extra_dims[1]
-  dim_label <- d$dim_labels[[dim_col]]
-
-  by_extra <- d$comp_detailed %>%
-    filter(!is.na(value_data)) %>%
-    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim_col)))) %>%
-    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
-    mutate(dim_29117_label = as.numeric(dim_29117_label))
-
-  n_cats <- n_distinct(by_extra[[dim_col]])
-  color_scale <- if (n_cats <= length(pal$categorical)) {
-    scale_color_manual(values = pal$categorical[seq_len(n_cats)])
-  } else {
-    scale_color_viridis_d(option = "C")
-  }
-
-  p <- ggplot(by_extra, aes(
-    x = dim_29117_label, y = value_data, color = .data[[dim_col]], group = .data[[dim_col]],
-    text = paste0(
-      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", round(value_data, 1)
-    )
-  )) +
-    geom_line(linewidth = 0.7) +
-    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
-    color_scale +
-    scale_x_continuous(n.breaks = 4) +
-    scale_y_continuous(labels = label_number(), n.breaks = 4) +
-    labs(title = glue("All Filtered Countries — {dim_label}"), x = NULL, y = NULL, color = dim_label) +
-    theme_qc() +
-    theme(legend.position = "bottom")
-
-  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
-})
-
-output$dim_faceted_ui <- renderUI({
-  d <- qc_data()
-  req(d$has_extra_dims)
-  fd <- filtered_data()
-  scrollable_plot("dim_faceted", facet_height_px(n_distinct(fd$comp$dim_208_label)))
-})
-```
-
-```{r}
-#| title: Country x Dimension Breakout
-plotlyOutput("dim_plot", height = "480px")
-```
-
-## Row {height=740px}
-
-```{r}
-#| title: All Countries (Faceted)
-uiOutput("dim_faceted_ui")
-```
