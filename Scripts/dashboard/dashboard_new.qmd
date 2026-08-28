@@ -1344,6 +1344,86 @@ plotlyOutput("diff_distribution_plot", height = "420px")
 reactableOutput("member_divergence_table")
 ```
 
+# Absolute Differences
+
+*A first pass at a different lens than the rest of this section: raw (non-%) differences, broken out as a time series by country and, if this indicator has an extra dimension, by dimension member. A % difference normalizes away scale, which can hide where the real-world impact actually is - a 2% shift on a value of 50 million is a bigger absolute change than a 50% shift on a value of 4. All countries/members are shown for now (no highlighting or capping yet) - flag if this needs narrowing down once you see it with real data.*
+
+```{r}
+#| context: server
+# Aggregates comp_detailed to one row per dimension member per year, summed across every
+# country - mirrors build_filtered_view()'s "filter to rows present on both sides, then sum"
+# approach, just grouped by member instead of by country, so this reads as "which member drove
+# the most total absolute change, and when" rather than a per-country-per-member breakdown
+# (too many series to plot at once).
+build_dim_abs_diff <- function(raw) {
+  dim_col <- raw$extra_dims[1]
+  raw$comp_detailed %>%
+    filter(!is.na(value_data), !is.na(value_pub)) %>%
+    group_by(across(all_of(c(dim_col, "dim_29117_label")))) %>%
+    summarize(value_data = sum(value_data), value_pub = sum(value_pub), .groups = "drop") %>%
+    rename(member = all_of(dim_col)) %>%
+    mutate(abs_diff = abs(value_data - value_pub), year = as.numeric(dim_29117_label))
+}
+
+output$abs_diff_country_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  df2 <- fd$comp %>% filter(status == "Present in Both")
+  if (nrow(df2) == 0) return(empty_plotly("No country-year has both an internal and public value."))
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = abs_diff, group = dim_208_label,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>Absolute Difference: ", scales::comma(abs_diff, accuracy = 0.1),
+      "<br>Internal (matched): ", scales::comma(value_data_matched, accuracy = 0.1),
+      "<br>Public (matched): ", scales::comma(value_pub_matched, accuracy = 0.1)
+    )
+  )) +
+    geom_line(color = pal$neutral, alpha = 0.5, linewidth = 0.5) +
+    geom_point(color = pal$header, size = 1.2, alpha = 0.7) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(x = "Year", y = "Absolute Difference") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+output$abs_diff_dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  if (!d$has_extra_dims) return(empty_plotly("This indicator has no extra dimension beyond Country and Year."))
+  df2 <- build_dim_abs_diff(d)
+  if (nrow(df2) == 0) return(empty_plotly("No dimension member-year has both an internal and public value."))
+  p <- ggplot(df2, aes(
+    x = year, y = abs_diff, group = member,
+    text = paste0(
+      d$dim_labels[[d$extra_dims[1]]], ": ", member, "<br>Year: ", year, "<br>Absolute Difference: ", scales::comma(abs_diff, accuracy = 0.1),
+      "<br>Internal (matched): ", scales::comma(value_data, accuracy = 0.1),
+      "<br>Public (matched): ", scales::comma(value_pub, accuracy = 0.1)
+    )
+  )) +
+    geom_line(color = pal$neutral, alpha = 0.5, linewidth = 0.5) +
+    geom_point(color = pal$header, size = 1.2, alpha = 0.7) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(x = "Year", y = "Absolute Difference") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+```
+
+## Row {height=460px}
+
+```{r}
+#| title: "Absolute Difference by Country · Highlight: None"
+plotlyOutput("abs_diff_country_plot", height = "460px")
+```
+
+## Row {height=460px}
+
+```{r}
+#| title: "Absolute Difference by Dimension · Highlight: None"
+plotlyOutput("abs_diff_dim_plot", height = "460px")
+```
+
 # Outlier Detection
 
 *This section evaluates the quality of the internal data independently, flagging records where the value is more than 3 standard deviations from the country's own mean.* This works on the internal data alone, so it applies whether or not there is public data to compare against.
