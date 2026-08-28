@@ -959,8 +959,14 @@ output$value_comp_kpi_ui <- renderUI({
   mean_signed <- round(mean(signed_pct, na.rm = TRUE), 1)
   pct_above <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
 
+  median_abs_diff <- median(present$abs_diff[is.finite(present$abs_diff)], na.rm = TRUE)
+  median_val <- median(present$value_data, na.rm = TRUE)
+  min_val <- min(present$value_data, na.rm = TRUE)
+  max_val <- max(present$value_data, na.rm = TRUE)
+
   fmt_pct <- function(x) if (is.na(x)) "N/A" else glue("{x}%")
   fmt_signed <- function(x) if (is.na(x)) "N/A" else glue("{if (x > 0) '+' else ''}{x}%")
+  fmt_num <- function(x) if (is.na(x)) "N/A" else scales::comma(x, accuracy = 0.1)
 
   median_color <- severity_color(median_abs)
   mean_color <- severity_color(mean_abs)
@@ -985,6 +991,13 @@ output$value_comp_kpi_ui <- renderUI({
     kpi_tile(
       svg_icon("warning", above_color), fmt_pct(pct_above), "Above Threshold", above_color,
       caption = glue("of values differ by more than {input$threshold}% from what's published")
+    ),
+    kpi_tile(
+      # Raw units, not a %, so there's no universal good/bad cutoff to color against (a
+      # difference of "500" is huge for a small country and tiny for a large one) - a neutral
+      # informational color throughout, not severity_color().
+      svg_icon("delta", pal$header), fmt_num(median_abs_diff), "Median Absolute Difference", pal$header,
+      caption = glue("with median reported value of {fmt_num(median_val)} and range of [{fmt_num(min_val)}, {fmt_num(max_val)}]")
     )
   )
 })
