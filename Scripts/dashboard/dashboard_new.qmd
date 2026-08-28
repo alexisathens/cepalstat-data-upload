@@ -142,6 +142,31 @@ tint_color <- function(hex, amount = 0.55) {
   grDevices::rgb(tinted[1], tinted[2], tinted[3])
 }
 
+# Linearly interpolates from color `from` (at t=0) to color `to` (at t=1) - t is vectorized, so
+# this returns one hex color per element of t. General-purpose gradient blend, unlike
+# tint_color()/mute_color() which always blend toward a fixed white/gray endpoint.
+blend_colors <- function(from, to, t) {
+  t <- pmin(pmax(t, 0), 1)
+  from_rgb <- grDevices::col2rgb(from) / 255
+  to_rgb <- grDevices::col2rgb(to) / 255
+  grDevices::rgb(
+    from_rgb[1] * (1 - t) + to_rgb[1] * t,
+    from_rgb[2] * (1 - t) + to_rgb[2] * t,
+    from_rgb[3] * (1 - t) + to_rgb[3] * t
+  )
+}
+
+# Colors a % difference on a gradient that starts (lightest) exactly at the sidebar's Threshold
+# and reaches full saturation at 3x the threshold - e.g. for a 20% threshold, a 20% difference
+# is barely tinted, 40% is a clear mid-red, and 60%+ is the full, most-alarming red. Anything
+# below threshold isn't flagged at all, so it gets the neutral "fine" color instead of a gradient
+# position - there's no such thing as a "very light green," just "not red."
+threshold_gradient_color <- function(x, threshold, base_color = pal$flag) {
+  light <- tint_color(base_color, amount = 0.8)
+  frac <- (x - threshold) / (threshold * 2)
+  ifelse(is.na(x) | x < threshold, pal$neutral, blend_colors(light, base_color, frac))
+}
+
 # Wraps a tall plot output in a fixed-height, scrollable container. Keeps the card's own
 # height "regular" (not growing to match a 30+ country facet grid) while the plot itself still
 # renders at its full, correctly-proportioned height inside - capping the container's height
@@ -1002,24 +1027,6 @@ output$value_comp_kpi_ui <- renderUI({
   )
 })
 
-output$summary_stats_table <- renderReactable({
-  d <- qc_data()
-  if (!d$has_public_data) return(reactable(tibble(Message = no_pub_msg)))
-  fd <- filtered_data()
-  stats <- fd$comp %>%
-    filter(status == "Present in Both") %>%
-    summarise(
-      "Mean % difference" = round(mean(perc_diff[is.finite(perc_diff)], na.rm = TRUE), 1),
-      "% of values with large differences (>20%)" = round(mean(flag_large_diff, na.rm = TRUE) * 100, 1),
-      "Mean absolute difference" = round(mean(abs_diff[is.finite(abs_diff)], na.rm = TRUE), 1),
-      "Median reported value" = round(median(value_data, na.rm = TRUE), 1),
-      "Minimum reported value" = round(min(value_data, na.rm = TRUE), 1),
-      "Maximum reported value" = round(max(value_data, na.rm = TRUE), 1)
-    )
-  df <- tibble(Metric = names(stats), Value = as.character(unlist(stats)))
-  reactable(df, columns = list(Metric = colDef(width = 280)), bordered = TRUE, highlight = TRUE)
-})
-
 output$scatter_plot <- renderPlotly({
   d <- qc_data()
   if (!d$has_public_data) return(empty_plotly(no_pub_msg))
@@ -1030,20 +1037,38 @@ output$scatter_plot <- renderPlotly({
   # from the % difference used for the color/threshold below.
   df2 <- fd$comp %>%
     filter(status == "Present in Both") %>%
-    mutate(flag_large_diff = factor(flag_large_diff, levels = c(FALSE, TRUE), labels = c("Within ±20%", "Above ±20%")))
+    mutate(point_color = threshold_gradient_color(perc_diff, input$threshold))
   p <- ggplot(df2, aes(
-    x = value_data_matched, y = value_pub_matched, color = flag_large_diff,
+    x = value_data_matched, y = value_pub_matched, color = point_color,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1)
+      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1),
+      "<br>% Diff: ", round(perc_diff, 1)
     )
   )) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
-    geom_point(alpha = 0.8, size = 1.5) +
-    scale_color_manual(values = c("Within ±20%" = pal$neutral, "Above ±20%" = pal$flag), guide = "none") +
-    labs(title = "Value Comparison between Public and Internal Data", x = "Internal Data (matched)", y = "Public Data (matched)") +
+    geom_point(alpha = 0.85, size = 1.8) +
+    scale_color_identity() +
+    labs(x = "Internal Data (matched)", y = "Public Data (matched)") +
     theme_qc()
-  ggplotly(p, tooltip = "text")
+
+  # Fixed-position "which side is bigger" labels, anchored to the plot's paper coordinates (not
+  # data coordinates) so they stay put in their corners regardless of the data's actual range -
+  # below the dashed 1:1 line (bottom-right) is where internal > public, above it (top-left) is
+  # the reverse.
+  ggplotly(p, tooltip = "text") %>%
+    plotly::layout(annotations = list(
+      list(
+        x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+        text = "Internal values larger", showarrow = TRUE, ax = 25, ay = 18, arrowhead = 2,
+        arrowcolor = pal$ink2, font = list(size = 11, color = pal$ink2)
+      ),
+      list(
+        x = 0.02, y = 0.98, xref = "paper", yref = "paper", xanchor = "left", yanchor = "top",
+        text = "Published values larger", showarrow = TRUE, ax = -25, ay = -18, arrowhead = 2,
+        arrowcolor = pal$ink2, font = list(size = 11, color = pal$ink2)
+      )
+    ))
 })
 
 output$pctdiff_plot <- renderPlotly({
@@ -1091,19 +1116,14 @@ output$threshold_table <- renderReactable({
 uiOutput("value_comp_kpi_ui")
 ```
 
-## Row
-
-```{r}
-#| title: Summary Statistics
-reactableOutput("summary_stats_table")
-```
-
-## Row {height=420px}
+## Row {height=560px}
 
 ```{r}
 #| title: Value Comparison (Public vs. Internal)
-plotlyOutput("scatter_plot", height = "420px")
+plotlyOutput("scatter_plot", height = "560px")
 ```
+
+## Row {height=420px}
 
 ```{r}
 #| title: Percent Change Over Time
