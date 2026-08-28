@@ -244,10 +244,25 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
     mutate(across(.cols = matches("value|^abs_diff$|^perc_diff$"), .fns = as.numeric)) %>%
     mutate(across(.cols = starts_with("flag_"), .fns = as.logical))
 
-  indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
-  if (length(indicator_name) == 0) indicator_name <- NA_character_
-  source_vals <- meta %>% filter(id == indicator_id) %>% pull(source)
-  source_val <- if (length(source_vals) == 0) NA_character_ else source_vals
+  # One lookup into Data/indicator_metadata.xlsx for every field this indicator has there -
+  # a 0-row result (indicator not yet in the metadata sheet) falls back to NA_character_ for
+  # each field rather than failing.
+  meta_row <- meta %>% filter(id == indicator_id)
+  meta_field <- function(col) if (nrow(meta_row) == 0) NA_character_ else as.character(meta_row[[col]][1])
+  indicator_name <- meta_field("indicator")
+  source_val <- meta_field("source")
+  cat1_val <- meta_field("cat1")
+  cat2_val <- meta_field("cat2")
+  cat3_val <- meta_field("cat3")
+  # Stored as "Y"/blank in the sheet - anything else (including NA) reads as "No".
+  yearbook_val <- if (isTRUE(meta_field("yearbook") == "Y")) "Yes" else "No"
+  profile_val <- if (isTRUE(meta_field("profile") == "Y")) "Yes" else "No"
+
+  # CEPALSTAT's own numeric source ID (distinct from the `source` field above, which is the
+  # source agency/category from the metadata sheet, e.g. "FAO") - only the first assigned source
+  # is shown, matching how Data Source is already displayed as a single value.
+  source_id_vals <- get_indicator_source(indicator_id) %>% pull(id)
+  source_id_val <- if (length(source_id_vals) == 0) NA_character_ else as.character(source_id_vals[1])
 
   files <- dir_ls(here("Data/Cleaned"), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
   data_date <- if (length(files) > 0) {
@@ -284,10 +299,13 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
 
   result <- list(
     indicator_id = indicator_id, indicator_name = indicator_name,
-    source = source_val, data_date = data_date,
+    source = source_val, source_id = source_id_val, data_date = data_date,
+    cat1 = cat1_val, cat2 = cat2_val, cat3 = cat3_val,
+    yearbook = yearbook_val, profile = profile_val,
     comp_detailed = comp_detailed, all_countries = all_countries,
     year_min = min(all_years), year_max = max(all_years),
-    extra_dims = extra_dims, dim_labels = dim_labels, dim_members = dim_members,
+    extra_dims = extra_dims, extra_dim_ids = extra_dim_ids,
+    dim_labels = dim_labels, dim_members = dim_members,
     has_public_data = has_public_data, has_extra_dims = has_extra_dims,
     n_records = nrow(comp_detailed)
   )
@@ -572,21 +590,50 @@ sliderInput("outlier_z", "Outlier z-score threshold", min = 1, max = 5, value = 
 
 ```{r}
 #| context: server
-output$summary_table <- renderReactable({
+# Shared styling for the Overview page's two metadata tables (see below) - bold nav-colored
+# labels, compact borderless rows, so it reads more like a clean fact sheet than a generic data
+# table. Split into two side-by-side tables rather than one long one: general data facts on the
+# left, CEPALSTAT classification/metadata on the right.
+metadata_table <- function(info) {
+  df <- tibble(Metric = names(info), Value = as.character(unlist(info)))
+  reactable(
+    df,
+    columns = list(
+      Metric = colDef(width = 170, style = list(fontWeight = 700, color = pal$nav)),
+      Value = colDef(style = list(color = pal$ink))
+    ),
+    defaultColDef = colDef(headerStyle = list(background = pal$background, color = pal$nav)),
+    bordered = FALSE, borderless = TRUE, highlight = TRUE, compact = TRUE, wrap = TRUE,
+    pagination = FALSE
+  )
+}
+
+output$summary_table_general <- renderReactable({
   d <- qc_data()
-  info <- list(
+  metadata_table(list(
     "Indicator ID" = d$indicator_id,
     "Indicator Name" = d$indicator_name,
     "Data Vintage" = d$data_date,
-    "Data Source" = d$source,
-    "Dimension Names" = if (length(d$dim_labels) > 0) paste(d$dim_labels, collapse = ", ") else "(none)",
     "Time Coverage" = paste(d$year_min, "-", d$year_max),
     "Number of Countries" = length(d$all_countries),
     "Total Records" = d$n_records,
     "Has Published Data" = ifelse(d$has_public_data, "Yes", "No (new indicator)")
-  )
-  df <- tibble(Metric = names(info), Value = as.character(unlist(info)))
-  reactable(df, columns = list(Metric = colDef(width = 220)), bordered = TRUE, highlight = TRUE)
+  ))
+})
+
+output$summary_table_classification <- renderReactable({
+  d <- qc_data()
+  metadata_table(list(
+    "Data Source" = d$source,
+    "Source ID" = d$source_id,
+    "Dimension Names" = if (length(d$dim_labels) > 0) paste(d$dim_labels, collapse = ", ") else "(none)",
+    "Dimension IDs" = if (length(d$extra_dim_ids) > 0) paste(d$extra_dim_ids, collapse = ", ") else "(none)",
+    "Component" = d$cat1,
+    "Subcomponent" = d$cat2,
+    "Topic" = d$cat3,
+    "Featured in Yearbook" = d$yearbook,
+    "Featured in Profiles" = d$profile
+  ))
 })
 
 # Color a percentage by severity: green <10%, yellow 10-30%, red >30% (also used for the
@@ -642,10 +689,12 @@ kpi_tile <- function(icon, value, label, color, caption = NULL) {
   )
 }
 
-# Four KPI tiles: how much changed (large-difference % and mean % difference, both computed on
-# the full data at the sidebar's Threshold), and what changed structurally (dimension members -
-# year, country, or the extra dimension - that are entirely new or entirely gone relative to
-# the public data, not just a few missing rows).
+# Four KPI tiles: how much changed (large-difference % and median absolute % difference, both
+# computed on the full data at the sidebar's Threshold - median rather than mean so a few
+# extreme rows don't dominate, same reasoning and same tile as Value Comparisons' Median
+# Absolute % Difference tile), and what changed structurally (dimension members - year, country,
+# or the extra dimension - that are entirely new or entirely gone relative to the public data,
+# not just a few missing rows).
 output$kpi_boxes_ui <- renderUI({
   d <- qc_data()
 
@@ -653,7 +702,7 @@ output$kpi_boxes_ui <- renderUI({
     fd <- filtered_data()
     present <- fd$comp %>% filter(status == "Present in Both")
     pct_large <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
-    mean_diff <- round(mean(present$perc_diff[is.finite(present$perc_diff)], na.rm = TRUE), 1)
+    median_abs <- round(median(present$perc_diff[is.finite(present$perc_diff)], na.rm = TRUE), 1)
 
     dim_specs <- list(c("dim_29117_label", "Year"), c("dim_208_label", "Country"))
     if (d$has_extra_dims) {
@@ -665,16 +714,16 @@ output$kpi_boxes_ui <- renderUI({
     removed <- unlist(lapply(changes, `[[`, "removed"))
 
     pct_large_display <- if (is.na(pct_large)) "N/A" else glue("{pct_large}%")
-    mean_diff_display <- if (is.na(mean_diff)) "N/A" else glue("{mean_diff}%")
+    median_abs_display <- if (is.na(median_abs)) "N/A" else glue("{median_abs}%")
     large_color <- severity_color(pct_large)
-    mean_color <- severity_color(mean_diff)
+    median_color <- severity_color(median_abs)
   } else {
     pct_large_display <- "N/A"
-    mean_diff_display <- "N/A"
+    median_abs_display <- "N/A"
     added <- character(0)
     removed <- character(0)
     large_color <- pal$neutral
-    mean_color <- pal$neutral
+    median_color <- pal$neutral
   }
 
   added_color <- if (length(added) > 0) pal$good else pal$neutral
@@ -687,8 +736,8 @@ output$kpi_boxes_ui <- renderUI({
       caption = glue("of values differ by more than {input$threshold}% from what's published")
     ),
     kpi_tile(
-      svg_icon("delta", mean_color), mean_diff_display, "Mean % Difference", mean_color,
-      caption = "average % difference vs. what's published"
+      svg_icon("delta", median_color), median_abs_display, "Median Absolute % Difference", median_color,
+      caption = "typical size of change, robust to outliers"
     ),
     kpi_tile(svg_icon("plus", added_color), length(added), "Added", added_color, caption = condense_changes(added)),
     kpi_tile(svg_icon("minus", removed_color), length(removed), "Removed", removed_color, caption = condense_changes(removed))
@@ -705,8 +754,13 @@ uiOutput("kpi_boxes_ui")
 ## Row
 
 ```{r}
-#| title: Indicator Metadata
-reactableOutput("summary_table")
+#| title: General
+reactableOutput("summary_table_general")
+```
+
+```{r}
+#| title: Classification & Source
+reactableOutput("summary_table_classification")
 ```
 
 # Coverage
