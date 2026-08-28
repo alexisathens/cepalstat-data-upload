@@ -939,6 +939,56 @@ uiOutput("new_faceted_ui")
 #| context: server
 no_pub_msg <- "This is a new indicator, so there is no previously published data to compare against."
 
+# Four headline KPI tiles for "how much did this update change things," in the same style as
+# the Overview page's tiles. Median and mean absolute % difference are both shown side by side
+# on purpose - a big gap between them means a few extreme rows are driving the mean (as with
+# indicator 5646's "Storms" row: one 100% difference pulling up an otherwise ~0% picture).
+# Mean SIGNED % difference is the odd one out - it's the only tile where color must be judged
+# off the magnitude (severity_color(abs(x))) since the value itself can be negative, and the
+# icon (plus/minus) reflects the direction (net over- vs. under-statement) rather than severity.
+output$value_comp_kpi_ui <- renderUI({
+  fd <- filtered_data()
+  present <- fd$comp %>% filter(status == "Present in Both")
+
+  abs_pct <- present$perc_diff[is.finite(present$perc_diff)]
+  signed_pct_all <- (present$value_data_matched - present$value_pub_matched) / present$value_pub_matched * 100
+  signed_pct <- signed_pct_all[is.finite(signed_pct_all)]
+
+  median_abs <- round(median(abs_pct, na.rm = TRUE), 1)
+  mean_abs <- round(mean(abs_pct, na.rm = TRUE), 1)
+  mean_signed <- round(mean(signed_pct, na.rm = TRUE), 1)
+  pct_above <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
+
+  fmt_pct <- function(x) if (is.na(x)) "N/A" else glue("{x}%")
+  fmt_signed <- function(x) if (is.na(x)) "N/A" else glue("{if (x > 0) '+' else ''}{x}%")
+
+  median_color <- severity_color(median_abs)
+  mean_color <- severity_color(mean_abs)
+  signed_color <- severity_color(abs(mean_signed))
+  above_color <- severity_color(pct_above)
+
+  div(
+    style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
+    kpi_tile(
+      svg_icon("delta", median_color), fmt_pct(median_abs), "Median Absolute % Difference", median_color,
+      caption = "typical size of change, robust to outliers"
+    ),
+    kpi_tile(
+      svg_icon("delta", mean_color), fmt_pct(mean_abs), "Mean Absolute % Difference", mean_color,
+      caption = "vs. median - a big gap means outliers are skewing this"
+    ),
+    kpi_tile(
+      svg_icon(if (is.na(mean_signed) || mean_signed >= 0) "plus" else "minus", signed_color),
+      fmt_signed(mean_signed), "Mean Signed % Difference", signed_color,
+      caption = "net bias: positive = over-stated, negative = under-stated"
+    ),
+    kpi_tile(
+      svg_icon("warning", above_color), fmt_pct(pct_above), "Above Threshold", above_color,
+      caption = glue("of values differ by more than {input$threshold}% from what's published")
+    )
+  )
+})
+
 output$summary_stats_table <- renderReactable({
   d <- qc_data()
   if (!d$has_public_data) return(reactable(tibble(Message = no_pub_msg)))
@@ -1021,6 +1071,14 @@ output$threshold_table <- renderReactable({
   reactable(flagged, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
 })
 ```
+
+## Row {height=160px}
+
+```{r}
+uiOutput("value_comp_kpi_ui")
+```
+
+## Row
 
 ```{r}
 #| title: Summary Statistics
