@@ -885,7 +885,7 @@ output$new_faceted <- renderPlot({
     x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry
   )) +
     geom_line(alpha = 0.5, color = pal$neutral, linewidth = 0.4) +
-    geom_point(size = 1.8, alpha = 0.9) +
+    geom_point(size = 1.9, alpha = 0.9) +
     facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
     labs(title = "", x = "Year", y = "Value") +
@@ -895,7 +895,7 @@ output$new_faceted <- renderPlot({
       panel.spacing = grid::unit(0.15, "lines"),
       panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
       plot.margin = margin(2, 2, 2, 2),
-      strip.text = element_text(size = rel(1.6), face = "bold"),
+      strip.text = element_text(size = rel(1.1), face = "bold"),
       axis.text = element_text(size = rel(1.1))
     )
 })
