@@ -11,7 +11,7 @@ server: shiny
 Interactive port of Scripts/qc_report.qmd (the original QC report) into a Quarto Dashboard
 with a Shiny backend. Same checks, same flags (±20% difference threshold, z-score outlier
 threshold of 3), same underlying logic - just reactive instead of static, and driven by
-sidebar filters (Country, Year, and one per extra dimension) instead of facet grids. Because
+sidebar filters (Country and one per extra dimension) instead of facet grids. Because
 the filters let you narrow down to what you actually want to look at, this doesn't need the
 "facet by country" or "first two dimensions only" versions of each chart - an Inspect Country
 dropdown replaces those.
@@ -276,7 +276,7 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
 # re-aggregates to country/year and recomputes every flag. Always operates on the FULL data -
 # every country, year, and dimension member - per diff_threshold, adjustable from the sidebar's
 # Threshold control (the original report's ±20% and z-score-of-3 conventions are the defaults).
-# The sidebar's Highlight controls (Country, Year, dimension members) never narrow what THIS
+# The sidebar's Highlight controls (Country, dimension members) never narrow what THIS
 # function includes. Individual charts elsewhere are free to use those same control values to
 # actually filter their own data instead of just spotlighting it - see each chart's own card
 # title ("Filter: ..." vs "Highlight: ...") for which one it does.
@@ -476,16 +476,6 @@ output$status_ui <- renderUI({
   )
 })
 
-# Year range and dimension-member selections here are for spotlighting a slice on the charts
-# (not narrowing the data - see build_filtered_view()). Currently wired into the Published
-# Preview page (year zooms its x-axis, dimension members each become their own line there) -
-# not yet connected to any other chart.
-output$year_slider_ui <- renderUI({
-  d <- qc_data()
-  sliderInput("year_range", "Years", min = d$year_min, max = d$year_max,
-              value = c(d$year_min, d$year_max), step = 1, sep = "")
-})
-
 output$dim_filters_ui <- renderUI({
   d <- qc_data()
   if (!d$has_extra_dims) return(NULL)
@@ -537,10 +527,6 @@ uiOutput("status_ui")
 
 ```{r}
 uiOutput("highlight_country_ui")
-```
-
-```{r}
-uiOutput("year_slider_ui")
 ```
 
 ```{r}
@@ -749,9 +735,8 @@ This previews how the data update will change CEPALSTAT's landing graphic. The l
 
 ```{r}
 #| context: server
-plot_published_preview <- function(agg_df, year_range, has_dim, country) {
+plot_published_preview <- function(agg_df, has_dim, country) {
   long_df <- agg_df %>%
-    filter(year >= year_range[1], year <= year_range[2]) %>%
     pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
     mutate(
       vintage = recode(vintage, value_data = "INTERNAL", value_pub = "PUBLIC"),
@@ -808,7 +793,6 @@ plot_published_preview <- function(agg_df, year_range, has_dim, country) {
 output$published_preview_plot <- renderPlotly({
   d <- qc_data()
   if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
-  if (is.null(input$year_range)) return(empty_plotly("Loading..."))
 
   dim_sel <- if (d$has_extra_dims) {
     setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
@@ -818,13 +802,13 @@ output$published_preview_plot <- renderPlotly({
   agg <- build_published_preview(d, input$country, dim_sel)
   if (nrow(agg) == 0) return(empty_plotly("No data for this selection."))
 
-  p <- plot_published_preview(agg, input$year_range, d$has_extra_dims, input$country)
+  p <- plot_published_preview(agg, d$has_extra_dims, input$country)
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
 })
 ```
 
 ```{r}
-#| title: "Trend Comparison · Filter: Country, Year, Dimension"
+#| title: "Trend Comparison · Filter: Country, Dimension"
 plotlyOutput("published_preview_plot", height = "650px")
 ```
 
@@ -856,13 +840,12 @@ output$new_overview <- renderPlotly({
 output$new_country <- renderPlotly({
   d <- qc_data()
   if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
-  if (is.null(input$year_range)) return(empty_plotly("Loading..."))
 
-  # Filter: Country, Year, Dimension - all three narrow the data shown (not just spotlight it -
-  # see the card title). Reuses build_published_preview()'s per-member aggregation (Country and
+  # Filter: Country, Dimension - both narrow the data shown (not just spotlight it - see the
+  # card title). Reuses build_published_preview()'s per-member aggregation (Country and
   # Dimension already applied there), then collapses any remaining members down to one line per
-  # year and applies the Year range, since this chart (unlike Published Comparison) shows a
-  # single series rather than one line per dimension member.
+  # year, since this chart (unlike Published Comparison) shows a single series rather than one
+  # line per dimension member.
   dim_sel <- if (d$has_extra_dims) {
     setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
   } else {
@@ -876,7 +859,7 @@ output$new_country <- renderPlotly({
       .groups = "drop"
     ) %>%
     mutate(flag_new_entry = is.na(value_pub) & !is.na(value_data)) %>%
-    filter(!is.na(value_data), year >= input$year_range[1], year <= input$year_range[2])
+    filter(!is.na(value_data))
   if (nrow(df2) == 0) return(empty_plotly("No data for this selection."))
 
   p <- ggplot(df2, aes(
@@ -960,7 +943,7 @@ plotlyOutput("new_overview", height = "420px")
 ```
 
 ```{r}
-#| title: "Inspect Country · Filter: Country, Year, Dimension"
+#| title: "Inspect Country · Filter: Country, Dimension"
 plotlyOutput("new_country", height = "420px")
 ```
 
