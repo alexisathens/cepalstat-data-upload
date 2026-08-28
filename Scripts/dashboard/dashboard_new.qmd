@@ -1079,34 +1079,17 @@ output$pctdiff_plot <- renderPlotly({
   df2 <- fd$comp %>% filter(status == "Present in Both")
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = perc_diff,
-    text = paste0("Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>% Diff: ", round(perc_diff, 1))
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>% Diff: ", round(perc_diff, 1),
+      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1)
+    )
   )) +
     annotate("rect", xmin = yr[1] - 0.5, xmax = yr[2] + 0.5, ymin = -20, ymax = 20, fill = pal$good, alpha = 0.08) +
     geom_jitter(aes(color = abs(perc_diff) > 20), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
-    labs(title = "Percent Change between Public and Internal Data", x = "Year", y = "Percent Difference") +
+    labs(x = "Year", y = "Percent Difference") +
     theme_qc()
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
-})
-
-output$threshold_table <- renderReactable({
-  d <- qc_data()
-  if (!d$has_public_data) return(reactable(tibble(Message = no_pub_msg)))
-  fd <- filtered_data()
-  flagged <- fd$comp %>%
-    mutate(
-      z_perc_diff = round(as.numeric(scale(perc_diff)), 1),
-      value_data_matched = round(value_data_matched, 1),
-      value_pub_matched = round(value_pub_matched, 1),
-      perc_diff = round(perc_diff, 1)
-    ) %>%
-    filter(flag_large_diff == TRUE) %>%
-    arrange(desc(z_perc_diff)) %>%
-    select(dim_208_label, dim_29117_label, value_data_matched, value_pub_matched, perc_diff, z_perc_diff)
-  if (nrow(flagged) == 0) {
-    return(reactable(tibble(Message = "No values differ from the published data by more than ±20%.")))
-  }
-  reactable(flagged, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
 })
 ```
 
@@ -1119,20 +1102,15 @@ uiOutput("value_comp_kpi_ui")
 ## Row {height=560px}
 
 ```{r}
-#| title: Value Comparison (Public vs. Internal)
+#| title: "Value Comparison (Public vs. Internal) · Highlight: None"
 plotlyOutput("scatter_plot", height = "560px")
 ```
 
 ## Row {height=420px}
 
 ```{r}
-#| title: Percent Change Over Time
+#| title: "Percent Change Over Time · Highlight: None"
 plotlyOutput("pctdiff_plot", height = "420px")
-```
-
-```{r}
-#| title: Records Above ±20% Difference
-reactableOutput("threshold_table")
 ```
 
 # Value Comparisons New
