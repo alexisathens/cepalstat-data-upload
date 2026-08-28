@@ -1270,9 +1270,7 @@ output$outlier_plot <- renderPlotly({
     x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = point_color,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>Internal (after): ", scales::comma(value_data, accuracy = 0.1),
-      "<br>Public (before): ", scales::comma(value_pub, accuracy = 0.1),
-      "<br>Difference: ", scales::comma(value_data - value_pub, accuracy = 0.1),
+      "<br>Internal Value: ", scales::comma(value_data, accuracy = 0.1),
       "<br>Z-Score: ", round(z_within_country, 1)
     )
   )) +
@@ -1336,9 +1334,7 @@ output$outlier_dim_plot <- renderPlotly({
     x = year, y = value_data, group = member, color = point_color,
     text = paste0(
       d$dim_labels[[dim_col]], ": ", member, "<br>Year: ", year,
-      "<br>Internal (after): ", scales::comma(value_data, accuracy = 0.1),
-      "<br>Public (before): ", scales::comma(value_pub, accuracy = 0.1),
-      "<br>Difference: ", scales::comma(value_data - value_pub, accuracy = 0.1),
+      "<br>Internal Value: ", scales::comma(value_data, accuracy = 0.1),
       "<br>Z-Score: ", round(z_within_member, 1)
     )
   )) +
