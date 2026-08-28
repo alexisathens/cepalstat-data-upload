@@ -975,12 +975,12 @@ output$value_comp_kpi_ui <- renderUI({
     ),
     kpi_tile(
       svg_icon("delta", mean_color), fmt_pct(mean_abs), "Mean Absolute % Difference", mean_color,
-      caption = "vs. median - a big gap means outliers are skewing this"
+      caption = "vs. median - a big gap suggests outliers are skewing this"
     ),
     kpi_tile(
       svg_icon(if (is.na(mean_signed) || mean_signed >= 0) "plus" else "minus", signed_color),
       fmt_signed(mean_signed), "Mean Signed % Difference", signed_color,
-      caption = "net bias: positive = over-stated, negative = under-stated"
+      caption = "net bias: positive = internal values tend higher, negative = published values tend higher, zero = no patterned bias"
     ),
     kpi_tile(
       svg_icon("warning", above_color), fmt_pct(pct_above), "Above Threshold", above_color,
