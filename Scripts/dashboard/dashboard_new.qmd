@@ -244,25 +244,25 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
     mutate(across(.cols = matches("value|^abs_diff$|^perc_diff$"), .fns = as.numeric)) %>%
     mutate(across(.cols = starts_with("flag_"), .fns = as.logical))
 
-  # One lookup into Data/indicator_metadata.xlsx for every field this indicator has there -
-  # a 0-row result (indicator not yet in the metadata sheet) falls back to NA_character_ for
-  # each field rather than failing.
+  # One lookup into Data/indicator_metadata.xlsx for every field this indicator has there - a
+  # 0-row result (indicator not yet in the metadata sheet) or a column the sheet doesn't have yet
+  # (e.g. source_id - see build_metadata_table.R, which designs for it but the sheet checked in
+  # today predates that column) falls back to NA_character_ for that field rather than failing.
+  # Deliberately sheet-only, no CEPALSTAT API calls, for every field on this table.
   meta_row <- meta %>% filter(id == indicator_id)
-  meta_field <- function(col) if (nrow(meta_row) == 0) NA_character_ else as.character(meta_row[[col]][1])
+  meta_field <- function(col) {
+    if (nrow(meta_row) == 0 || !col %in% names(meta_row)) return(NA_character_)
+    as.character(meta_row[[col]][1])
+  }
   indicator_name <- meta_field("indicator")
   source_val <- meta_field("source")
+  source_id_val <- meta_field("source_id")
   cat1_val <- meta_field("cat1")
   cat2_val <- meta_field("cat2")
   cat3_val <- meta_field("cat3")
   # Stored as "Y"/blank in the sheet - anything else (including NA) reads as "No".
   yearbook_val <- if (isTRUE(meta_field("yearbook") == "Y")) "Yes" else "No"
   profile_val <- if (isTRUE(meta_field("profile") == "Y")) "Yes" else "No"
-
-  # CEPALSTAT's own numeric source ID (distinct from the `source` field above, which is the
-  # source agency/category from the metadata sheet, e.g. "FAO") - only the first assigned source
-  # is shown, matching how Data Source is already displayed as a single value.
-  source_id_vals <- get_indicator_source(indicator_id) %>% pull(id)
-  source_id_val <- if (length(source_id_vals) == 0) NA_character_ else as.character(source_id_vals[1])
 
   files <- dir_ls(here("Data/Cleaned"), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
   data_date <- if (length(files) > 0) {
