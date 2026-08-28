@@ -1276,11 +1276,77 @@ output$outlier_plot <- renderPlotly({
       "<br>Z-Score: ", round(z_within_country, 1)
     )
   )) +
-    geom_line(aes(linewidth = is_highlighted), color = pal$neutral, alpha = 0.5) +
+    geom_line(aes(linewidth = is_highlighted), color = pal$neutral, alpha = 0.6) +
     geom_point(aes(size = outlier_within_country | is_highlighted), alpha = 0.85) +
     scale_color_identity() +
-    scale_linewidth_manual(values = c("FALSE" = 0.4, "TRUE" = 1.1), guide = "none") +
-    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2), guide = "none") +
+    scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
+    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(x = "Year", y = "Internal Value") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+# Mirrors output$outlier_plot, one level up: sums internal value_data across every country per
+# dimension member-year (independent of public data, same as the country version), then flags
+# a member-year as an outlier against that MEMBER's own across-year mean/sd - not the country's.
+build_dim_outlier <- function(raw, outlier_z) {
+  dim_col <- raw$extra_dims[1]
+  raw$comp_detailed %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c(dim_col, "dim_29117_label")))) %>%
+    summarize(
+      value_data = sum(value_data),
+      value_pub = if (all(is.na(value_pub))) NA_real_ else sum(value_pub, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    rename(member = all_of(dim_col)) %>%
+    mutate(year = as.numeric(dim_29117_label)) %>%
+    group_by(member) %>%
+    mutate(
+      z_within_member = round(as.numeric(scale(value_data)), 1),
+      outlier_within_member = abs(z_within_member) > outlier_z
+    ) %>%
+    ungroup()
+}
+
+output$outlier_dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly("This indicator has no extra dimension beyond Country and Year."))
+  dim_col <- d$extra_dims[1]
+  df_full <- build_dim_outlier(d, input$outlier_z)
+  flagged_members <- df_full %>% filter(outlier_within_member == TRUE) %>% pull(member) %>% unique()
+  if (length(flagged_members) == 0) {
+    return(empty_plotly("No within-member outliers were found at this z-score threshold."))
+  }
+  sel <- input[[paste0("dimfilter_", dim_col)]]
+  highlighted_members <- if (is.null(sel) || length(sel) == 0 || "__ALL__" %in% sel) character(0) else sel
+  df2 <- df_full %>%
+    filter(member %in% flagged_members) %>%
+    mutate(
+      is_highlighted = member %in% highlighted_members,
+      point_color = case_when(
+        outlier_within_member ~ pal$flag,
+        is_highlighted ~ pal$highlight,
+        TRUE ~ pal$neutral
+      )
+    ) %>%
+    arrange(is_highlighted)
+  p <- ggplot(df2, aes(
+    x = year, y = value_data, group = member, color = point_color,
+    text = paste0(
+      d$dim_labels[[dim_col]], ": ", member, "<br>Year: ", year,
+      "<br>Internal (after): ", scales::comma(value_data, accuracy = 0.1),
+      "<br>Public (before): ", scales::comma(value_pub, accuracy = 0.1),
+      "<br>Difference: ", scales::comma(value_data - value_pub, accuracy = 0.1),
+      "<br>Z-Score: ", round(z_within_member, 1)
+    )
+  )) +
+    geom_line(aes(linewidth = is_highlighted), color = pal$neutral, alpha = 0.6) +
+    geom_point(aes(size = outlier_within_member | is_highlighted), alpha = 0.85) +
+    scale_color_identity() +
+    scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
+    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
     scale_y_continuous(labels = scales::comma) +
     labs(x = "Year", y = "Internal Value") +
     theme_qc()
@@ -1293,6 +1359,13 @@ output$outlier_plot <- renderPlotly({
 ```{r}
 #| title: "Outliers by Country · Highlight: Country"
 plotlyOutput("outlier_plot", height = "500px")
+```
+
+## Row {height=500px}
+
+```{r}
+#| title: "Outlier by Dimension · Highlight: Dimension"
+plotlyOutput("outlier_dim_plot", height = "500px")
 ```
 
 # Dimension Analysis
