@@ -1241,23 +1241,10 @@ plotlyOutput("diff_dim_plot", height = "460px")
 
 # Outlier Detection
 
-*This section evaluates the quality of the internal data independently, flagging records where the value is more than the sidebar's z-score threshold away from the country's own mean.* This works on the internal data alone, so it applies whether or not there is public data to compare against. Only countries with at least one outlier at the current threshold are shown, plotted by z-score (not raw value) so countries of very different scales sit on the same, comparable axis - the sidebar's Highlight Country, if one of the flagged ones, is called out in a distinct color.
+*This section evaluates the quality of the internal data independently, flagging records where the value is more than the sidebar's z-score threshold away from the country's own mean.* This works on the internal data alone, so it applies whether or not there is public data to compare against. Only countries with at least one outlier at the current threshold are shown - the sidebar's Highlight Country, if one of the flagged ones, is called out in a distinct color. Hover a point for its full detail (public/internal values, difference, and z-score).
 
 ```{r}
 #| context: server
-output$outlier_table <- renderReactable({
-  fd <- filtered_data()
-  out <- fd$comp %>%
-    filter(flag_some_na == FALSE, outlier_within_country == TRUE) %>%
-    mutate(value_data = round(value_data, 1)) %>%
-    arrange(desc(abs(z_within_country))) %>%
-    select(dim_208_label, dim_29117_label, value_data, z_within_country)
-  if (nrow(out) == 0) {
-    return(reactable(tibble(Message = "No within-country outliers were found.")))
-  }
-  reactable(out, searchable = TRUE, bordered = TRUE, highlight = TRUE, defaultPageSize = 8)
-})
-
 output$outlier_plot <- renderPlotly({
   fd <- filtered_data()
   flagged_countries <- fd$comp %>%
@@ -1280,36 +1267,32 @@ output$outlier_plot <- renderPlotly({
     ) %>%
     arrange(is_highlighted)
   p <- ggplot(df2, aes(
-    x = as.numeric(dim_29117_label), y = z_within_country, group = dim_208_label, color = point_color,
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = point_color,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
-      "<br>Internal: ", scales::comma(value_data, accuracy = 0.1), "<br>Z-Score: ", round(z_within_country, 1)
+      "<br>Internal (after): ", scales::comma(value_data, accuracy = 0.1),
+      "<br>Public (before): ", scales::comma(value_pub, accuracy = 0.1),
+      "<br>Difference: ", scales::comma(value_data - value_pub, accuracy = 0.1),
+      "<br>Z-Score: ", round(z_within_country, 1)
     )
   )) +
-    geom_hline(yintercept = c(-input$outlier_z, input$outlier_z), linetype = "dashed", color = pal$ink2) +
     geom_line(aes(linewidth = is_highlighted), color = pal$neutral, alpha = 0.5) +
     geom_point(aes(size = outlier_within_country | is_highlighted), alpha = 0.85) +
     scale_color_identity() +
     scale_linewidth_manual(values = c("FALSE" = 0.4, "TRUE" = 1.1), guide = "none") +
     scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2), guide = "none") +
-    labs(x = "Year", y = "Z-Score (within country)") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(x = "Year", y = "Internal Value") +
     theme_qc()
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
 ```
 
-## Row {height=460px}
+## Row {height=500px}
 
 ```{r}
 #| title: "Outliers by Country · Highlight: Country"
-plotlyOutput("outlier_plot", height = "460px")
-```
-
-## Row {height=420px}
-
-```{r}
-#| title: Z-Score Outliers (Filtered View)
-reactableOutput("outlier_table")
+plotlyOutput("outlier_plot", height = "500px")
 ```
 
 # Dimension Analysis
