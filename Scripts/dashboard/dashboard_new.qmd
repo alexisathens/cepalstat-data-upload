@@ -40,11 +40,23 @@ against a hidden (zero-size) container and can't measure it correctly, leaving i
 incorrectly (this is what was causing the "New Values" facet grid to look fine in row 1 then
 squished below - see git history for that fix). Nudging Plotly to recompute its layout on every
 page change fixes it for any page, not just that one.
+
+Also notifies Shiny (via input$metadata_tab_visited) the moment the Metadata Check page becomes
+active, so its CEPALSTAT API calls (see the Metadata Check page's own server code) only fire
+once someone actually navigates there, not on every app load - checked once on initial load too,
+in case the app starts up already on that page's hash (e.g. a bookmarked link).
 -->
 <script>
+function notifyIfMetadataTab() {
+  if (window.location.hash === "#metadata-check" && window.Shiny) {
+    Shiny.setInputValue("metadata_tab_visited", true, {priority: "event"});
+  }
+}
 window.addEventListener("hashchange", function () {
+  notifyIfMetadataTab();
   setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 250);
 });
+document.addEventListener("DOMContentLoaded", notifyIfMetadataTab);
 </script>
 
 ```{r}
@@ -1498,5 +1510,70 @@ plotlyOutput("outlier_plot", height = "500px")
 ```{r}
 #| title: "Outlier by Dimension · Highlight: Dimension"
 plotlyOutput("outlier_dim_plot", height = "500px")
+```
+
+# Metadata Check
+
+*Shows this indicator's currently published metadata (definition, methodology, sources, etc.) side by side in English and Spanish, so a translation gap or stale field is easy to spot.* Pulled live from the CEPALSTAT API - only fetched the first time you visit this page (or after loading a different indicator), not on every app load.
+
+```{r}
+#| context: server
+# Field names come back from the API as raw keys (e.g. "geographicCoverage") - prettified for
+# display only (camelCase/underscores -> spaced Title Case), not used for anything else.
+prettify_field_name <- function(x) {
+  x %>%
+    str_replace_all("_", " ") %>%
+    str_replace_all("([a-z])([A-Z])", "\\1 \\2") %>%
+    str_to_title()
+}
+
+format_metadata_block <- function(metadata_tbl) {
+  if (is.null(metadata_tbl) || nrow(metadata_tbl) == 0) {
+    return(div(style = glue("color:{pal$ink2};"), "No metadata available."))
+  }
+  tagList(lapply(seq_len(nrow(metadata_tbl)), function(i) {
+    div(
+      style = "margin-bottom:1rem;",
+      div(style = glue("font-weight:700; color:{pal$nav}; margin-bottom:0.2rem;"), prettify_field_name(metadata_tbl$variable[i])),
+      div(style = glue("color:{pal$ink}; white-space:pre-wrap;"), metadata_tbl$value[i])
+    )
+  }))
+}
+
+# Fetches once per (tab visit, indicator) rather than on every app load - gated on the JS
+# hashchange listener's input$metadata_tab_visited signal (see the top-of-file <script> block),
+# and re-keyed on qc_data() (not raw input$indicator_id) so it refetches only when a NEW
+# indicator has actually been loaded via the sidebar's Load button, consistent with how every
+# other reactive on this dashboard is gated.
+indicator_metadata <- eventReactive(
+  {
+    req(input$metadata_tab_visited)
+    qc_data()$indicator_id
+  },
+  {
+    id <- qc_data()$indicator_id
+    tryCatch(
+      list(en = get_indicator_metadata(id, lang = "en"), es = get_indicator_metadata(id, lang = "es")),
+      # Explicitly namespaced - see qc_data()'s comment on jsonlite::validate() masking
+      # shiny::validate().
+      error = function(e) shiny::validate(shiny::need(FALSE, glue("Could not load metadata from the CEPALSTAT API: {conditionMessage(e)}")))
+    )
+  }
+)
+
+output$metadata_en_ui <- renderUI({ format_metadata_block(indicator_metadata()$en) })
+output$metadata_es_ui <- renderUI({ format_metadata_block(indicator_metadata()$es) })
+```
+
+## Row
+
+```{r}
+#| title: Metadata (English)
+uiOutput("metadata_en_ui")
+```
+
+```{r}
+#| title: Metadata (Español)
+uiOutput("metadata_es_ui")
 ```
 
