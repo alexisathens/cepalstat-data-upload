@@ -276,9 +276,10 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
 # re-aggregates to country/year and recomputes every flag. Always operates on the FULL data -
 # every country, year, and dimension member - per diff_threshold, adjustable from the sidebar's
 # Threshold control (the original report's ±20% and z-score-of-3 conventions are the defaults).
-# The sidebar's Highlight controls (Country, Year, dimension members) are for spotlighting a
-# slice on top of this, not for narrowing what's included - see the Country control below and
-# the Dimension Analysis page for where that highlighting is currently wired in.
+# The sidebar's Highlight controls (Country, Year, dimension members) never narrow what THIS
+# function includes. Individual charts elsewhere are free to use those same control values to
+# actually filter their own data instead of just spotlighting it - see each chart's own card
+# title ("Filter: ..." vs "Highlight: ...") for which one it does.
 build_filtered_view <- function(raw, diff_threshold = 20, outlier_z = 3) {
   comp_detailed <- raw$comp_detailed
 
@@ -823,7 +824,7 @@ output$published_preview_plot <- renderPlotly({
 ```
 
 ```{r}
-#| title: Trend Comparison
+#| title: "Trend Comparison · Filter: Country, Year, Dimension"
 plotlyOutput("published_preview_plot", height = "650px")
 ```
 
@@ -857,10 +858,11 @@ output$new_country <- renderPlotly({
   if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
   if (is.null(input$year_range)) return(empty_plotly("Loading..."))
 
-  # Highlight: Country, Year, Dimension - reuses build_published_preview()'s per-member
-  # aggregation (Country + Dimension already applied there), then collapses any remaining
-  # members down to one line per year and applies the Year range, since this chart (unlike
-  # Published Comparison) shows a single series rather than one line per dimension member.
+  # Filter: Country, Year, Dimension - all three narrow the data shown (not just spotlight it -
+  # see the card title). Reuses build_published_preview()'s per-member aggregation (Country and
+  # Dimension already applied there), then collapses any remaining members down to one line per
+  # year and applies the Year range, since this chart (unlike Published Comparison) shows a
+  # single series rather than one line per dimension member.
   dim_sel <- if (d$has_extra_dims) {
     setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
   } else {
@@ -900,9 +902,10 @@ output$new_country <- renderPlotly({
 output$new_faceted <- renderPlot({
   d <- qc_data()
 
-  # Highlight: Dimension only - re-aggregates comp_detailed to country x year after narrowing
-  # to the selected member(s) (filter_by_dim_highlight()), rather than using filtered_data()'s
-  # fd$comp, which sums across every member regardless of the sidebar's Dimension selection.
+  # Filter: Dimension - narrows (not just spotlights - see the card title) to the selected
+  # member(s) via filter_by_dim_highlight(), re-aggregating comp_detailed to country x year
+  # afterward, rather than using filtered_data()'s fd$comp, which sums across every member
+  # regardless of the sidebar's Dimension selection.
   dim_sel <- if (d$has_extra_dims) {
     setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
   } else {
@@ -957,14 +960,14 @@ plotlyOutput("new_overview", height = "420px")
 ```
 
 ```{r}
-#| title: "Inspect Country · Highlight: Country, Year, Dimension"
+#| title: "Inspect Country · Filter: Country, Year, Dimension"
 plotlyOutput("new_country", height = "420px")
 ```
 
 ## Row {height=740px}
 
 ```{r}
-#| title: "All Faceted Countries (Static) · Highlight: Dimension"
+#| title: "All Faceted Countries (Static) · Filter: Dimension"
 uiOutput("new_faceted_ui")
 ```
 
@@ -1099,7 +1102,7 @@ plotlyOutput("dim_overview_plot", height = "480px")
 ```
 
 ```{r}
-#| title: "Inspect Country · Highlight: Country"
+#| title: "Inspect Country · Filter: Country"
 plotlyOutput("dim_plot", height = "480px")
 ```
 
