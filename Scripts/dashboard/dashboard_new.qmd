@@ -1411,13 +1411,16 @@ output$scatter_plot <- renderPlotly({
     labs(x = "Internal Data", y = "Public Data") +
     theme_qc()
 
-  # The 1:1 reference line is drawn as a plotly shape spanning the plot's own corner-to-corner
-  # "domain" (0,0 to 1,1 within the axes box, not the full paper canvas) rather than the data's
-  # combined min/max - a data-coordinate line spanning the true combined range of Internal and
-  # Public values can fall almost entirely outside the visible plot when the two variables sit on
-  # very different scales for a given indicator (e.g. Internal up to 150 but Public maxing out
+  # The 1:1 reference line is drawn as a plotly shape spanning the plot's corner-to-corner paper
+  # coordinates (0,0 to 1,1 - the same reference frame the annotations below use) rather than the
+  # data's combined min/max - a data-coordinate line spanning the true combined range of Internal
+  # and Public values can fall almost entirely outside the visible plot when the two variables sit
+  # on very different scales for a given indicator (e.g. Internal up to 150 but Public maxing out
   # under 4), since ggplotly() bakes in a fixed axis range per variable and doesn't expand it to
-  # fit a shape added afterward. A domain-referenced line is always visible as the plot's own
+  # fit a shape added afterward. "x domain"/"y domain" refs were tried first for a more literal
+  # "corner of the axes box" line, but didn't come through the R plotly conversion at all; plain
+  # "paper" is always supported and, for a single-panel plot with no legend margin, lands in
+  # essentially the same place. A paper-referenced line is always visible as the plot's own
   # diagonal, at the cost of only being a literal y=x line when both axes happen to share a
   # similar range (the common case for this comparison).
   #
@@ -1429,7 +1432,7 @@ output$scatter_plot <- renderPlotly({
     plotly::layout(
       shapes = list(list(
         type = "line", x0 = 0, x1 = 1, y0 = 0, y1 = 1,
-        xref = "x domain", yref = "y domain", line = list(dash = "dot", color = pal$ink2, width = 1)
+        xref = "paper", yref = "paper", line = list(dash = "dot", color = pal$ink2, width = 1)
       )),
       annotations = list(
         list(
