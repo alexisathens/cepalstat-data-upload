@@ -613,27 +613,6 @@ metadata_table <- function(info) {
   )
 }
 
-# A small "i" icon that opens a bslib popover with more technical detail than fits in a card's
-# one-line title or the page's own intro text - a lightweight way to add that context without
-# cluttering the main view. This one (General card, Overview) is a sample of the pattern; the
-# same info_button() call can be dropped into any other card's output once this style is signed
-# off on.
-info_button <- function(popover_title, content) {
-  bslib::popover(
-    tags$span(
-      style = glue(
-        "display:inline-flex; align-items:center; justify-content:center; width:15px; height:15px; ",
-        "border-radius:50%; border:1.3px solid {pal$header}; color:{pal$header}; font-size:0.68rem; ",
-        "font-weight:700; font-style:italic; font-family:serif; cursor:pointer; margin-left:0.4rem; ",
-        "vertical-align:middle;"
-      ),
-      "i"
-    ),
-    content,
-    title = popover_title
-  )
-}
-
 output$summary_table_general <- renderReactable({
   d <- qc_data()
   metadata_table(list(
@@ -645,22 +624,6 @@ output$summary_table_general <- renderReactable({
     "Total Records" = d$n_records,
     "Has Published Data" = ifelse(d$has_public_data, "Yes", "No (new indicator)")
   ))
-})
-
-output$general_info_ui <- renderUI({
-  div(
-    style = glue("font-size:0.8rem; color:{pal$ink2}; margin-bottom:0.5rem;"),
-    "What's shown here",
-    info_button(
-      "About the General fields",
-      p(
-        "Indicator ID, Indicator Name, and Data Vintage come from the loaded comparison file itself ",
-        "(vintage is parsed from the most recent file's name in Data/Cleaned). Time Coverage, Number ",
-        "of Countries, and Total Records are computed directly from that file's rows. Has Published ",
-        "Data reflects whether any row has a non-missing public value at all."
-      )
-    )
-  )
 })
 
 output$summary_table_classification <- renderReactable({
@@ -797,7 +760,6 @@ uiOutput("kpi_boxes_ui")
 
 ```{r}
 #| title: General
-uiOutput("general_info_ui")
 reactableOutput("summary_table_general")
 ```
 
@@ -805,6 +767,10 @@ reactableOutput("summary_table_general")
 #| title: Classification & Source
 reactableOutput("summary_table_classification")
 ```
+
+## Row
+
+*General facts (time coverage, country count, total records, whether there's published data at all) are computed directly from the loaded comparison file. Classification & Source reflects this indicator's assigned category, source, and dimension setup as recorded in Data/indicator_metadata.xlsx - not a live CEPALSTAT API call.*
 
 # Coverage
 
