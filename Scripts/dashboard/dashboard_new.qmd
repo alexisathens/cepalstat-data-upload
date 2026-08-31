@@ -765,7 +765,7 @@ reactableOutput("summary_table_classification")
 
 # Coverage
 
-This shows for what country-year combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is missing from the internal dataset. Gray values show that there is data available in both. The second chart below breaks the same idea down by dimension member instead of country - a gap confined to a single member can otherwise hide in the chart above, since it sums across every member before checking status. There, gray isn't one fixed shade: darker gray means more countries only have this member-year in the internal (new) data, without a matching published value, even though the member-year as a whole already counts as published somewhere - lighter gray means fewer such countries, so a pale gray cell is still "present in both," just with less of it still unpublished.
+This shows for what country-year combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is missing from the internal dataset. Gray values show that there is data available in both. The second chart below breaks the same idea down by dimension member instead of country - a gap confined to a single member can otherwise hide in the chart above, since it sums across every member before checking status. There, gray isn't one fixed shade: darker gray means more countries have data on both sides for that member-year, lighter gray means fewer, so a pale gray cell is still "present in both," just not as widely as a dark one.
 
 ```{r}
 #| context: server
@@ -804,12 +804,11 @@ output$coverage_plot <- renderPlotly({
 # year instead - lets a gap confined to one member stand out on its own, which the country-level
 # grid can't show since it sums across every member first. "Present in Both" is the one status
 # with a meaningful in-between (some countries covered, others not yet), so it additionally
-# tracks how many countries have internal (new) data for that member-year WITHOUT a matching
-# public value - i.e. how many are still unpublished additions even though the member-year as a
-# whole already counts as published somewhere - for the gray coverage-breadth gradient below; the
-# other three statuses are all-or-nothing across the whole member-year, same as they are for a
-# single country-year on the chart above. year is kept as the character label (not parsed to
-# numeric) so it plots as a discrete axis with one tick per year, same as the country chart above.
+# tracks how many countries have data on both sides for that member-year, for the gray
+# coverage-breadth gradient below; the other three statuses are all-or-nothing across the whole
+# member-year, same as they are for a single country-year on the chart above. year is kept as the
+# character label (not parsed to numeric) so it plots as a discrete axis with one tick per year,
+# same as the country chart above.
 build_dim_coverage <- function(raw) {
   dim_col <- raw$extra_dims[1]
   n_countries <- length(raw$all_countries)
@@ -828,7 +827,7 @@ build_dim_coverage <- function(raw) {
     summarize(
       has_data = any(!is.na(value_data)),
       has_pub  = any(!is.na(value_pub)),
-      n_new_only = sum(!is.na(value_data) & is.na(value_pub)),
+      n_present_both = sum(!is.na(value_data) & !is.na(value_pub)),
       .groups = "drop"
     ) %>%
     mutate(
@@ -839,14 +838,15 @@ build_dim_coverage <- function(raw) {
         !has_data & !has_pub ~ "Missing in Both",
         TRUE ~ "Present in Both"
       ),
-      coverage_frac = n_new_only / n_countries
+      coverage_frac = n_present_both / n_countries
     )
 }
 
 # Colored swatches (plus a gradient bar for the "Present in Both" shade) explaining the grid
-# below - a manual HTML legend rather than a ggplot one, since the gray gradient is a precomputed
-# scale_color_identity() color (see plot_dim_coverage()), which ggplot can't turn into a legend
-# on its own.
+# above - a manual HTML legend rather than a ggplot one, since the gray gradient is a precomputed
+# scale_color_identity() color (see plot_dim_coverage()), which ggplot can't turn into a legend on
+# its own. Titled and laid out to mirror the country x year chart's own bottom-of-plot ggplot
+# legend (title, then a centered horizontal row of keys).
 dim_coverage_legend <- function() {
   swatch <- function(color, label, bordered = FALSE) {
     div(
@@ -859,7 +859,8 @@ dim_coverage_legend <- function() {
     )
   }
   div(
-    style = "display:flex; gap:1.1rem; flex-wrap:wrap; margin-bottom:0.5rem;",
+    style = "display:flex; align-items:center; justify-content:center; gap:1.1rem; flex-wrap:wrap; margin-top:0.5rem;",
+    div(style = glue("font-size:0.8rem; font-weight:700; color:{pal$ink};"), "Coverage"),
     swatch(tint_color(pal$good), "New Only"),
     swatch(tint_color(pal$flag), "Old Only"),
     swatch(pal$missing, "Missing in Both", bordered = TRUE),
@@ -869,7 +870,7 @@ dim_coverage_legend <- function() {
         "width:48px; height:14px; border-radius:2px; border:1px solid {pal$grid}; ",
         "background:linear-gradient(to right, #f7f7f5, #5c5a54);"
       )),
-      div(style = glue("font-size:0.78rem; color:{pal$ink2};"), "Present in Both (darker = more internal-only countries)")
+      div(style = glue("font-size:0.78rem; color:{pal$ink2};"), "Present in Both (darker = more countries covered)")
     )
   )
 }
@@ -895,7 +896,7 @@ plot_dim_coverage <- function(df, dim_label, n_countries) {
       dim_label, ": ", member, "<br>Year: ", year, "<br>Status: ", status,
       if_else(
         status == "Present in Both",
-        paste0("<br>Countries with data in internal (new) only: ", n_new_only, " of ", n_countries),
+        paste0("<br>Countries with data on both sides: ", n_present_both, " of ", n_countries),
         ""
       )
     )
@@ -925,8 +926,8 @@ output$coverage_dim_plot_ui <- renderUI({
   dim_col <- d$extra_dims[1]
   n_members <- length(d$dim_members[[dim_col]])
   tagList(
-    dim_coverage_legend(),
-    scrollable_plot("coverage_dim_plot", paste0(120 + n_members * 26, "px"), max_visible_px = 650)
+    scrollable_plot("coverage_dim_plot", paste0(120 + n_members * 26, "px"), max_visible_px = 650),
+    dim_coverage_legend()
   )
 })
 ```
