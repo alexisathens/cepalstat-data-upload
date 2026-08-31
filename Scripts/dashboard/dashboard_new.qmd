@@ -1411,34 +1411,36 @@ output$scatter_plot <- renderPlotly({
     labs(x = "Internal Data", y = "Public Data") +
     theme_qc()
 
-  # The 1:1 reference line is drawn as a plotly shape in DATA coordinates (not a ggplot
-  # geom_abline layer) so it always renders: ggplotly()'s conversion of geom_abline can come out
-  # empty or get clipped depending on the actual data range, since an infinite-extent line isn't
-  # something the conversion handles as reliably as a plain geom. A plotly shape spanning the
-  # combined value_data_matched/value_pub_matched range has no such issue.
-  rng <- range(c(df2$value_data_matched, df2$value_pub_matched), na.rm = TRUE)
-
-  # Fixed-position "which side is bigger" labels with an arrow pointing into the corner they
-  # describe - text sits at (ax, ay) and the arrowhead lands at (x, y), both in paper coordinates
-  # (not pixels), so the arrow reliably points all the way into the corner regardless of the
-  # plot's actual size. Below the 1:1 line (bottom-right) is where internal > public, above it
-  # (top-left) is the reverse.
+  # The 1:1 reference line is drawn as a plotly shape spanning the plot's own corner-to-corner
+  # "domain" (0,0 to 1,1 within the axes box, not the full paper canvas) rather than the data's
+  # combined min/max - a data-coordinate line spanning the true combined range of Internal and
+  # Public values can fall almost entirely outside the visible plot when the two variables sit on
+  # very different scales for a given indicator (e.g. Internal up to 150 but Public maxing out
+  # under 4), since ggplotly() bakes in a fixed axis range per variable and doesn't expand it to
+  # fit a shape added afterward. A domain-referenced line is always visible as the plot's own
+  # diagonal, at the cost of only being a literal y=x line when both axes happen to share a
+  # similar range (the common case for this comparison).
+  #
+  # Fixed-position "which side is bigger" labels with a short arrow pointing into the corner they
+  # describe - x,y (paper coordinates) is the arrowhead, ax,ay (plain pixel offsets, the plotly
+  # default) is the tail/text position. Below the 1:1 line (bottom-right) is where internal >
+  # public, above it (top-left) is the reverse.
   ggplotly(p, tooltip = "text") %>%
     plotly::layout(
       shapes = list(list(
-        type = "line", x0 = rng[1], x1 = rng[2], y0 = rng[1], y1 = rng[2],
-        xref = "x", yref = "y", line = list(dash = "dot", color = pal$ink2, width = 1)
+        type = "line", x0 = 0, x1 = 1, y0 = 0, y1 = 1,
+        xref = "x domain", yref = "y domain", line = list(dash = "dot", color = pal$ink2, width = 1)
       )),
       annotations = list(
         list(
           x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
-          ax = 0.80, ay = 0.20, axref = "paper", ayref = "paper",
+          ax = -45, ay = -32,
           text = "Internal values larger", showarrow = TRUE, arrowhead = 2,
           arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
         ),
         list(
           x = 0.02, y = 0.98, xref = "paper", yref = "paper", xanchor = "left", yanchor = "top",
-          ax = 0.20, ay = 0.80, axref = "paper", ayref = "paper",
+          ax = 45, ay = 32,
           text = "Published values larger", showarrow = TRUE, arrowhead = 2,
           arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
         )
@@ -1500,20 +1502,21 @@ This section shows value differences between **matched pairs** in the public and
 #| context: server
 # Fixed-position (paper-coordinate) "which side is bigger" annotations, shared by both charts on
 # this page - top of the plot (positive y) is where internal exceeds public, bottom (negative y)
-# is the reverse. Text sits at (ax, ay) with the arrowhead at (x, y), both in paper coordinates
-# (not pixels), pointing outward into the top/bottom edge - reinforcing "this direction" rather
-# than pointing back in toward the center of the plot.
+# is the reverse. x,y (paper coordinates) is the arrowhead; ax,ay (plain pixel offsets - these
+# follow screen convention, positive down, regardless of x/y's own paper convention of positive
+# up) position the tail/text, pulled into the interior so the arrow points outward into the
+# top/bottom edge - reinforcing "this direction" rather than pointing back toward the center.
 diff_direction_annotations <- function() {
   list(
     list(
       x = 0.98, y = 0.98, xref = "paper", yref = "paper", xanchor = "right", yanchor = "top",
-      ax = 0.98, ay = 0.82, axref = "paper", ayref = "paper",
+      ax = 0, ay = 40,
       text = "Internal values larger", showarrow = TRUE, arrowhead = 2,
       arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
     ),
     list(
       x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
-      ax = 0.98, ay = 0.18, axref = "paper", ayref = "paper",
+      ax = 0, ay = -40,
       text = "Published values larger", showarrow = TRUE, arrowhead = 2,
       arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
     )
