@@ -1612,7 +1612,7 @@ plotlyOutput("diff_dim_plot", height = "460px")
 
 # Outlier Detection
 
-This section detects for outliers in the updated internal dataset. It displays country and dimension series that contain at least one data point with a z-score ≥ 3, which can be adjusted in the **Outlier z-score threshold** slider. The red highlighted points that are more than 3 standard deviations away from the country/dimension mean could indicate issues with the underlying data. Z-scores are calculated as z = (x − mean) / standard deviation, computed separately for each country (top chart) or dimension member (bottom chart) across its own years.
+This section detects for outliers in the updated internal dataset. It displays country and dimension series that contain at least one data point with a z-score ≥ 3, which can be adjusted in the **Outlier z-score threshold** slider. Z-scores are calculated as z = (x − mean) / standard deviation, computed separately for each country (top chart) or dimension member (bottom chart) across its own years. The red highlighted points that are more than 3 standard deviations away from the mean could indicate issues with the underlying data. 
 
 ```{r}
 #| context: server
@@ -1739,7 +1739,7 @@ plotlyOutput("outlier_dim_plot", height = "500px")
 
 <div id="metadata-check-marker" style="height:0;"></div>
 
-This shows six key metadata fields (Data Features, Unit, Definition, Calculation Methodology, Comments, and Last Update) as currently published on CEPALSTAT, in English and Spanish side by side. It's fetched live from the CEPALSTAT API the first time you visit this tab for the currently loaded indicator - not on every app load - and refetched only if you load a different indicator afterward.
+This shows the metadata currently published on CEPALSTAT in English and Spanish. It's fetched live from the CEPALSTAT API when this tab is visited.
 
 ```{r}
 #| context: server
