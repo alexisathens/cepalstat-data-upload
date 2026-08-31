@@ -765,7 +765,7 @@ reactableOutput("summary_table_classification")
 
 # Coverage
 
-This shows for what country-year combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is mising from the internal dataset. Gray values show that there is data available in both.
+This shows for what country-year combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is missing from the internal dataset. Gray values show that there is data available in both. The second chart below breaks the same idea down by dimension member instead of country - a gap confined to a single member can otherwise hide in the chart above, since it sums across every member before checking status. There, gray isn't one fixed shade: darker gray means more countries have data on both sides for that member-year, lighter gray means fewer, so a pale gray cell is still "present in both," just not as widely as a dark one.
 
 ```{r}
 #| context: server
@@ -799,11 +799,111 @@ output$coverage_plot <- renderPlotly({
   ggplotly(plot_coverage(fd$coverage_check), tooltip = "text") %>%
     style_plotly()
 })
+
+# Same four coverage statuses as the country x year grid above, but grouped by dimension member x
+# year instead - lets a gap confined to one member stand out on its own, which the country-level
+# grid can't show since it sums across every member first. "Present in Both" is the one status
+# with a meaningful in-between (some countries covered, others not yet), so it additionally
+# tracks how many countries have data on both sides for that member-year, for the gray
+# coverage-breadth gradient below; the other three statuses are all-or-nothing across the whole
+# member-year, same as they are for a single country-year on the chart above.
+build_dim_coverage <- function(raw) {
+  dim_col <- raw$extra_dims[1]
+  n_countries <- length(raw$all_countries)
+
+  by_country_member_year <- raw$comp_detailed %>%
+    group_by(across(all_of(c("dim_208_label", dim_col, "dim_29117_label")))) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    rename(member = all_of(dim_col))
+
+  by_country_member_year %>%
+    group_by(member, dim_29117_label) %>%
+    summarize(
+      has_data = any(!is.na(value_data)),
+      has_pub  = any(!is.na(value_pub)),
+      n_present_both = sum(!is.na(value_data) & !is.na(value_pub)),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      year = as.numeric(dim_29117_label),
+      status = case_when(
+        has_data & !has_pub  ~ "New Only",
+        !has_data & has_pub  ~ "Old Only",
+        !has_data & !has_pub ~ "Missing in Both",
+        TRUE ~ "Present in Both"
+      ),
+      coverage_frac = n_present_both / n_countries
+    )
+}
+
+plot_dim_coverage <- function(df, dim_label, n_countries) {
+  df2 <- df %>%
+    mutate(
+      member = factor(member, levels = sort(unique(member), decreasing = TRUE)),
+      # Precomputed color (not a discrete ggplot scale), since "Present in Both" needs a
+      # continuous gray gradient by coverage breadth while the other three statuses stay fixed
+      # colors - scale_color_identity() is this dashboard's established way to mix the two (see
+      # threshold_gradient_color()'s point_color pattern on the Value Comparisons page).
+      cell_color = case_when(
+        status == "Missing in Both" ~ pal$missing,
+        status == "Old Only"        ~ tint_color(pal$flag),
+        status == "New Only"        ~ tint_color(pal$good),
+        TRUE ~ blend_colors("#f7f7f5", "#5c5a54", coverage_frac)
+      )
+    )
+  ggplot(df2, aes(
+    x = year, y = member, color = cell_color,
+    text = paste0(
+      dim_label, ": ", member, "<br>Year: ", year, "<br>Status: ", status,
+      if_else(
+        status == "Present in Both",
+        paste0("<br>Countries with data on both sides: ", n_present_both, " of ", n_countries),
+        ""
+      )
+    )
+  )) +
+    geom_point(shape = 15, size = 3.2) +
+    scale_color_identity() +
+    labs(x = NULL, y = NULL) +
+    theme_qc() +
+    theme(
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+output$coverage_dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly("This indicator has no extra dimension beyond Country and Year."))
+  dim_col <- d$extra_dims[1]
+  df <- build_dim_coverage(d)
+  ggplotly(plot_dim_coverage(df, d$dim_labels[[dim_col]], length(d$all_countries)), tooltip = "text") %>%
+    style_plotly(legend_bottom = FALSE)
+})
+
+output$coverage_dim_plot_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(plotlyOutput("coverage_dim_plot", height = "300px"))
+  dim_col <- d$extra_dims[1]
+  n_members <- length(d$dim_members[[dim_col]])
+  scrollable_plot("coverage_dim_plot", paste0(120 + n_members * 26, "px"), max_visible_px = 650)
+})
 ```
 
 ```{r}
 #| title: Data Availability by Country and Year
 plotlyOutput("coverage_plot", height = "650px")
+```
+
+## Row {height=650px}
+
+```{r}
+#| title: Data Availability by Dimension and Year
+uiOutput("coverage_dim_plot_ui")
 ```
 
 # Published Comparison
