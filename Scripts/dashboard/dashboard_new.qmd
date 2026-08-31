@@ -523,11 +523,16 @@ output$dim_filters_ui <- renderUI({
   tagList(lapply(d$extra_dims, function(dc) {
     members <- d$dim_members[[dc]]
     choices <- c("(All)" = "__ALL__", setNames(members, members))
+    # Defaults to a "Total" member if this dimension has one (e.g. an age-group breakdown that
+    # also reports an all-ages total) - that's usually the more useful starting point than every
+    # member lumped under "(All)", which is the fallback when there's no such member.
+    total_member <- members[str_detect(members, regex("total", ignore_case = TRUE))]
+    default_sel <- if (length(total_member) > 0) total_member[1] else "__ALL__"
     selectizeInput(
       inputId = paste0("dimfilter_", dc),
       label = d$dim_labels[[dc]],
       choices = choices,
-      selected = "__ALL__",
+      selected = default_sel,
       multiple = TRUE
     )
   }))
@@ -599,7 +604,7 @@ metadata_table <- function(info) {
   reactable(
     df,
     columns = list(
-      Metric = colDef(width = 170, style = list(fontWeight = 700, color = pal$nav)),
+      Metric = colDef(width = 195, style = list(fontWeight = 700, color = pal$nav)),
       Value = colDef(style = list(color = pal$ink))
     ),
     defaultColDef = colDef(headerStyle = list(background = pal$background, color = pal$nav)),
@@ -1045,7 +1050,7 @@ output$new_overview <- renderPlotly({
   )) +
     geom_line(alpha = 0.35, color = pal$grid) +
     geom_point(size = 1.3, alpha = 0.85) +
-    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$good)) +
     labs(title = "", x = "Year", y = "") +
     theme_qc() +
     theme(legend.position = "none")
@@ -1083,7 +1088,7 @@ output$new_country <- renderPlotly({
   )) +
     geom_line(aes(group = 1), color = pal$neutral, linewidth = 0.4, alpha = 0.5) +
     geom_point(size = 1.8, alpha = 0.9) +
-    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$good)) +
     labs(title = input$country, x = "Year", y = "") +
     theme_qc() +
     theme(legend.position = "none")
@@ -1125,7 +1130,7 @@ output$new_faceted <- renderPlot({
     geom_line(alpha = 0.5, color = pal$neutral, linewidth = 0.4) +
     geom_point(size = 1.9, alpha = 0.9) +
     facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
-    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = tint_color(pal$good))) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$good)) +
     labs(title = "", x = "Year", y = "Value") +
     theme_qc() +
     theme(
@@ -1153,7 +1158,7 @@ output$new_faceted_ui <- renderUI({
 ## Row {height=420px}
 
 ```{r}
-#| title: "All Time Series by Country · Highlight: None"
+#| title: All Time Series by Country
 plotlyOutput("new_overview", height = "420px")
 ```
 
@@ -1295,7 +1300,7 @@ output$dim_faceted_ui <- renderUI({
 ## Row {height=480px}
 
 ```{r}
-#| title: "All Time Series by Dimension · Highlight: None"
+#| title: All Time Series by Dimension
 plotlyOutput("dim_overview_plot", height = "480px")
 ```
 
@@ -1307,7 +1312,7 @@ plotlyOutput("dim_plot", height = "480px")
 ## Row {height=740px}
 
 ```{r}
-#| title: "All Faceted Countries (Static) · Highlight: None"
+#| title: All Faceted Countries (Static)
 uiOutput("dim_faceted_ui")
 ```
 
@@ -1401,29 +1406,44 @@ output$scatter_plot <- renderPlotly({
       "<br>% Diff: ", round(perc_diff, 1)
     )
   )) +
-    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
     geom_point(alpha = 0.85, size = 1.8) +
     scale_color_identity() +
     labs(x = "Internal Data", y = "Public Data") +
     theme_qc()
 
-  # Fixed-position "which side is bigger" labels, anchored to the plot's paper coordinates (not
-  # data coordinates) so they stay put in their corners regardless of the data's actual range -
-  # below the dashed 1:1 line (bottom-right) is where internal > public, above it (top-left) is
-  # the reverse.
+  # The 1:1 reference line is drawn as a plotly shape in DATA coordinates (not a ggplot
+  # geom_abline layer) so it always renders: ggplotly()'s conversion of geom_abline can come out
+  # empty or get clipped depending on the actual data range, since an infinite-extent line isn't
+  # something the conversion handles as reliably as a plain geom. A plotly shape spanning the
+  # combined value_data_matched/value_pub_matched range has no such issue.
+  rng <- range(c(df2$value_data_matched, df2$value_pub_matched), na.rm = TRUE)
+
+  # Fixed-position "which side is bigger" labels with an arrow pointing into the corner they
+  # describe - text sits at (ax, ay) and the arrowhead lands at (x, y), both in paper coordinates
+  # (not pixels), so the arrow reliably points all the way into the corner regardless of the
+  # plot's actual size. Below the 1:1 line (bottom-right) is where internal > public, above it
+  # (top-left) is the reverse.
   ggplotly(p, tooltip = "text") %>%
-    plotly::layout(annotations = list(
-      list(
-        x = 0.98, y = 0.04, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
-        text = "Internal values larger", showarrow = TRUE, ax = 25, ay = 18, arrowhead = 2,
-        arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
-      ),
-      list(
-        x = 0.02, y = 0.98, xref = "paper", yref = "paper", xanchor = "left", yanchor = "top",
-        text = "Published values larger", showarrow = TRUE, ax = -25, ay = -18, arrowhead = 2,
-        arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+    plotly::layout(
+      shapes = list(list(
+        type = "line", x0 = rng[1], x1 = rng[2], y0 = rng[1], y1 = rng[2],
+        xref = "x", yref = "y", line = list(dash = "dot", color = pal$ink2, width = 1)
+      )),
+      annotations = list(
+        list(
+          x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+          ax = 0.80, ay = 0.20, axref = "paper", ayref = "paper",
+          text = "Internal values larger", showarrow = TRUE, arrowhead = 2,
+          arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+        ),
+        list(
+          x = 0.02, y = 0.98, xref = "paper", yref = "paper", xanchor = "left", yanchor = "top",
+          ax = 0.20, ay = 0.80, axref = "paper", ayref = "paper",
+          text = "Published values larger", showarrow = TRUE, arrowhead = 2,
+          arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+        )
       )
-    ))
+    )
 })
 
 output$pctdiff_plot <- renderPlotly({
@@ -1440,6 +1460,10 @@ output$pctdiff_plot <- renderPlotly({
     )
   )) +
     annotate("rect", xmin = yr[1] - 0.5, xmax = yr[2] + 0.5, ymin = -20, ymax = 20, fill = pal$good, alpha = 0.08) +
+    # Connects each country's own points across years at their true (unjittered) year position -
+    # a separate layer from the jittered points below, so the line traces the real year-by-year
+    # path even though the points themselves are nudged sideways to reduce overplotting.
+    geom_line(aes(group = dim_208_label), color = pal$neutral, linewidth = 0.3, alpha = 0.45) +
     geom_jitter(aes(color = abs(perc_diff) > 20), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
     labs(x = "Year", y = "Percent Difference") +
@@ -1457,14 +1481,14 @@ uiOutput("value_comp_kpi_ui")
 ## Row {height=560px}
 
 ```{r}
-#| title: "Public vs. Internal Value Comparison · Highlight: None"
+#| title: Public vs. Internal Value Comparison
 plotlyOutput("scatter_plot", height = "560px")
 ```
 
 ## Row {height=420px}
 
 ```{r}
-#| title: "Percent Change Over Time · Highlight: None"
+#| title: Percent Change Over Time
 plotlyOutput("pctdiff_plot", height = "420px")
 ```
 
@@ -1476,17 +1500,21 @@ This section shows value differences between **matched pairs** in the public and
 #| context: server
 # Fixed-position (paper-coordinate) "which side is bigger" annotations, shared by both charts on
 # this page - top of the plot (positive y) is where internal exceeds public, bottom (negative y)
-# is the reverse. Paper coordinates keep these in place regardless of the data's actual y-range.
+# is the reverse. Text sits at (ax, ay) with the arrowhead at (x, y), both in paper coordinates
+# (not pixels), pointing outward into the top/bottom edge - reinforcing "this direction" rather
+# than pointing back in toward the center of the plot.
 diff_direction_annotations <- function() {
   list(
     list(
-      x = 0.98, y = 0.95, xref = "paper", yref = "paper", xanchor = "right", yanchor = "top",
-      text = "Internal values larger", showarrow = TRUE, ax = 0, ay = -20, arrowhead = 2,
+      x = 0.98, y = 0.98, xref = "paper", yref = "paper", xanchor = "right", yanchor = "top",
+      ax = 0.98, ay = 0.82, axref = "paper", ayref = "paper",
+      text = "Internal values larger", showarrow = TRUE, arrowhead = 2,
       arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
     ),
     list(
-      x = 0.98, y = 0.05, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
-      text = "Published values larger", showarrow = TRUE, ax = 0, ay = 20, arrowhead = 2,
+      x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+      ax = 0.98, ay = 0.18, axref = "paper", ayref = "paper",
+      text = "Published values larger", showarrow = TRUE, arrowhead = 2,
       arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
     )
   )
@@ -1535,6 +1563,7 @@ output$diff_country_plot <- renderPlotly({
     scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
     scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
     scale_y_continuous(labels = scales::comma) +
+    expand_limits(y = 0) +
     labs(x = "Year", y = "Difference (Internal - Public)") +
     theme_qc()
   ggplotly(p, tooltip = "text") %>%
@@ -1568,6 +1597,7 @@ output$diff_dim_plot <- renderPlotly({
     scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
     scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
     scale_y_continuous(labels = scales::comma) +
+    expand_limits(y = 0) +
     labs(x = "Year", y = "Difference (Internal - Public)") +
     theme_qc()
   ggplotly(p, tooltip = "text") %>%
@@ -1592,7 +1622,7 @@ plotlyOutput("diff_dim_plot", height = "460px")
 
 # Outlier Detection
 
-This section detects for outliers in the updated internal dataset. It displays country and dimension series that contain at least one data point with a z-score ≥ 3, which can be adjusted in the **Outlier z-score threshold** slider. The red highlighted points that are more than 3 standard deviations away from the country/dimension mean could indicate issues with the underlying data.
+This section detects for outliers in the updated internal dataset. It displays country and dimension series that contain at least one data point with a z-score ≥ 3, which can be adjusted in the **Outlier z-score threshold** slider. The red highlighted points that are more than 3 standard deviations away from the country/dimension mean could indicate issues with the underlying data. Z-scores are calculated as z = (x − mean) / standard deviation, computed separately for each country (top chart) or dimension member (bottom chart) across its own years.
 
 ```{r}
 #| context: server
@@ -1631,7 +1661,7 @@ output$outlier_plot <- renderPlotly({
     scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
     scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
     scale_y_continuous(labels = scales::comma) +
-    labs(x = "Year", y = "Internal Value") +
+    labs(x = "Year", y = NULL) +
     theme_qc()
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
@@ -1695,7 +1725,7 @@ output$outlier_dim_plot <- renderPlotly({
     scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
     scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
     scale_y_continuous(labels = scales::comma) +
-    labs(x = "Year", y = "Internal Value") +
+    labs(x = "Year", y = NULL) +
     theme_qc()
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
 })
@@ -1719,12 +1749,13 @@ plotlyOutput("outlier_dim_plot", height = "500px")
 
 <div id="metadata-check-marker" style="height:0;"></div>
 
-This displays the currently published metadata in English and Spanish. This is pulled live from the CEPALSTAT API when this tab is clicked.
+This shows six key metadata fields (Data Features, Unit, Definition, Calculation Methodology, Comments, and Last Update) as currently published on CEPALSTAT, in English and Spanish side by side. It's fetched live from the CEPALSTAT API the first time you visit this tab for the currently loaded indicator - not on every app load - and refetched only if you load a different indicator afterward.
 
 ```{r}
 #| context: server
-# Field names come back from the API as raw keys (e.g. "geographicCoverage") - prettified for
-# display only (camelCase/underscores -> spaced Title Case), not used for anything else.
+# Field names come back from the API as raw keys in snake_case (e.g. "calculation_methodology" -
+# see technical_sheet.R, which already depends on these same key names) - prettified for display
+# only (underscores/camelCase -> spaced Title Case), not used for anything else.
 prettify_field_name <- function(x) {
   x %>%
     str_replace_all("_", " ") %>%
@@ -1732,15 +1763,39 @@ prettify_field_name <- function(x) {
     str_to_title()
 }
 
+# The full set of CEPALSTAT metadata fields is broader than what's useful at a glance - narrowed
+# to just these, matched by raw API key (not the prettified name, so a coincidental word match
+# elsewhere can't pull in the wrong field) and always shown in this order regardless of what order
+# the API returns them in. data_features/unit/last_update are a best guess at the actual key names
+# (definition/calculation_methodology/comments are confirmed via technical_sheet.R) - if one of
+# those three doesn't show up for a real indicator, the fix is just updating this list with the
+# actual key.
+metadata_fields_to_show <- c("data_features", "unit", "definition", "calculation_methodology", "comments", "last_update")
+
+# Some published metadata text has literal "<br>"/"<br/>" tags baked in (see strip_html_breaks()
+# in technical_sheet.R, which strips them before this same text is fed to other tooling) - shown
+# as plain text here rather than parsed as HTML, so left as-is they'd read as literal "<br>" in
+# the middle of a sentence instead of the line break they're meant to be. Converted to a real
+# newline instead of just removed, so white-space:pre-wrap still preserves the intended paragraph
+# breaks.
+strip_br_tags <- function(text) str_replace_all(text, regex("<br\\s*/?>", ignore_case = TRUE), "\n")
+
 format_metadata_block <- function(metadata_tbl) {
   if (is.null(metadata_tbl) || nrow(metadata_tbl) == 0) {
     return(div(style = glue("color:{pal$ink2};"), "No metadata available."))
   }
-  tagList(lapply(seq_len(nrow(metadata_tbl)), function(i) {
+  tbl2 <- metadata_tbl %>%
+    filter(tolower(variable) %in% metadata_fields_to_show) %>%
+    mutate(variable = factor(tolower(variable), levels = metadata_fields_to_show)) %>%
+    arrange(variable)
+  if (nrow(tbl2) == 0) {
+    return(div(style = glue("color:{pal$ink2};"), "None of the expected metadata fields were found for this indicator."))
+  }
+  tagList(lapply(seq_len(nrow(tbl2)), function(i) {
     div(
       style = "margin-bottom:1rem;",
-      div(style = glue("font-weight:700; color:{pal$nav}; margin-bottom:0.2rem;"), prettify_field_name(metadata_tbl$variable[i])),
-      div(style = glue("color:{pal$ink}; white-space:pre-wrap;"), metadata_tbl$value[i])
+      div(style = glue("font-weight:700; color:{pal$nav}; margin-bottom:0.2rem;"), prettify_field_name(as.character(tbl2$variable[i]))),
+      div(style = glue("color:{pal$ink}; white-space:pre-wrap;"), strip_br_tags(tbl2$value[i]))
     )
   }))
 }
