@@ -770,7 +770,7 @@ reactableOutput("summary_table_classification")
 
 ## Row
 
-*General facts (time coverage, country count, total records, whether there's published data at all) are computed directly from the loaded comparison file. Classification & Source reflects this indicator's assigned category, source, and dimension setup as recorded in Data/indicator_metadata.xlsx - not a live CEPALSTAT API call.*
+This dashboard quality-checks updated CEPALSTAT indicator data before it's published. All figures come from the comparison files in Data/Checks, generated at export. This is a snapshot as of the Data Vintage shown, not a live feed from CEPALSTAT. The Overview's metadata is also static and pulled from an internal indicator_metadata file. Only the Metadata Check tab calls the live CEPALSTAT API.
 
 # Coverage
 
