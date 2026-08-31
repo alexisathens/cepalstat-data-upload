@@ -765,7 +765,7 @@ reactableOutput("summary_table_classification")
 
 # Coverage
 
-This shows for what country-year combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data for the country-year that is missing from the internal dataset. Gray values show that there is data available in both. The second chart below breaks the same idea down by dimension member instead of country - a gap confined to a single member can otherwise hide in the chart above, since it sums across every member before checking status. There, gray isn't one fixed shade: darker gray means more countries have data on both sides for that member-year, lighter gray means fewer, so a pale gray cell is still "present in both," just not as widely as a dark one.
+This shows for what country-year and country-dimension combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data missing from the internal dataset. Gray values show that there is data available in both.
 
 ```{r}
 #| context: server
@@ -944,9 +944,9 @@ plotlyOutput("coverage_plot", height = "650px")
 uiOutput("coverage_dim_plot_ui")
 ```
 
-# Published Comparison
+# Preview
 
-This previews how the data update will change CEPALSTAT's landing graphic. The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
+This shows a simple visual check for how drastically the data update will change the trend on CEPALSTAT's landing graphic. The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
 
 ```{r}
 #| context: server
@@ -1171,7 +1171,7 @@ uiOutput("new_faceted_ui")
 
 # Dimension Trends
 
-*Breaks out this indicator's extra dimension (e.g. sex or age group) three ways: summed across every country, for the sidebar's Highlight Country, and faceted across every country.* Always shows every member of that dimension, regardless of the dimension filter in the sidebar, since comparing members side by side is the point of this page. Only applies to indicators with an extra dimension beyond country and year - if there's ever more than one, only the first is used here. Every chart uses the same color for a given member throughout, drawn from (and recycled across) the app's categorical palette.
+This breaks out trends by dimension.
 
 ```{r}
 #| context: server
@@ -1307,13 +1307,13 @@ plotlyOutput("dim_plot", height = "480px")
 ## Row {height=740px}
 
 ```{r}
-#| title: "All Faceted Countries · Highlight: None"
+#| title: "All Faceted Countries (Static) · Highlight: None"
 uiOutput("dim_faceted_ui")
 ```
 
-# Value Comparisons
+# Value Changes
 
-*This section analyzes changes between values that are available in both the public and internal data sets, for the currently filtered countries/years.* Key statistics include mean and absolute differences, and the share of values with changes greater than ±20%. Red points identify values that exceed this threshold. Skipped automatically for a new indicator with no published data to compare against.
+This section analyzes changes in values between **matched pairs** in the public and internal data sets. It gives key statistics that quantify how much values are changing with the data update and displays changes on a percentile change basis. The red coloring is applied to values with a 20% or more change by default and can be adjusted with the **Difference threshold (%)** slider.
 
 ```{r}
 #| context: server
@@ -1404,7 +1404,7 @@ output$scatter_plot <- renderPlotly({
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
     geom_point(alpha = 0.85, size = 1.8) +
     scale_color_identity() +
-    labs(x = "Internal Data (matched)", y = "Public Data (matched)") +
+    labs(x = "Internal Data", y = "Public Data") +
     theme_qc()
 
   # Fixed-position "which side is bigger" labels, anchored to the plot's paper coordinates (not
@@ -1414,14 +1414,14 @@ output$scatter_plot <- renderPlotly({
   ggplotly(p, tooltip = "text") %>%
     plotly::layout(annotations = list(
       list(
-        x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+        x = 0.98, y = 0.04, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
         text = "Internal values larger", showarrow = TRUE, ax = 25, ay = 18, arrowhead = 2,
-        arrowcolor = pal$ink2, font = list(size = 11, color = pal$ink2)
+        arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
       ),
       list(
         x = 0.02, y = 0.98, xref = "paper", yref = "paper", xanchor = "left", yanchor = "top",
         text = "Published values larger", showarrow = TRUE, ax = -25, ay = -18, arrowhead = 2,
-        arrowcolor = pal$ink2, font = list(size = 11, color = pal$ink2)
+        arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
       )
     ))
 })
@@ -1457,7 +1457,7 @@ uiOutput("value_comp_kpi_ui")
 ## Row {height=560px}
 
 ```{r}
-#| title: "Value Comparison (Public vs. Internal) · Highlight: None"
+#| title: "Public vs. Internal Value Comparison · Highlight: None"
 plotlyOutput("scatter_plot", height = "560px")
 ```
 
@@ -1468,9 +1468,9 @@ plotlyOutput("scatter_plot", height = "560px")
 plotlyOutput("pctdiff_plot", height = "420px")
 ```
 
-# Raw Differences
+# Value Differences
 
-*A first pass at a different lens than the rest of this section: raw (non-%), signed differences (internal minus public), broken out as a time series by country and, if this indicator has an extra dimension, by dimension member. A % difference normalizes away scale, which can hide where the real-world impact actually is - a 2% shift on a value of 50 million is a bigger absolute change than a 50% shift on a value of 4. Signed means a consistently one-sided line points at something systematic rather than noisy back-and-forth revisions - though for the dimension chart specifically, which sums across every country first, a near-zero net difference can still hide countries diverging in opposite directions and genuinely canceling out. The sidebar's Highlight Country/Dimension selection colors the matching line; everything else is shown but muted. All countries/members are shown for now (no capping yet) - flag if this needs narrowing down once you see it with real data.*
+This section shows value differences between **matched pairs** in the public and internal data sets. The graphs show differences (internal - public) in terms of the original units.
 
 ```{r}
 #| context: server
@@ -1480,14 +1480,14 @@ plotlyOutput("pctdiff_plot", height = "420px")
 diff_direction_annotations <- function() {
   list(
     list(
-      x = 0.98, y = 0.96, xref = "paper", yref = "paper", xanchor = "right", yanchor = "top",
+      x = 0.98, y = 0.95, xref = "paper", yref = "paper", xanchor = "right", yanchor = "top",
       text = "Internal values larger", showarrow = TRUE, ax = 0, ay = -20, arrowhead = 2,
-      arrowcolor = pal$ink2, font = list(size = 11, color = pal$ink2)
+      arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
     ),
     list(
-      x = 0.98, y = 0.04, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+      x = 0.98, y = 0.05, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
       text = "Published values larger", showarrow = TRUE, ax = 0, ay = 20, arrowhead = 2,
-      arrowcolor = pal$ink2, font = list(size = 11, color = pal$ink2)
+      arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
     )
   )
 }
@@ -1592,7 +1592,7 @@ plotlyOutput("diff_dim_plot", height = "460px")
 
 # Outlier Detection
 
-*This section evaluates the quality of the internal data independently, flagging records where the value is more than the sidebar's z-score threshold away from the country's own mean.* This works on the internal data alone, so it applies whether or not there is public data to compare against. Only countries with at least one outlier at the current threshold are shown - the sidebar's Highlight Country, if one of the flagged ones, is called out in a distinct color. Hover a point for its full detail (public/internal values, difference, and z-score).
+This section detects for outliers in the updated internal dataset. It displays country and dimension series that contain at least one data point with a z-score ≥ 3, which can be adjusted in the **Outlier z-score threshold** slider. The red highlighted points that are more than 3 standard deviations away from the country/dimension mean could indicate issues with the underlying data.
 
 ```{r}
 #| context: server
@@ -1666,7 +1666,7 @@ output$outlier_dim_plot <- renderPlotly({
   df_full <- build_dim_outlier(d, input$outlier_z)
   flagged_members <- df_full %>% filter(outlier_within_member == TRUE) %>% pull(member) %>% unique()
   if (length(flagged_members) == 0) {
-    return(empty_plotly("No within-member outliers were found at this z-score threshold."))
+    return(empty_plotly("No within-dimension outliers were found at this z-score threshold."))
   }
   sel <- input[[paste0("dimfilter_", dim_col)]]
   highlighted_members <- if (is.null(sel) || length(sel) == 0 || "__ALL__" %in% sel) character(0) else sel
@@ -1719,7 +1719,7 @@ plotlyOutput("outlier_dim_plot", height = "500px")
 
 <div id="metadata-check-marker" style="height:0;"></div>
 
-*Shows this indicator's currently published metadata (definition, methodology, sources, etc.) side by side in English and Spanish, so a translation gap or stale field is easy to spot.* Pulled live from the CEPALSTAT API - only fetched the first time you visit this page (or after loading a different indicator), not on every app load.
+This displays the currently published metadata in English and Spanish. This is pulled live from the CEPALSTAT API when this tab is clicked.
 
 ```{r}
 #| context: server
