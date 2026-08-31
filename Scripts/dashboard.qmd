@@ -8,13 +8,17 @@ server: shiny
 ---
 
 <!--
-Interactive port of Scripts/qc_report.qmd (the original QC report) into a Quarto Dashboard
-with a Shiny backend. Same checks, same flags (±20% difference threshold, z-score outlier
-threshold of 3), same underlying logic - just reactive instead of static, and driven by
-sidebar filters (Country and one per extra dimension) instead of facet grids. Because
-the filters let you narrow down to what you actually want to look at, this doesn't need the
-"facet by country" or "first two dimensions only" versions of each chart - an Inspect Country
-dropdown replaces those.
+Interactive successor to the old Scripts/qc_report.qmd (a static per-indicator QC report,
+since removed - see git history) as a Quarto Dashboard with a Shiny backend. Same checks, same
+flags (±20% difference threshold, z-score outlier threshold of 3), same underlying logic - just
+reactive instead of static, and driven by sidebar filters (Country and one per extra dimension)
+instead of facet grids. Because the filters let you narrow down to what you actually want to
+look at, this doesn't need the "facet by country" or "first two dimensions only" versions of
+each chart - an Inspect Country dropdown replaces those.
+
+Reads Data/Checks/comp_id{indicator_id}.xlsx directly (the same comparison file
+process_indicator()'s export step already writes), so there's no separate "generate the QC
+report" step in the pipeline anymore - just load an indicator's ID here after exporting it.
 
 Everything server-side lives in `context: server` chunks; Quarto assembles them into one
 server function in document order regardless of where they sit in the file. They're kept

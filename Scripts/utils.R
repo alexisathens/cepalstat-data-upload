@@ -665,36 +665,6 @@ format_for_wasabi <- function(data, indicator_id){
   return(data)
 }
 
-# Render qc_report.qmd for an indicator and open it in the browser.
-# Sample usage: render_qc_checks(4046, new_indicator = FALSE, open_qmd = TRUE)
-render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRUE) {
-
-  # Construct qmd file name
-  output_file   <- paste0("qc_report_", indicator_id, ".html")
-
-  # Render the report with injected parameters
-  quarto_render(
-    input          = paste0(here(), "/Scripts/qc_report.qmd"),
-    output_file    = output_file,
-    output_format  = "html",
-    execute_params = list(
-      indicator_id = indicator_id,
-      new_indicator = new_indicator
-    )
-  )
-
-  # Manually move output from Scripts/ to QC Reports/
-  file.rename(
-    from = here::here("Scripts", output_file),
-    to   = here::here("QC Reports", output_file)
-  )
-
-  # Open file in browser
-  if(open_qmd == TRUE){
-    browseURL(here::here("QC Reports", output_file))
-  }
-}
-
 # ---- Bulk processing ----
 
 # Run one indicator: look up its spec, process it, and store the result as result_<id>.

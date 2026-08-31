@@ -9,7 +9,7 @@ indicator_spec <- function(
 
 # debugging
 # spec <- spec_5647
-# global <- list(diagnostics = TRUE, export = FALSE, qc_check = FALSE, open_qmd = FALSE, metadata = FALSE)
+# global <- list(diagnostics = TRUE, export = FALSE, metadata = FALSE)
 
 # generic CEPALSTAT indicator processing function
 process_indicator <- function(spec = indicator_spec, global = global_spec) {
@@ -27,8 +27,6 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   new_indicator <- spec$new_indicator
   diagnostics <- global$diagnostics
   export <- global$export
-  qc_check <- global$qc_check
-  open_qmd <- global$open_qmd
   
   message(glue("▶ Processing indicator {indicator_id} - {indicator_name}:"))
   
@@ -58,8 +56,8 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
       run_diagnostics()
   }
   
-  # get comparison table for quality check qmd
-  comp_table <- comp %>% 
+  # get comparison table for the QC dashboard
+  comp_table <- comp %>%
     run_comparison_checks(., dim_config)
   
   # get wasabi-formatted indicator df
@@ -70,23 +68,16 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     format_for_wasabi(., indicator_id) %>% 
     assert_no_na_cols()
   
-  # export data for wasabi + qc report
+  # export data for wasabi + QC dashboard (Scripts/dashboard.qmd reads comp_id{id}.xlsx directly)
   if (export) {
     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
-    
+
     # Write excel files
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
   }
-  
-  # render quality check report
-  if (qc_check) {
-    # Render data quality checks file
-    render_qc_checks(indicator_id, new_indicator, open_qmd)
-    message(glue("✅ Exported quality check file for {indicator_id}"))
-  }
-  
+
   message(glue("✅ Indicator {indicator_id} processing complete"))
   return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))
 }
