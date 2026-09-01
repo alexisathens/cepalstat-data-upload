@@ -55,6 +55,7 @@ env %<>%
 
 all_dims <- map_dfr(env_ids, function(id) {
   message(glue("Getting dimensions of ", id))
+  Sys.sleep(2) # give API a break
   dims <- get_indicator_dimensions(id) |> 
     filter(!name %in% c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type"))
   
@@ -63,7 +64,6 @@ all_dims <- map_dfr(env_ids, function(id) {
     dim_id = paste(unique(dims$id), collapse = "; "),
     dimension = paste(unique(dims$name), collapse = "; ")
   )
-  Sys.sleep(2) # give API a break
 })
 
 env <- env %>%
