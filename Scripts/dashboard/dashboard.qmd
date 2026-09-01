@@ -76,7 +76,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
 ```{r}
 #| context: server
-# ---- Setup: libraries, palette, and data-loading functions ----
+# ---- Setup: libraries, palette, and data-loading functions  ----
 
 library(shiny)
 library(plotly)
