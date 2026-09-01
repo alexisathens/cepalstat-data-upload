@@ -774,7 +774,7 @@ reactableOutput("summary_table_classification")
 
 ## Row
 
-This dashboard quality-checks updated CEPALSTAT indicator data before it's published. All figures come from the comparison files in Data/Checks, generated at export. This is a snapshot as of the Data Vintage shown, not a live feed from CEPALSTAT. The Overview's metadata is also static and pulled from an internal indicator_metadata file. Only the Metadata Check tab calls the live CEPALSTAT API.
+**Disclaimers:** This dashboard quality-checks updated CEPALSTAT indicator data before it's published. All figures come from the comparison files in Data/Checks, generated at export. This is a snapshot as of the Data Vintage shown, not a live feed from CEPALSTAT. The Overview's metadata is also static and pulled from an internal indicator_metadata file. Only the Metadata Check tab calls the live CEPALSTAT API. Difference-related KPI figures are computed at the country-year level (summed across any extra dimensions) for entries that are present in both the public and internal datasets.
 
 # Coverage
 
