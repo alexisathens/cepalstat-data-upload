@@ -561,21 +561,32 @@ run_comparison_checks <- function(comp, dim_config) {
     rename(value_data = value, value_pub = value.pub) %>%
     select(starts_with("dim"), everything())
 
-  # Calculate absolute and relative differences
+  # Calculate absolute and relative differences. abs_diff/abs_perc_diff are magnitudes (always
+  # >= 0 - abs_perc_diff needed the denominator absolute-valued too, not just the numerator, or a
+  # negative value_pub silently flipped its sign); diff/perc_diff are their signed counterparts,
+  # for anything that cares about direction (e.g. Value Differences' charts).
   comp %<>%
     mutate(value_data = as.numeric(value_data),
            value_pub = as.numeric(value_pub)) %>%
-    mutate(abs_diff = abs(value_data - value_pub),
-           perc_diff = case_when(
-             is.na(value_pub) | is.na(value_data) ~ NA_real_,
-             value_pub == 0 ~ NA_real_,
-             TRUE ~ round((abs_diff / value_pub) * 100, 2)
-           ))
+    mutate(
+      abs_diff = abs(value_data - value_pub),
+      diff = value_data - value_pub,
+      abs_perc_diff = case_when(
+        is.na(value_pub) | is.na(value_data) ~ NA_real_,
+        value_pub == 0 ~ NA_real_,
+        TRUE ~ round((abs_diff / abs(value_pub)) * 100, 2)
+      ),
+      perc_diff = case_when(
+        is.na(value_pub) | is.na(value_data) ~ NA_real_,
+        value_pub == 0 ~ NA_real_,
+        TRUE ~ round((diff / value_pub) * 100, 2)
+      )
+    )
 
   # Flag issues - handle NA values properly
   comp %<>%
     mutate(
-      flag_large_diff = !is.na(perc_diff) & perc_diff > 20,  # Only flag if perc_diff exists and > 20
+      flag_20_diff = !is.na(abs_perc_diff) & abs_perc_diff > 20,  # Only flag if abs_perc_diff exists and > 20
       flag_missing_entry = is.na(value_data) & !is.na(value_pub), # exists in pub but not in data
       flag_new_entry = is.na(value_pub) & !is.na(value_data),     # entry exists in data but not in pub
       flag_some_na = is.na(value_data) | is.na(value_pub) # either new or missing entry
@@ -663,36 +674,6 @@ format_for_wasabi <- function(data, indicator_id){
     select(record_id, indicator_id, source_id, footnotes_id, members_id, value)
 
   return(data)
-}
-
-# Render qc_report.qmd for an indicator and open it in the browser.
-# Sample usage: render_qc_checks(4046, new_indicator = FALSE, open_qmd = TRUE)
-render_qc_checks <- function(indicator_id, new_indicator = FALSE, open_qmd = TRUE) {
-
-  # Construct qmd file name
-  output_file   <- paste0("qc_report_", indicator_id, ".html")
-
-  # Render the report with injected parameters
-  quarto_render(
-    input          = paste0(here(), "/Scripts/qc_report.qmd"),
-    output_file    = output_file,
-    output_format  = "html",
-    execute_params = list(
-      indicator_id = indicator_id,
-      new_indicator = new_indicator
-    )
-  )
-
-  # Manually move output from Scripts/ to QC Reports/
-  file.rename(
-    from = here::here("Scripts", output_file),
-    to   = here::here("QC Reports", output_file)
-  )
-
-  # Open file in browser
-  if(open_qmd == TRUE){
-    browseURL(here::here("QC Reports", output_file))
-  }
 }
 
 # ---- Bulk processing ----

@@ -1,0 +1,1860 @@
+---
+title: "CEPALSTAT QC Dashboard"
+format:
+  dashboard:
+    theme: cosmo
+    scrolling: true
+server: shiny
+---
+
+<!--
+Interactive successor to the old Scripts/qc_report.qmd (a static per-indicator QC report,
+since removed - see git history) as a Quarto Dashboard with a Shiny backend. Same checks, same
+flags (±20% difference threshold, z-score outlier threshold of 3), same underlying logic - just
+reactive instead of static, and driven by sidebar filters (Country and one per extra dimension)
+instead of facet grids. Because the filters let you narrow down to what you actually want to
+look at, this doesn't need the "facet by country" or "first two dimensions only" versions of
+each chart - an Inspect Country dropdown replaces those.
+
+Reads Data/Checks/comp_id{indicator_id}.xlsx directly (the same comparison file
+process_indicator()'s export step already writes), so there's no separate "generate the QC
+report" step in the pipeline anymore - just load an indicator's ID here after exporting it.
+
+Everything server-side lives in `context: server` chunks; Quarto assembles them into one
+server function in document order regardless of where they sit in the file. They're kept
+next to the page/card markup they power (rather than one giant chunk up top) so each section
+of this file is self-contained to read and edit.
+
+`context: server` chunks are extracted for the server function, not executed during the
+top-to-bottom pass that knits the UI - so any package whose functions are called directly in
+UI chunks (reactableOutput(), plotlyOutput()) has to be loaded outside of context: server, or
+it won't exist yet when the UI chunk referencing it gets knitted.
+-->
+
+```{r}
+# Loaded in a plain (non-server) chunk on purpose - see note above.
+library(reactable)
+library(plotly)
+```
+
+<!--
+Quarto Dashboard pages are navigated by toggling which page's pane is shown, with inactive pages
+kept in the DOM but hidden - so a Plotly widget on a page you haven't visited yet gets rendered
+against a hidden (zero-size) container and can't measure it correctly, leaving it laid out
+incorrectly (this is what was causing the "New Values" facet grid to look fine in row 1 then
+squished below - see git history for that fix). Nudging Plotly to recompute its layout on every
+hash change is a best-effort mitigation for that generally, kept here even though the original
+facet case itself ended up fixed a different way (static rendering).
+
+The Metadata Check page's CEPALSTAT API calls need a similar "has this page actually become
+visible" signal (see input$metadata_tab_visited in that page's server code), but window.location.
+hash turned out NOT to be reliable for that: Quarto's dashboard navigation shows/hides page panes
+via its own JS rather than real anchor navigation, so a "hashchange" listener alone can miss it
+entirely, which is why the tab never loaded anything on click. Detected here instead with an
+IntersectionObserver watching a marker element placed directly on that page (see
+#metadata-check-marker in that page's markdown) - it fires purely off the marker's actual
+on-screen visibility, so it works no matter how the page-switching is implemented under the hood.
+-->
+<script>
+window.addEventListener("hashchange", function () {
+  setTimeout(function () { window.dispatchEvent(new Event("resize")); }, 250);
+});
+
+document.addEventListener("DOMContentLoaded", function () {
+  var marker = document.getElementById("metadata-check-marker");
+  if (!marker || !window.IntersectionObserver) return;
+  var observer = new IntersectionObserver(function (entries) {
+    entries.forEach(function (entry) {
+      if (entry.isIntersecting && window.Shiny) {
+        Shiny.setInputValue("metadata_tab_visited", true, {priority: "event"});
+      }
+    });
+  });
+  observer.observe(marker);
+});
+</script>
+
+```{r}
+#| context: server
+# ---- Setup: libraries, palette, and data-loading functions  ----
+
+library(shiny)
+library(plotly)
+library(reactable)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(tibble)
+library(glue)
+library(scales)
+library(readxl)
+library(magrittr)
+library(stringr)
+library(lubridate)
+library(here)
+library(fs)
+
+source(here("Scripts/utils.R")) # also loads the global `meta` and `iso` tables
+
+pal <- list(
+  nav = "#17485A", header = "#3F8EAB", highlight = "#20B2B0", background = "#C7DDE4",
+  missing = "white", present = "#e6e6e6",
+  before = "#2a78d6",
+  flag = "#d03b3b", good = "#0ca30c",
+  neutral = "#c3c2b7", grid = "#e1e0d9", fill_both = "#e1e0d9", fill_missing = "#fcfcfb",
+  ink = "#0b0b0b", ink2 = "#52514e",
+  categorical = c("#C53532", "#2E4655", "#5C9EA9", "#D27F66", "#83B99B", "#B59B93", "#C77D1B",  "#707173", "#759A82", "#617783", "#BBC6CF")
+)
+
+theme_qc <- function() {
+  theme_minimal(base_size = 12) %+replace%
+    theme(
+      plot.title = element_text(face = "bold", size = rel(1.0), color = pal$ink, hjust = 0),
+      axis.text = element_text(color = pal$ink2, size = rel(0.9)),
+      axis.title = element_text(color = pal$ink2),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.4),
+      panel.grid.minor = element_blank(),
+      legend.title = element_text(face = "bold", color = pal$ink),
+      legend.text = element_text(color = pal$ink2)
+    )
+}
+
+# No title/subtitle here on purpose: the Quarto Dashboard card already shows a title bar
+# (via each chunk's #| title: option), so a second, plotly-internal title was redundant - and
+# the fixed top margin added to make room for it was the main source of the extra whitespace.
+style_plotly <- function(gp, legend_bottom = TRUE) {
+  if (legend_bottom) {
+    gp <- gp %>% layout(legend = list(orientation = "h", y = -0.15))
+  } else {
+    gp <- gp %>% layout(showlegend = FALSE)
+  }
+  gp
+}
+
+# A blank plotly canvas with a centered message - used instead of req()-blocking an output
+# outright, so a card always shows something (the real chart, or a clear reason it's empty)
+# rather than going silently blank with no explanation.
+empty_plotly <- function(msg) {
+  plotly_empty(type = "scatter", mode = "markers") %>%
+    layout(
+      xaxis = list(visible = FALSE), yaxis = list(visible = FALSE),
+      annotations = list(list(text = msg, showarrow = FALSE, font = list(size = 14, color = pal$ink2)))
+    )
+}
+
+# Same as empty_plotly(), for a renderPlot()/plotOutput() static ggplot2 card (see
+# dim_faceted for why that's sometimes the safer choice over renderPlotly/ggplotly).
+empty_plot <- function(msg) {
+  ggplot() +
+    annotate("text", x = 0, y = 0, label = msg, size = 4, color = pal$ink2) +
+    theme_void()
+}
+
+# Pixel height for a facet_wrap grid of country panels (3 columns), sized to the number of
+# countries currently in view. Used with plotlyOutput(height=) via a renderUI wrapper, since
+# that's the reliable way to size a Shiny-rendered plotly widget (unlike the fig.height chunk
+# option, which only applies to a chunk's own auto-printed output, not renderPlotly()).
+facet_height_px <- function(n_facets, ncol = 3, per_row = 170, base = 100) {
+  paste0(base + ceiling(max(n_facets, 1) / ncol) * per_row, "px")
+}
+
+# Blends a hex color toward light gray, for a "duller/muted" version of the same hue - used on
+# the Published Preview page (solid full color = INTERNAL, muted dot-dash = PUBLIC), so a
+# before/after pair never needs two hand-picked colors.
+mute_color <- function(hex, amount = 0.55) {
+  rgb_val <- grDevices::col2rgb(hex) / 255
+  gray_target <- 0.75
+  muted <- rgb_val * (1 - amount) + gray_target * amount
+  grDevices::rgb(muted[1], muted[2], muted[3])
+}
+
+# Blends a hex color toward white at the given strength, for a pastel version of it - used on
+# the Coverage chart so Added/Removed cells read as a muted version of the Overview tiles'
+# color, not the full-strength pal$good/pal$flag.
+tint_color <- function(hex, amount = 0.55) {
+  rgb_val <- grDevices::col2rgb(hex) / 255
+  tinted <- rgb_val * (1 - amount) + 1 * amount
+  grDevices::rgb(tinted[1], tinted[2], tinted[3])
+}
+
+# Linearly interpolates from color `from` (at t=0) to color `to` (at t=1) - t is vectorized, so
+# this returns one hex color per element of t. General-purpose gradient blend, unlike
+# tint_color()/mute_color() which always blend toward a fixed white/gray endpoint.
+blend_colors <- function(from, to, t) {
+  t <- pmin(pmax(t, 0), 1)
+  from_rgb <- grDevices::col2rgb(from) / 255
+  to_rgb <- grDevices::col2rgb(to) / 255
+  grDevices::rgb(
+    from_rgb[1] * (1 - t) + to_rgb[1] * t,
+    from_rgb[2] * (1 - t) + to_rgb[2] * t,
+    from_rgb[3] * (1 - t) + to_rgb[3] * t
+  )
+}
+
+# Colors a % difference on a gradient that starts (lightest) exactly at the sidebar's Threshold
+# and reaches full saturation at 3x the threshold - e.g. for a 20% threshold, a 20% difference
+# is barely tinted, 40% is a clear mid-red, and 60%+ is the full, most-alarming red. Anything
+# below threshold isn't flagged at all, so it gets the neutral "fine" color instead of a gradient
+# position - there's no such thing as a "very light green," just "not red."
+threshold_gradient_color <- function(x, threshold, base_color = pal$flag) {
+  light <- tint_color(base_color, amount = 0.8)
+  frac <- (x - threshold) / (threshold * 2)
+  ifelse(is.na(x) | x < threshold, pal$neutral, blend_colors(light, base_color, frac))
+}
+
+# Wraps a tall plot output in a fixed-height, scrollable container. Keeps the card's own
+# height "regular" (not growing to match a 30+ country facet grid) while the plot itself still
+# renders at its full, correctly-proportioned height inside - capping the container's height
+# directly (instead of this wrapper) would just squish the panels again. output_fn defaults to
+# plotlyOutput; pass plotOutput for a static ggplot2 render (see new_faceted for why that's
+# sometimes the safer choice for a many-panel facet_wrap grid).
+scrollable_plot <- function(output_id, plot_height_px, max_visible_px = 700, output_fn = plotlyOutput) {
+  div(
+    style = glue("max-height:{max_visible_px}px; overflow-y:auto;"),
+    output_fn(output_id, height = plot_height_px)
+  )
+}
+
+callout <- function(text, type = c("note", "good", "flag")) {
+  type <- match.arg(type)
+  color <- switch(type, note = pal$before, good = pal$good, flag = pal$flag)
+  icon  <- switch(type, note = "ℹ", good = "✓", flag = "⚠")
+  glue(
+    '<div style="border-left:4px solid {color}; background:#f7f7f5; padding:0.7rem 1rem; ',
+    'border-radius:4px; margin:0.5rem 0;"><strong>{icon}</strong>&nbsp; {text}</div>'
+  )
+}
+
+# Cached per indicator_id - the expensive part (read files, resolve dimension names via API).
+# Keyed on the comp file's own modification time, not just the indicator_id: a plain
+# id-keyed cache would keep serving an old in-memory copy forever if comp_id{id}.xlsx gets
+# regenerated (e.g. a corrected re-export) while the R session stays running, silently showing
+# stale numbers with no indication anything was wrong - "Load indicator" alone wouldn't have
+# picked up the change.
+.qc_raw_cache <- new.env(parent = emptyenv())
+
+load_qc_raw <- function(indicator_id, use_cache = TRUE) {
+  cache_key <- as.character(indicator_id)
+
+  comp_path <- here(glue("Data/Checks/comp_id{indicator_id}.xlsx"))
+  if (!file_exists(comp_path)) {
+    stop(glue(
+      "No comparison file found for indicator {indicator_id} at Data/Checks/comp_id{indicator_id}.xlsx. ",
+      "Run the indicator through the processing pipeline (export = TRUE) first."
+    ))
+  }
+  file_mtime <- file.info(comp_path)$mtime
+
+  if (use_cache && exists(cache_key, envir = .qc_raw_cache)) {
+    cached <- get(cache_key, envir = .qc_raw_cache)
+    if (identical(cached$file_mtime, file_mtime)) {
+      return(cached$result)
+    }
+  }
+
+  comp_detailed <- read_xlsx(comp_path)
+  comp_detailed %<>%
+    mutate(across(.cols = matches("dim"), .fns = as.character)) %>%
+    mutate(across(.cols = matches("value|^abs_diff$|^diff$|^perc_diff$|^abs_perc_diff$"), .fns = as.numeric)) %>%
+    mutate(across(.cols = starts_with("flag_"), .fns = as.logical))
+
+  # One lookup into Data/indicator_metadata.xlsx for every field this indicator has there - a
+  # 0-row result (indicator not yet in the metadata sheet) or a column the sheet doesn't have yet
+  # (e.g. source_id - see build_metadata_table.R, which designs for it but the sheet checked in
+  # today predates that column) falls back to NA_character_ for that field rather than failing.
+  # Deliberately sheet-only, no CEPALSTAT API calls, for every field on this table.
+  meta_row <- meta %>% filter(id == indicator_id)
+  meta_field <- function(col) {
+    if (nrow(meta_row) == 0 || !col %in% names(meta_row)) return(NA_character_)
+    as.character(meta_row[[col]][1])
+  }
+  indicator_name <- meta_field("indicator")
+  source_val <- meta_field("source")
+  source_id_val <- meta_field("source_id")
+  cat1_val <- meta_field("cat1")
+  cat2_val <- meta_field("cat2")
+  cat3_val <- meta_field("cat3")
+  # Stored as "Y"/blank in the sheet - anything else (including NA) reads as "No".
+  yearbook_val <- if (isTRUE(meta_field("yearbook") == "Y")) "Yes" else "No"
+  profile_val <- if (isTRUE(meta_field("profile") == "Y")) "Yes" else "No"
+
+  files <- dir_ls(here("Data/Cleaned"), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
+  data_date <- if (length(files) > 0) {
+    latest_file <- tibble(
+      file = files,
+      datetime = str_extract(files, "\\d{4}-\\d{2}-\\d{2}T\\d{6}") %>% ymd_hms(truncated = 1)
+    ) %>% arrange(desc(datetime)) %>% slice(1) %>% pull(file)
+    str_extract(latest_file, "\\d{4}-\\d{2}-\\d{2}T\\d{6}")
+  } else {
+    NA_character_
+  }
+
+  ind_dims <- comp_detailed %>% select(ends_with("_label")) %>% names()
+  base_dims <- c("dim_29117_label", "dim_208_label") # year, country
+  extra_dims <- setdiff(ind_dims, base_dims)
+  extra_dim_ids <- str_extract(extra_dims, "\\d+")
+
+  extra_dim_names <- if (length(extra_dim_ids) > 0) {
+    get_indicator_dimensions(indicator_id) %>% filter(id %in% extra_dim_ids) %>% pull(name)
+  } else {
+    character(0)
+  }
+
+  has_public_data <- any(!is.na(comp_detailed$value_pub))
+  has_extra_dims <- length(extra_dims) >= 1
+  dim_labels <- setNames(extra_dim_names, extra_dims)
+  dim_members <- setNames(
+    lapply(extra_dims, function(dc) sort(unique(na.omit(comp_detailed[[dc]])))),
+    extra_dims
+  )
+
+  all_countries <- sort(unique(comp_detailed$dim_208_label))
+  all_years <- sort(unique(as.numeric(comp_detailed$dim_29117_label)))
+
+  result <- list(
+    indicator_id = indicator_id, indicator_name = indicator_name,
+    source = source_val, source_id = source_id_val, data_date = data_date,
+    cat1 = cat1_val, cat2 = cat2_val, cat3 = cat3_val,
+    yearbook = yearbook_val, profile = profile_val,
+    comp_detailed = comp_detailed, all_countries = all_countries,
+    year_min = min(all_years), year_max = max(all_years),
+    extra_dims = extra_dims, extra_dim_ids = extra_dim_ids,
+    dim_labels = dim_labels, dim_members = dim_members,
+    has_public_data = has_public_data, has_extra_dims = has_extra_dims,
+    n_records = nrow(comp_detailed)
+  )
+  if (use_cache) assign(cache_key, list(result = result, file_mtime = file_mtime), envir = .qc_raw_cache)
+  result
+}
+
+# Cheap - filters already-loaded data by country/year/dimension-member selections, then
+# re-aggregates to country/year and recomputes every flag. Always operates on the FULL data -
+# every country, year, and dimension member - per diff_threshold, adjustable from the sidebar's
+# Threshold control (the original report's ±20% and z-score-of-3 conventions are the defaults).
+# The sidebar's Highlight controls (Country, dimension members) never narrow what THIS
+# function includes. Individual charts elsewhere are free to use those same control values to
+# actually filter their own data instead of just spotlighting it - see each chart's own card
+# title ("Filter: ..." vs "Highlight: ...") for which one it does.
+build_filtered_view <- function(raw, diff_threshold = 20, outlier_z = 3) {
+  comp_detailed <- raw$comp_detailed
+
+  group_cols <- c("dim_208", "dim_29117", "dim_208_label", "dim_29117_label")
+
+  # Full totals - every row, whichever side has data - for status/outlier detection/coverage,
+  # which need the real reported amounts regardless of whether a dimension member has a
+  # counterpart on the other side.
+  comp_full <- comp_detailed %>%
+    group_by(across(all_of(group_cols))) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  # Matched totals - filter to rows with a value on BOTH sides first, then sum. Used only for
+  # the internal-vs-public difference below (abs_diff/diff/abs_perc_diff/perc_diff/
+  # flag_large_diff), so a newly added or removed dimension member doesn't inflate the
+  # difference just because it has no counterpart to compare against (that's tracked separately,
+  # via status below and find_dim_changes() on the Overview page). A country-year with zero
+  # matched rows is simply absent here and picks up NA after the join below.
+  comp_matched <- comp_detailed %>%
+    filter(!is.na(value_data), !is.na(value_pub)) %>%
+    group_by(across(all_of(group_cols))) %>%
+    summarize(
+      value_data_matched = sum(value_data),
+      value_pub_matched = sum(value_pub),
+      .groups = "drop"
+    )
+
+  comp <- comp_full %>%
+    left_join(comp_matched, by = group_cols) %>%
+    # abs_diff/abs_perc_diff are magnitudes (always >= 0 - abs_perc_diff needs the denominator
+    # absolute-valued too, not just the numerator, or a negative value_pub_matched silently
+    # flips its sign); diff/perc_diff are their signed counterparts, for anything that cares
+    # about direction (e.g. Value Differences' charts). Mirrors run_comparison_checks() in
+    # utils.R, which computes the same fields the same way for the exported comp_id{id}.xlsx -
+    # kept as two separate implementations on purpose (see git history) rather than having this
+    # dashboard read the file's own columns, since this one re-aggregates to country-year first
+    # (see comp_matched above) and applies the sidebar's adjustable Threshold, neither of which
+    # a static export can do - but that means a formula change here needs the same change there.
+    mutate(
+      abs_diff = abs(value_data_matched - value_pub_matched),
+      diff = value_data_matched - value_pub_matched,
+      abs_perc_diff = round((abs_diff / abs(value_pub_matched)) * 100, 2),
+      perc_diff = round((diff / value_pub_matched) * 100, 2)
+    ) %>%
+    mutate(
+      flag_large_diff = !is.na(abs_perc_diff) & abs_perc_diff > diff_threshold,
+      flag_missing_entry = is.na(value_data),
+      flag_new_entry = is.na(value_pub),
+      flag_some_na = is.na(value_data) | is.na(value_pub)
+    ) %>%
+    mutate(status = case_when(
+      is.na(value_data) & is.na(value_pub) ~ "Missing in Both",
+      is.na(value_data) ~ "Old Only",
+      is.na(value_pub) ~ "New Only",
+      TRUE ~ "Present in Both"
+    )) %>%
+    group_by(dim_208_label) %>%
+    mutate(
+      z_within_country = round(as.numeric(scale(value_data)), 1),
+      outlier_within_country = abs(z_within_country) > outlier_z
+    ) %>%
+    ungroup() %>%
+    mutate(flag_some_value = ifelse(outlier_within_country == TRUE | flag_large_diff == TRUE, TRUE, FALSE))
+
+  all_combinations <- expand_grid(
+    country = raw$all_countries,
+    year = as.character(raw$year_min:raw$year_max)
+  )
+  coverage_check <- all_combinations %>%
+    left_join(comp, by = c("country" = "dim_208_label", "year" = "dim_29117_label")) %>%
+    mutate(status = ifelse(is.na(status), "Missing in Both", status))
+
+  countries_with_flags <- comp %>%
+    filter(flag_some_na == FALSE & flag_some_value == TRUE) %>%
+    distinct(dim_208_label) %>%
+    pull()
+
+  list(
+    comp = comp, comp_detailed = comp_detailed, coverage_check = coverage_check,
+    countries = raw$all_countries, countries_with_flags = countries_with_flags
+  )
+}
+
+# Finds member values of one dimension (e.g. a specific year, country, or extra-dimension
+# category) that are ENTIRELY new or entirely missing relative to the public data - i.e. the
+# member never appears with a value on one side at all, not just a few missing rows. Used for
+# the Overview page's "added"/"removed" KPIs. Labels each item with dim_label for display when
+# results from multiple dimensions get combined (e.g. "Year: 2025", "Country: Haiti").
+find_dim_changes <- function(df, dim_col, dim_label) {
+  member_status <- df %>%
+    group_by(.data[[dim_col]]) %>%
+    summarise(
+      has_data = any(!is.na(value_data)),
+      has_pub  = any(!is.na(value_pub)),
+      .groups = "drop"
+    )
+  added <- member_status %>% filter(has_data, !has_pub) %>% pull(.data[[dim_col]])
+  removed <- member_status %>% filter(has_pub, !has_data) %>% pull(.data[[dim_col]])
+  list(
+    added = if (length(added) > 0) paste0(dim_label, ": ", added) else character(0),
+    removed = if (length(removed) > 0) paste0(dim_label, ": ", removed) else character(0)
+  )
+}
+
+# Condenses find_dim_changes()'s one-row-per-member output (e.g. "Year: 2020", "Year: 2021",
+# "Economic activity: Construction") down to one row per DIMENSION, with its members
+# comma-joined (e.g. "Year: 2020, 2021", "Economic activity: Construction") - for display only;
+# the un-condensed count of individual members is used for the tile's headline number.
+condense_changes <- function(items) {
+  if (length(items) == 0) return(character(0))
+  dim_label <- sub(":.*$", "", items)
+  member <- sub("^[^:]*: ", "", items)
+  tibble(dim_label = dim_label, member = member) %>%
+    group_by(dim_label) %>%
+    summarise(joined = paste(member, collapse = ", "), .groups = "drop") %>%
+    mutate(line = paste0(dim_label, ": ", joined)) %>%
+    pull(line)
+}
+
+# Narrows comp_detailed (or any data frame with the indicator's first extra-dimension column)
+# to the sidebar Highlight section's selected member(s), honoring the dimension filter's "(All)"
+# sentinel "__ALL__" (see dim_filters_ui) - not a real member value, so it means "don't narrow"
+# rather than "match nothing." A no-op if the indicator has no extra dimension. Shared by every
+# chart whose card title says it highlights on Dimension.
+filter_by_dim_highlight <- function(df, raw, dim_selections = list()) {
+  if (!raw$has_extra_dims) return(df)
+  dim_col <- raw$extra_dims[1]
+  sel <- dim_selections[[dim_col]]
+  if (is.null(sel) || length(sel) == 0 || "__ALL__" %in% sel) return(df)
+  df %>% filter(.data[[dim_col]] %in% sel)
+}
+
+# Aggregates one highlighted country's values by year for the Published Comparison page - one
+# row per year x dimension member (or a single "Value" pseudo-member when the indicator has no
+# extra dimension), mirroring how CEPALSTAT's own published chart aggregates a country/
+# dimension selection down to a single series.
+build_published_preview <- function(raw, country, dim_selections = list()) {
+  df <- raw$comp_detailed %>%
+    filter(dim_208_label == country) %>%
+    filter_by_dim_highlight(raw, dim_selections)
+
+  if (raw$has_extra_dims) {
+    dim_col <- raw$extra_dims[1]
+    df <- df %>% rename(member = all_of(dim_col))
+  } else {
+    df <- df %>% mutate(member = "Value")
+  }
+
+  df %>%
+    group_by(dim_29117_label, member) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(year = as.numeric(dim_29117_label)) %>%
+    select(-dim_29117_label)
+}
+```
+
+```{r}
+#| context: server
+# ---- Reactives ----
+
+qc_data <- eventReactive(input$load, {
+  req(input$indicator_id)
+  tryCatch(
+    load_qc_raw(input$indicator_id),
+    # Explicitly namespaced - jsonlite::validate() (a JSON-syntax checker, unrelated to Shiny)
+    # gets attached after shiny and masks shiny::validate() by name, so a bare validate() call
+    # here silently returns a plain boolean instead of signaling a Shiny validation error -
+    # which then makes qc_data() resolve to that boolean, breaking every "d$..." access
+    # downstream with a confusing "$ operator is invalid for atomic vectors" instead of
+    # showing the actual underlying error message.
+    error = function(e) shiny::validate(shiny::need(FALSE, conditionMessage(e)))
+  )
+}, ignoreNULL = FALSE)
+
+# Always the full dataset (every country/year/dimension member), aggregated at the
+# sidebar's Threshold setting - see build_filtered_view()'s comment for why this no longer
+# takes any country/year/dimension-member narrowing.
+filtered_data <- reactive({
+  d <- qc_data()
+  req(d, input$threshold, input$outlier_z)
+  build_filtered_view(d, diff_threshold = input$threshold, outlier_z = input$outlier_z)
+})
+```
+
+```{r}
+#| context: server
+# ---- Sidebar filter UI: rebuilt whenever a new indicator loads ----
+
+output$status_ui <- renderUI({
+  d <- qc_data()
+  name_display <- if (is.na(d$indicator_name)) glue("Indicator {d$indicator_id}") else d$indicator_name
+  div(
+    style = glue("padding:0.65rem 0.8rem; background:{pal$background}; border-radius:8px;"),
+    div(style = glue("font-weight:700; font-size:1.05em; color:{pal$nav}; line-height:1.3;"), name_display),
+    div(
+      style = glue("margin-top:0.3rem; font-size:0.78em; color:{pal$header};"),
+      glue("Vintage {if (is.na(d$data_date)) 'unknown' else d$data_date}")
+    )
+  )
+})
+
+output$dim_filters_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(NULL)
+  tagList(lapply(d$extra_dims, function(dc) {
+    members <- d$dim_members[[dc]]
+    choices <- c("(All)" = "__ALL__", setNames(members, members))
+    # Defaults to a "Total" member if this dimension has one (e.g. an age-group breakdown that
+    # also reports an all-ages total) - that's usually the more useful starting point than every
+    # member lumped under "(All)", which is the fallback when there's no such member.
+    total_member <- members[str_detect(members, regex("total", ignore_case = TRUE))]
+    default_sel <- if (length(total_member) > 0) total_member[1] else "__ALL__"
+    selectizeInput(
+      inputId = paste0("dimfilter_", dc),
+      label = d$dim_labels[[dc]],
+      choices = choices,
+      selected = default_sel,
+      multiple = TRUE
+    )
+  }))
+})
+
+# The Highlight section's Country control - defaults to Latin America and the Caribbean, and
+# drives the single-country charts (Inspect Country's old job) across every page.
+output$highlight_country_ui <- renderUI({
+  d <- qc_data()
+  default_country <- if ("Latin America and the Caribbean" %in% d$all_countries) {
+    "Latin America and the Caribbean"
+  } else {
+    d$all_countries[1]
+  }
+  selectInput("country", "Country", choices = d$all_countries, selected = default_country)
+})
+```
+
+## {.sidebar}
+
+```{r}
+numericInput("indicator_id", "Indicator ID", value = 3381, min = 1, step = 1)
+```
+
+```{r}
+actionButton("load", "Load indicator", class = "btn-primary w-100")
+```
+
+---
+
+```{r}
+uiOutput("status_ui")
+```
+
+---
+
+**Highlight**
+
+```{r}
+uiOutput("highlight_country_ui")
+```
+
+```{r}
+uiOutput("dim_filters_ui")
+```
+
+---
+
+**Threshold**
+
+```{r}
+sliderInput("threshold", "Difference threshold (%)", min = 0, max = 100, value = 20, step = 1)
+```
+
+```{r}
+sliderInput("outlier_z", "Outlier z-score threshold", min = 1, max = 5, value = 3, step = 0.5)
+```
+
+# Overview
+
+```{r}
+#| context: server
+# Shared styling for the Overview page's two metadata tables (see below) - bold nav-colored
+# labels, compact borderless rows, so it reads more like a clean fact sheet than a generic data
+# table. Split into two side-by-side tables rather than one long one: general data facts on the
+# left, CEPALSTAT classification/metadata on the right.
+metadata_table <- function(info) {
+  df <- tibble(Metric = names(info), Value = as.character(unlist(info)))
+  reactable(
+    df,
+    columns = list(
+      Metric = colDef(width = 195, style = list(fontWeight = 700, color = pal$nav)),
+      Value = colDef(style = list(color = pal$ink))
+    ),
+    defaultColDef = colDef(headerStyle = list(background = pal$background, color = pal$nav)),
+    bordered = FALSE, borderless = TRUE, highlight = TRUE, compact = TRUE, wrap = TRUE,
+    pagination = FALSE
+  )
+}
+
+output$summary_table_general <- renderReactable({
+  d <- qc_data()
+  metadata_table(list(
+    "Indicator ID" = d$indicator_id,
+    "Indicator Name" = d$indicator_name,
+    "Data Vintage" = d$data_date,
+    "Time Coverage" = paste(d$year_min, "-", d$year_max),
+    "Number of Countries" = length(d$all_countries),
+    "Total Records" = d$n_records,
+    "Has Published Data" = ifelse(d$has_public_data, "Yes", "No (new indicator)")
+  ))
+})
+
+output$summary_table_classification <- renderReactable({
+  d <- qc_data()
+  metadata_table(list(
+    "Data Source" = d$source,
+    "Source ID" = d$source_id,
+    "Dimension Names" = if (length(d$dim_labels) > 0) paste(d$dim_labels, collapse = ", ") else "(none)",
+    "Dimension IDs" = if (length(d$extra_dim_ids) > 0) paste(d$extra_dim_ids, collapse = ", ") else "(none)",
+    "Component" = d$cat1,
+    "Subcomponent" = d$cat2,
+    "Topic" = d$cat3,
+    "Featured in Yearbook" = d$yearbook,
+    "Featured in Profiles" = d$profile
+  ))
+})
+
+# Color a percentage by severity: green <10%, yellow 10-30%, red >30% (also used for the
+# large-difference and mean-%-difference tiles, per the same scale).
+severity_color <- function(pct) {
+  if (is.na(pct)) return(pal$neutral)
+  if (pct < 10) pal$good else if (pct <= 30) "#eda100" else pal$flag
+}
+
+# Small hand-built line icons (thin stroke, no fill) matching the reference gallery's outlined
+# icon style - plain inline SVG rather than an icon font/package, so there's no new dependency
+# and the stroke color always matches the tile exactly.
+svg_icon <- function(name, color) {
+  attrs <- glue('viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="{color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"')
+  body <- switch(name,
+    warning = glue('<path d="M12 3 L22 20 L2 20 Z"/><line x1="12" y1="9" x2="12" y2="14"/><circle cx="12" cy="17" r="1" fill="{color}" stroke="none"/>'),
+    delta   = '<path d="M12 4 L21 19 L3 19 Z"/>',
+    plus    = '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+    minus   = '<line x1="5" y1="12" x2="19" y2="12"/>'
+  )
+  HTML(glue('<svg {attrs}>{body}</svg>'))
+}
+
+# A stat-card KPI tile in the style of a typical gallery dashboard: a circular outlined icon
+# badge on the left, and to its right a small bold label, the big number, and a small caption
+# below (one line per item, e.g. for a list of added/removed dimension members) - all in the
+# one theme color, on a solid light tint of it rather than a faint wash.
+kpi_tile <- function(icon, value, label, color, caption = NULL) {
+  icon_badge <- div(
+    style = glue(
+      "flex:0 0 auto; width:46px; height:46px; border-radius:50%; border:2.5px solid {color}; ",
+      "display:flex; align-items:center; justify-content:center;"
+    ),
+    icon
+  )
+  text_col <- div(
+    style = "flex:1 1 auto; min-width:0;",
+    div(style = glue("font-size:0.78rem; font-weight:700; color:{color};"), label),
+    div(style = glue("font-size:1.8rem; font-weight:700; color:{color}; line-height:1.15; margin-top:0.05rem;"), value),
+    if (!is.null(caption) && length(caption) > 0) {
+      div(
+        style = glue("font-size:0.7rem; color:{color}; margin-top:0.25rem; line-height:1.4;"),
+        lapply(caption, function(x) tagList(x, br()))
+      )
+    }
+  )
+  div(
+    style = glue(
+      "flex:1 1 0; min-width:190px; background:{color}22; border-radius:10px; ",
+      "padding:0.75rem 0.9rem; display:flex; align-items:center; gap:0.75rem;"
+    ),
+    icon_badge, text_col
+  )
+}
+
+# Four KPI tiles: how much changed (large-difference % and median absolute % difference, both
+# computed on the full data at the sidebar's Threshold - median rather than mean so a few
+# extreme rows don't dominate, same reasoning and same tile as Value Comparisons' Median
+# Absolute % Difference tile), and what changed structurally (dimension members - year, country,
+# or the extra dimension - that are entirely new or entirely gone relative to the public data,
+# not just a few missing rows).
+output$kpi_boxes_ui <- renderUI({
+  d <- qc_data()
+
+  if (d$has_public_data) {
+    fd <- filtered_data()
+    present <- fd$comp %>% filter(status == "Present in Both")
+    pct_large <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
+    median_abs <- round(median(present$abs_perc_diff[is.finite(present$abs_perc_diff)], na.rm = TRUE), 1)
+
+    dim_specs <- list(c("dim_29117_label", "Year"), c("dim_208_label", "Country"))
+    if (d$has_extra_dims) {
+      dim_col <- d$extra_dims[1]
+      dim_specs <- c(dim_specs, list(c(dim_col, d$dim_labels[[dim_col]])))
+    }
+    changes <- lapply(dim_specs, function(spec) find_dim_changes(d$comp_detailed, spec[1], spec[2]))
+    added <- unlist(lapply(changes, `[[`, "added"))
+    removed <- unlist(lapply(changes, `[[`, "removed"))
+
+    pct_large_display <- if (is.na(pct_large)) "N/A" else glue("{pct_large}%")
+    median_abs_display <- if (is.na(median_abs)) "N/A" else glue("{median_abs}%")
+    large_color <- severity_color(pct_large)
+    median_color <- severity_color(median_abs)
+  } else {
+    pct_large_display <- "N/A"
+    median_abs_display <- "N/A"
+    added <- character(0)
+    removed <- character(0)
+    large_color <- pal$neutral
+    median_color <- pal$neutral
+  }
+
+  added_color <- if (length(added) > 0) pal$good else pal$neutral
+  removed_color <- if (length(removed) > 0) pal$flag else pal$neutral
+
+  div(
+    style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
+    kpi_tile(
+      svg_icon("warning", large_color), pct_large_display, "Large Differences", large_color,
+      caption = glue("of values differ by more than {input$threshold}% from what's published")
+    ),
+    kpi_tile(
+      svg_icon("delta", median_color), median_abs_display, "Median Absolute % Difference", median_color,
+      caption = "typical size of change, robust to outliers"
+    ),
+    kpi_tile(svg_icon("plus", added_color), length(added), "Added", added_color, caption = condense_changes(added)),
+    kpi_tile(svg_icon("minus", removed_color), length(removed), "Removed", removed_color, caption = condense_changes(removed))
+  )
+})
+```
+
+## Row {height=160px}
+
+```{r}
+uiOutput("kpi_boxes_ui")
+```
+
+## Row
+
+```{r}
+#| title: General
+reactableOutput("summary_table_general")
+```
+
+```{r}
+#| title: Classification & Source
+reactableOutput("summary_table_classification")
+```
+
+## Row
+
+**Disclaimers:** This dashboard quality-checks updated CEPALSTAT indicator data before it's published. All figures come from the comparison files in Data/Checks, generated at export. This is a snapshot as of the Data Vintage shown, not a live feed from CEPALSTAT. The Overview's metadata is also static and pulled from an internal indicator_metadata file. Only the Metadata Check tab calls the live CEPALSTAT API. Difference-related KPI figures are computed at the country-year level (summed across any extra dimensions) for entries that are present in both the public and internal datasets.
+
+# Coverage
+
+This shows for what country-year and country-dimension combinations data are available. Green squares represent cases where new data has been added in the internal dataset, whereas red squares show that there's published data missing from the internal dataset. Gray values show that there is data available in both.
+
+```{r}
+#| context: server
+plot_coverage <- function(df) {
+  df2 <- df %>%
+    mutate(
+      country = factor(country, levels = sort(unique(country), decreasing = TRUE)),
+      status = factor(status, levels = c("Present in Both", "New Only", "Old Only", "Missing in Both"))
+    )
+  ggplot(df2, aes(
+    x = year, y = country, color = status,
+    text = paste0("Country: ", country, "<br>Year: ", year, "<br>Status: ", status)
+  )) +
+    geom_point(shape = 15, size = 3.2) +
+    scale_color_manual(values = c(
+      "Missing in Both" = pal$missing,
+      "Old Only"        = tint_color(pal$flag),
+      "New Only"        = tint_color(pal$good),
+      "Present in Both" = pal$present
+    ), drop = FALSE) +
+    labs(x = NULL, y = NULL, color = "Coverage") +
+    theme_qc() +
+    theme(
+      legend.position = "bottom", panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+output$coverage_plot <- renderPlotly({
+  fd <- filtered_data()
+  ggplotly(plot_coverage(fd$coverage_check), tooltip = "text") %>%
+    style_plotly()
+})
+
+# Same four coverage statuses as the country x year grid above, but grouped by dimension member x
+# year instead - lets a gap confined to one member stand out on its own, which the country-level
+# grid can't show since it sums across every member first. "Present in Both" is the one status
+# with a meaningful in-between (some countries covered, others not yet), so it additionally
+# tracks how many countries have data on both sides for that member-year, for the gray
+# coverage-breadth gradient below; the other three statuses are all-or-nothing across the whole
+# member-year, same as they are for a single country-year on the chart above. year is kept as the
+# character label (not parsed to numeric) so it plots as a discrete axis with one tick per year,
+# same as the country chart above.
+build_dim_coverage <- function(raw) {
+  dim_col <- raw$extra_dims[1]
+  n_countries <- length(raw$all_countries)
+
+  by_country_member_year <- raw$comp_detailed %>%
+    group_by(across(all_of(c("dim_208_label", dim_col, "dim_29117_label")))) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    rename(member = all_of(dim_col))
+
+  by_country_member_year %>%
+    group_by(member, dim_29117_label) %>%
+    summarize(
+      has_data = any(!is.na(value_data)),
+      has_pub  = any(!is.na(value_pub)),
+      n_present_both = sum(!is.na(value_data) & !is.na(value_pub)),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      year = dim_29117_label,
+      status = case_when(
+        has_data & !has_pub  ~ "New Only",
+        !has_data & has_pub  ~ "Old Only",
+        !has_data & !has_pub ~ "Missing in Both",
+        TRUE ~ "Present in Both"
+      ),
+      coverage_frac = n_present_both / n_countries
+    )
+}
+
+# Colored swatches (plus a gradient bar for the "Present in Both" shade) explaining the grid
+# above - a manual HTML legend rather than a ggplot one, since the gray gradient is a precomputed
+# scale_color_identity() color (see plot_dim_coverage()), which ggplot can't turn into a legend on
+# its own. Titled and laid out to mirror the country x year chart's own bottom-of-plot ggplot
+# legend (title, then a centered horizontal row of keys).
+dim_coverage_legend <- function() {
+  swatch <- function(color, label, bordered = FALSE) {
+    div(
+      style = "display:flex; align-items:center; gap:0.35rem;",
+      div(style = glue(
+        "width:14px; height:14px; border-radius:2px; background:{color};",
+        if (bordered) glue(" border:1px solid {pal$ink2};") else ""
+      )),
+      div(style = glue("font-size:0.78rem; color:{pal$ink2};"), label)
+    )
+  }
+  div(
+    style = "display:flex; align-items:center; justify-content:center; gap:1.1rem; flex-wrap:wrap; margin-top:0.5rem;",
+    div(style = glue("font-size:0.8rem; font-weight:700; color:{pal$ink};"), "Coverage"),
+    swatch(tint_color(pal$good), "New Only"),
+    swatch(tint_color(pal$flag), "Old Only"),
+    swatch(pal$missing, "Missing in Both", bordered = TRUE),
+    div(
+      style = "display:flex; align-items:center; gap:0.35rem;",
+      div(style = glue(
+        "width:48px; height:14px; border-radius:2px; border:1px solid {pal$grid}; ",
+        "background:linear-gradient(to right, #f7f7f5, #5c5a54);"
+      )),
+      div(style = glue("font-size:0.78rem; color:{pal$ink2};"), "Present in Both (darker = more countries covered)")
+    )
+  )
+}
+
+plot_dim_coverage <- function(df, dim_label, n_countries) {
+  df2 <- df %>%
+    mutate(
+      member = factor(member, levels = sort(unique(member), decreasing = TRUE)),
+      # Precomputed color (not a discrete ggplot scale), since "Present in Both" needs a
+      # continuous gray gradient by coverage breadth while the other three statuses stay fixed
+      # colors - scale_color_identity() is this dashboard's established way to mix the two (see
+      # threshold_gradient_color()'s point_color pattern on the Value Comparisons page).
+      cell_color = case_when(
+        status == "Missing in Both" ~ pal$missing,
+        status == "Old Only"        ~ tint_color(pal$flag),
+        status == "New Only"        ~ tint_color(pal$good),
+        TRUE ~ blend_colors("#f7f7f5", "#5c5a54", coverage_frac)
+      )
+    )
+  ggplot(df2, aes(
+    x = year, y = member, color = cell_color,
+    text = paste0(
+      dim_label, ": ", member, "<br>Year: ", year, "<br>Status: ", status,
+      if_else(
+        status == "Present in Both",
+        paste0("<br>Countries with data on both sides: ", n_present_both, " of ", n_countries),
+        ""
+      )
+    )
+  )) +
+    geom_point(shape = 15, size = 3.2) +
+    scale_color_identity() +
+    labs(x = NULL, y = NULL) +
+    theme_qc() +
+    theme(
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      axis.text.x = element_text(angle = 45, hjust = 1)
+    )
+}
+
+output$coverage_dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly("This indicator has no extra dimension beyond Country and Year."))
+  dim_col <- d$extra_dims[1]
+  df <- build_dim_coverage(d)
+  ggplotly(plot_dim_coverage(df, d$dim_labels[[dim_col]], length(d$all_countries)), tooltip = "text") %>%
+    style_plotly(legend_bottom = FALSE)
+})
+
+output$coverage_dim_plot_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(plotlyOutput("coverage_dim_plot", height = "300px"))
+  dim_col <- d$extra_dims[1]
+  n_members <- length(d$dim_members[[dim_col]])
+  tagList(
+    scrollable_plot("coverage_dim_plot", paste0(120 + n_members * 26, "px"), max_visible_px = 650),
+    dim_coverage_legend()
+  )
+})
+```
+
+```{r}
+#| title: Data Availability by Country and Year
+plotlyOutput("coverage_plot", height = "650px")
+```
+
+## Row {height=650px}
+
+```{r}
+#| title: Data Availability by Dimension and Year
+uiOutput("coverage_dim_plot_ui")
+```
+
+# Preview
+
+This shows a simple visual check for how drastically the data update will change the trend on CEPALSTAT's landing graphic. The lighter dashed line displays the currently published data (the "before"), and the darker solid line shows the current internal value (the "after").
+
+```{r}
+#| context: server
+plot_published_preview <- function(agg_df, has_dim, country) {
+  long_df <- agg_df %>%
+    pivot_longer(cols = c(value_data, value_pub), names_to = "vintage", values_to = "value") %>%
+    mutate(
+      vintage = recode(vintage, value_data = "INTERNAL", value_pub = "PUBLIC"),
+      # Without a real breakout dimension, `member` is just the "Value" placeholder from
+      # build_published_preview() - drop it from the series label so the legend/tooltip just
+      # read INTERNAL/PUBLIC instead of "Value INTERNAL"/"Value PUBLIC".
+      series = if (has_dim) paste(member, vintage) else vintage
+    ) %>%
+    filter(!is.na(value))
+
+  # Build the color/linetype lookup from long_df's OWN distinct (member, vintage) combos -
+  # rather than reconstructing the same key strings a second time in a separate loop, which is
+  # what let color_map/linetype_map drift out of sync with the actual plotted `series` values
+  # for some indicators (identical-looking lines, or a vintage silently not matching any scale
+  # entry and disappearing).
+  combos <- long_df %>% distinct(member, vintage, series) %>% arrange(member, vintage)
+  member_levels <- sort(unique(combos$member))
+  n <- length(member_levels)
+  # Always draw from the categorical palette - recycle it (rather than falling back to a
+  # different generator) if there are more members than swatches.
+  base_colors <- pal$categorical[((seq_len(n) - 1) %% length(pal$categorical)) + 1]
+  names(base_colors) <- member_levels
+
+  combos <- combos %>%
+    mutate(
+      color = unname(base_colors[member]),
+      color = ifelse(vintage == "INTERNAL", color, vapply(color, mute_color, character(1))),
+      linetype = ifelse(vintage == "INTERNAL", "solid", "dotdash")
+    )
+  color_map <- setNames(combos$color, combos$series)
+  linetype_map <- setNames(combos$linetype, combos$series)
+
+  p <- ggplot(long_df, aes(
+    x = year, y = value, color = series, linetype = series, group = series,
+    # Reuse `series` verbatim (rather than rebuilding a similar-looking string) so the tooltip
+    # text always matches the legend exactly.
+    text = paste0("Year: ", year, "<br>", series, "<br>Value: ", round(value, 1))
+  )) +
+    geom_line(linewidth = 0.9) +
+    scale_color_manual(values = color_map) +
+    scale_linetype_manual(values = linetype_map) +
+    scale_x_continuous(breaks = scales::pretty_breaks()) +
+    scale_y_continuous(labels = label_number()) +
+    labs(title = glue("Trend Comparison - {country}"), x = NULL, y = NULL, color = NULL, linetype = NULL) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  p + geom_point(
+    data = function(d) dplyr::filter(d, vintage == "INTERNAL"),
+    size = 1.8, show.legend = FALSE
+  )
+}
+
+output$published_preview_plot <- renderPlotly({
+  d <- qc_data()
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
+
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  agg <- build_published_preview(d, input$country, dim_sel)
+  if (nrow(agg) == 0) return(empty_plotly("No data for this selection."))
+
+  p <- plot_published_preview(agg, d$has_extra_dims, input$country)
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+```
+
+```{r}
+#| title: "Trend Comparison · Filter: Country, Dimension"
+plotlyOutput("published_preview_plot", height = "650px")
+```
+
+# Country Trends
+
+This displays trends at the country level and highlights new data points.
+
+```{r}
+#| context: server
+output$new_overview <- renderPlotly({
+  fd <- filtered_data()
+  df2 <- fd$comp %>% filter(!is.na(value_data))
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry
+    )
+  )) +
+    geom_line(alpha = 0.35, color = pal$grid) +
+    geom_point(size = 1.3, alpha = 0.85) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$good)) +
+    labs(title = "", x = "Year", y = "") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+output$new_country <- renderPlotly({
+  d <- qc_data()
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
+
+  # Filter: Country, Dimension - both narrow the data shown (not just spotlight it - see the
+  # card title). Reuses build_published_preview()'s per-member aggregation (Country and
+  # Dimension already applied there), then collapses any remaining members down to one line per
+  # year, since this chart (unlike Published Comparison) shows a single series rather than one
+  # line per dimension member.
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  df2 <- build_published_preview(d, input$country, dim_sel) %>%
+    group_by(year) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(flag_new_entry = is.na(value_pub) & !is.na(value_data)) %>%
+    filter(!is.na(value_data))
+  if (nrow(df2) == 0) return(empty_plotly("No data for this selection."))
+
+  p <- ggplot(df2, aes(
+    x = year, y = value_data, color = flag_new_entry,
+    text = paste0("Year: ", year, "<br>Value: ", round(value_data, 1), "<br>New Entry: ", flag_new_entry)
+  )) +
+    geom_line(aes(group = 1), color = pal$neutral, linewidth = 0.4, alpha = 0.5) +
+    geom_point(size = 1.8, alpha = 0.9) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$good)) +
+    labs(title = input$country, x = "Year", y = "") +
+    theme_qc() +
+    theme(legend.position = "none")
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+# All-countries faceted view (kept alongside the reactive single-country view for now, as a
+# comprehensive cross-check while the filter-driven approach gets a trial run). Rendered as a
+# static ggplot2 image (renderPlot, not renderPlotly) rather than through ggplotly()'s
+# facet_wrap conversion, which becomes unreliable for grids with many rows - it rendered fine
+# for indicators with few countries but squished every row past the first for indicators with
+# more. A plain ggplot2 render doesn't go through that conversion at all, at the cost of losing
+# the hover tooltip on this one chart (Inspect Country and All Time Series by Country keep it).
+output$new_faceted <- renderPlot({
+  d <- qc_data()
+
+  # Filter: Dimension - narrows (not just spotlights - see the card title) to the selected
+  # member(s) via filter_by_dim_highlight(), re-aggregating comp_detailed to country x year
+  # afterward, rather than using filtered_data()'s fd$comp, which sums across every member
+  # regardless of the sidebar's Dimension selection.
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  df2 <- d$comp_detailed %>%
+    filter_by_dim_highlight(d, dim_sel) %>%
+    group_by(dim_208_label, dim_29117_label) %>%
+    summarize(
+      value_data = if (all(is.na(value_data))) NA_real_ else sum(value_data, na.rm = TRUE),
+      value_pub  = if (all(is.na(value_pub)))  NA_real_ else sum(value_pub,  na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(flag_new_entry = is.na(value_pub) & !is.na(value_data)) %>%
+    filter(!is.na(value_data))
+  ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = flag_new_entry
+  )) +
+    geom_line(alpha = 0.5, color = pal$neutral, linewidth = 0.4) +
+    geom_point(size = 1.9, alpha = 0.9) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$good)) +
+    labs(title = "", x = "Year", y = "Value") +
+    theme_qc() +
+    theme(
+      legend.position = "none",
+      panel.spacing = grid::unit(0.15, "lines"),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      plot.margin = margin(2, 2, 2, 2),
+      strip.text = element_text(size = rel(1.1), face = "bold"),
+      axis.text = element_text(size = rel(1.1))
+    )
+})
+
+output$new_faceted_ui <- renderUI({
+  d <- qc_data()
+  dim_sel <- if (d$has_extra_dims) {
+    setNames(list(input[[paste0("dimfilter_", d$extra_dims[1])]]), d$extra_dims[1])
+  } else {
+    list()
+  }
+  n <- d$comp_detailed %>% filter_by_dim_highlight(d, dim_sel) %>% pull(dim_208_label) %>% n_distinct()
+  scrollable_plot("new_faceted", facet_height_px(n, per_row = 130), output_fn = plotOutput)
+})
+```
+
+## Row {height=420px}
+
+```{r}
+#| title: All Time Series by Country
+plotlyOutput("new_overview", height = "420px")
+```
+
+```{r}
+#| title: "Inspect Country · Filter: Country, Dimension"
+plotlyOutput("new_country", height = "420px")
+```
+
+## Row {height=740px}
+
+```{r}
+#| title: "All Faceted Countries (Static) · Filter: Dimension"
+uiOutput("new_faceted_ui")
+```
+
+# Dimension Trends
+
+This breaks out trends by dimension.
+
+```{r}
+#| context: server
+no_dims_msg <- "This indicator has no extra dimensions beyond country and year."
+
+# A stable member -> color mapping shared by every chart on this page, drawn from the
+# indicator's FULL member list (not whatever subset happens to appear in one chart's own
+# filtered data) - so the same dimension member is always the same color everywhere on this
+# page. Recycles the categorical palette rather than falling back to a different generator if
+# there are more members than swatches, same convention as build_published_preview()/etc.
+dim_color_map <- function(raw) {
+  dim_col <- raw$extra_dims[1]
+  members <- raw$dim_members[[dim_col]]
+  n <- length(members)
+  setNames(pal$categorical[((seq_len(n) - 1) %% length(pal$categorical)) + 1], members)
+}
+
+output$dim_overview_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
+
+  by_extra <- d$comp_detailed %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_29117_label", dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  p <- ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data, color = .data[[dim_col]], group = .data[[dim_col]],
+    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", scales::comma(value_data, accuracy = 0.1))
+  )) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.8) +
+    scale_color_manual(values = dim_color_map(d)) +
+    scale_x_continuous(n.breaks = 6) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = "", x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+
+output$dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly(no_dims_msg))
+  if (is.null(input$country)) return(empty_plotly("Pick a country in the sidebar."))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
+
+  by_extra <- d$comp_detailed %>%
+    filter(dim_208_label == input$country, !is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_29117_label", dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  p <- ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data,
+    color = .data[[dim_col]], group = .data[[dim_col]],
+    text = paste0("Year: ", dim_29117_label, "<br>", dim_label, ": ", .data[[dim_col]], "<br>Value: ", scales::comma(value_data, accuracy = 0.1))
+  )) +
+    geom_line(linewidth = 0.8) +
+    geom_point(size = 1.8) +
+    scale_color_manual(values = dim_color_map(d)) +
+    scale_x_continuous(n.breaks = 6) +
+    scale_y_continuous(labels = scales::comma) +
+    labs(title = glue("{input$country} — {dim_label}"), x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(legend.position = "bottom")
+
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = TRUE)
+})
+
+# Rendered as a static ggplot2 image (renderPlot, not renderPlotly) rather than through
+# ggplotly()'s facet_wrap conversion - same reasoning as Country Trends' All Faceted Countries:
+# that conversion is unreliable for grids with many rows (fine for a few countries, squished
+# past the first row for more).
+output$dim_faceted <- renderPlot({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plot(no_dims_msg))
+  dim_col <- d$extra_dims[1]
+  dim_label <- d$dim_labels[[dim_col]]
+
+  by_extra <- d$comp_detailed %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c("dim_208_label", "dim_29117_label", dim_col)))) %>%
+    summarize(value_data = sum(value_data, na.rm = TRUE), .groups = "drop") %>%
+    mutate(dim_29117_label = as.numeric(dim_29117_label))
+
+  ggplot(by_extra, aes(
+    x = dim_29117_label, y = value_data, color = .data[[dim_col]], group = .data[[dim_col]]
+  )) +
+    geom_line(linewidth = 0.7) +
+    facet_wrap(~ dim_208_label, scales = "free_y", ncol = 3) +
+    scale_color_manual(values = dim_color_map(d)) +
+    scale_x_continuous(n.breaks = 4) +
+    scale_y_continuous(labels = scales::comma, n.breaks = 4) +
+    labs(title = "", x = NULL, y = NULL, color = dim_label) +
+    theme_qc() +
+    theme(
+      legend.position = "bottom",
+      panel.spacing = grid::unit(0.15, "lines"),
+      panel.grid.major = element_line(color = pal$grid, linewidth = 0.2),
+      plot.margin = margin(2, 2, 2, 2),
+      strip.text = element_text(size = rel(1.6), face = "bold"),
+      axis.text = element_text(size = rel(1.1))
+    )
+})
+
+output$dim_faceted_ui <- renderUI({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(plotOutput("dim_faceted", height = "300px"))
+  fd <- filtered_data()
+  n <- n_distinct(fd$comp$dim_208_label)
+  scrollable_plot("dim_faceted", facet_height_px(n, per_row = 130), output_fn = plotOutput)
+})
+```
+
+## Row {height=480px}
+
+```{r}
+#| title: All Time Series by Dimension
+plotlyOutput("dim_overview_plot", height = "480px")
+```
+
+```{r}
+#| title: "Inspect Country · Filter: Country"
+plotlyOutput("dim_plot", height = "480px")
+```
+
+## Row {height=740px}
+
+```{r}
+#| title: All Faceted Countries (Static)
+uiOutput("dim_faceted_ui")
+```
+
+# Value Changes
+
+This section analyzes changes in values between **matched pairs** in the public and internal data sets. It gives key statistics that quantify how much values are changing with the data update and displays changes on a percentile change basis. The red coloring is applied to values with a 20% or more change by default and can be adjusted with the **Difference threshold (%)** slider.
+
+```{r}
+#| context: server
+no_pub_msg <- "This is a new indicator, so there is no previously published data to compare against."
+
+# Four headline KPI tiles for "how much did this update change things," in the same style as
+# the Overview page's tiles. Median and mean absolute % difference are both shown side by side
+# on purpose - a big gap between them means a few extreme rows are driving the mean (as with
+# indicator 5646's "Storms" row: one 100% difference pulling up an otherwise ~0% picture).
+# Mean SIGNED % difference is the odd one out - it's the only tile where color must be judged
+# off the magnitude (severity_color(abs(x))) since the value itself can be negative, and the
+# icon (plus/minus) reflects the direction (net over- vs. under-statement) rather than severity.
+output$value_comp_kpi_ui <- renderUI({
+  fd <- filtered_data()
+  present <- fd$comp %>% filter(status == "Present in Both")
+
+  abs_pct <- present$abs_perc_diff[is.finite(present$abs_perc_diff)]
+  signed_pct <- present$perc_diff[is.finite(present$perc_diff)]
+
+  median_abs <- round(median(abs_pct, na.rm = TRUE), 1)
+  mean_abs <- round(mean(abs_pct, na.rm = TRUE), 1)
+  mean_signed <- round(mean(signed_pct, na.rm = TRUE), 1)
+  pct_above <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
+
+  median_abs_diff <- median(present$abs_diff[is.finite(present$abs_diff)], na.rm = TRUE)
+  median_val <- median(present$value_data, na.rm = TRUE)
+  min_val <- min(present$value_data, na.rm = TRUE)
+  max_val <- max(present$value_data, na.rm = TRUE)
+
+  fmt_pct <- function(x) if (is.na(x)) "N/A" else glue("{x}%")
+  fmt_signed <- function(x) if (is.na(x)) "N/A" else glue("{if (x > 0) '+' else ''}{x}%")
+  fmt_num <- function(x) if (is.na(x)) "N/A" else scales::comma(x, accuracy = 0.1)
+
+  median_color <- severity_color(median_abs)
+  mean_color <- severity_color(mean_abs)
+  signed_color <- severity_color(abs(mean_signed))
+  above_color <- severity_color(pct_above)
+
+  div(
+    style = "display:flex; gap:0.6rem; flex-wrap:wrap;",
+    kpi_tile(
+      svg_icon("delta", median_color), fmt_pct(median_abs), "Median Absolute % Difference", median_color,
+      caption = "typical size of change, robust to outliers"
+    ),
+    kpi_tile(
+      svg_icon("delta", mean_color), fmt_pct(mean_abs), "Mean Absolute % Difference", mean_color,
+      caption = "vs. median - a big gap suggests outliers are skewing this"
+    ),
+    kpi_tile(
+      svg_icon(if (is.na(mean_signed) || mean_signed >= 0) "plus" else "minus", signed_color),
+      fmt_signed(mean_signed), "Mean Signed % Difference", signed_color,
+      caption = "net bias: positive = internal values tend higher, negative = published values tend higher, zero = no patterned bias"
+    ),
+    kpi_tile(
+      svg_icon("warning", above_color), fmt_pct(pct_above), "Above Threshold", above_color,
+      caption = glue("of values differ by more than {input$threshold}% from what's published")
+    ),
+    kpi_tile(
+      # Raw units, not a %, so there's no universal good/bad cutoff to color against (a
+      # difference of "500" is huge for a small country and tiny for a large one) - a neutral
+      # informational color throughout, not severity_color().
+      svg_icon("delta", pal$header), fmt_num(median_abs_diff), "Median Absolute Difference", pal$header,
+      caption = glue("with median reported value of {fmt_num(median_val)} and range of [{fmt_num(min_val)}, {fmt_num(max_val)}]")
+    )
+  )
+})
+
+output$scatter_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  # Present in Both + the matched sums (see build_filtered_view()), not the full value_data/
+  # value_pub - otherwise a country-year with a newly added/removed dimension member (or any
+  # member unique to one side) would plot as a false discrepancy here even though it's excluded
+  # from the % difference used for the color/threshold below.
+  df2 <- fd$comp %>%
+    filter(status == "Present in Both") %>%
+    mutate(point_color = threshold_gradient_color(abs_perc_diff, input$threshold))
+  p <- ggplot(df2, aes(
+    x = value_data_matched, y = value_pub_matched, color = point_color,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1),
+      "<br>% Diff: ", round(abs_perc_diff, 1)
+    )
+  )) +
+    geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
+    geom_point(alpha = 0.85, size = 1.8) +
+    scale_color_identity() +
+    labs(x = "Internal Data", y = "Public Data") +
+    theme_qc()
+
+  # Fixed-position "which side is bigger" labels with a short arrow pointing into the corner they
+  # describe - x,y (paper coordinates) is the arrowhead, ax,ay (plain pixel offsets, the plotly
+  # default) is the tail/text position. Below the dashed 1:1 line (bottom-right) is where internal
+  # > public, above it (top-left) is the reverse.
+  ggplotly(p, tooltip = "text") %>%
+    plotly::layout(
+      annotations = list(
+        list(
+          x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+          ax = -45, ay = -32,
+          text = "Internal values larger", showarrow = TRUE, arrowhead = 2,
+          arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+        ),
+        list(
+          x = 0.02, y = 0.98, xref = "paper", yref = "paper", xanchor = "left", yanchor = "top",
+          ax = 45, ay = 32,
+          text = "Published values larger", showarrow = TRUE, arrowhead = 2,
+          arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+        )
+      )
+    )
+})
+
+output$pctdiff_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  yr <- range(as.numeric(fd$comp$dim_29117_label), na.rm = TRUE)
+  df2 <- fd$comp %>% filter(status == "Present in Both")
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = perc_diff,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>% Diff: ", round(perc_diff, 1),
+      "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1)
+    )
+  )) +
+    annotate("rect", xmin = yr[1] - 0.5, xmax = yr[2] + 0.5, ymin = -20, ymax = 20, fill = pal$good, alpha = 0.08) +
+    # Connects each country's own points across years at their true (unjittered) year position -
+    # a separate layer from the jittered points below, so the line traces the real year-by-year
+    # path even though the points themselves are nudged sideways to reduce overplotting.
+    geom_line(aes(group = dim_208_label), color = pal$neutral, linewidth = 0.3, alpha = 0.45) +
+    geom_jitter(aes(color = abs_perc_diff > 20), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
+    labs(x = "Year", y = "Percent Difference") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+```
+
+## Row {height=160px}
+
+```{r}
+uiOutput("value_comp_kpi_ui")
+```
+
+## Row {height=560px}
+
+```{r}
+#| title: Public vs. Internal Value Comparison
+plotlyOutput("scatter_plot", height = "560px")
+```
+
+## Row {height=420px}
+
+```{r}
+#| title: Percent Change Over Time
+plotlyOutput("pctdiff_plot", height = "420px")
+```
+
+# Value Differences
+
+This section shows value differences between **matched pairs** in the public and internal data sets. The graphs show differences (internal - public) in terms of the original units.
+
+```{r}
+#| context: server
+# Fixed-position (paper-coordinate) "which side is bigger" annotations, shared by both charts on
+# this page - top of the plot (positive y) is where internal exceeds public, bottom (negative y)
+# is the reverse. x,y (paper coordinates) is the arrowhead; ax,ay (plain pixel offsets - these
+# follow screen convention, positive down, regardless of x/y's own paper convention of positive
+# up) position the tail/text, pulled into the interior so the arrow points outward into the
+# top/bottom edge - reinforcing "this direction" rather than pointing back toward the center.
+diff_direction_annotations <- function() {
+  list(
+    list(
+      x = 0.98, y = 0.98, xref = "paper", yref = "paper", xanchor = "right", yanchor = "top",
+      ax = 0, ay = 40,
+      text = "Internal values larger", showarrow = TRUE, arrowhead = 2,
+      arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+    ),
+    list(
+      x = 0.98, y = 0.02, xref = "paper", yref = "paper", xanchor = "right", yanchor = "bottom",
+      ax = 0, ay = -40,
+      text = "Published values larger", showarrow = TRUE, arrowhead = 2,
+      arrowcolor = pal$ink2, font = list(size = 12, color = pal$ink2)
+    )
+  )
+}
+
+# Aggregates comp_detailed to one row per dimension member per year, summed across every
+# country - mirrors build_filtered_view()'s "filter to rows present on both sides, then sum"
+# approach, just grouped by member instead of by country, so this reads as "which member drove
+# the most total net change, and when" rather than a per-country-per-member breakdown (too many
+# series to plot at once).
+build_dim_diff <- function(raw) {
+  dim_col <- raw$extra_dims[1]
+  raw$comp_detailed %>%
+    filter(!is.na(value_data), !is.na(value_pub)) %>%
+    group_by(across(all_of(c(dim_col, "dim_29117_label")))) %>%
+    summarize(value_data = sum(value_data), value_pub = sum(value_pub), .groups = "drop") %>%
+    rename(member = all_of(dim_col)) %>%
+    mutate(diff = value_data - value_pub, year = as.numeric(dim_29117_label))
+}
+
+output$diff_country_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  fd <- filtered_data()
+  highlight_country <- input$country
+  df2 <- fd$comp %>%
+    filter(status == "Present in Both") %>%
+    mutate(
+      diff = value_data_matched - value_pub_matched,
+      is_highlighted = if (is.null(highlight_country)) FALSE else dim_208_label == highlight_country
+    ) %>%
+    arrange(is_highlighted)
+  if (nrow(df2) == 0) return(empty_plotly("No country-year has both an internal and public value."))
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = diff, group = dim_208_label, color = is_highlighted,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label, "<br>Difference (internal - public): ", scales::comma(diff, accuracy = 0.1),
+      "<br>Internal (matched): ", scales::comma(value_data_matched, accuracy = 0.1),
+      "<br>Public (matched): ", scales::comma(value_pub_matched, accuracy = 0.1)
+    )
+  )) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = pal$ink2) +
+    geom_line(aes(linewidth = is_highlighted), alpha = 0.7) +
+    geom_point(aes(size = is_highlighted), alpha = 0.8) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$highlight), guide = "none") +
+    scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
+    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
+    scale_y_continuous(labels = scales::comma) +
+    expand_limits(y = 0) +
+    labs(x = "Year", y = "Difference (Internal - Public)") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>%
+    style_plotly(legend_bottom = FALSE) %>%
+    plotly::layout(annotations = diff_direction_annotations())
+})
+
+output$diff_dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_public_data) return(empty_plotly(no_pub_msg))
+  if (!d$has_extra_dims) return(empty_plotly("This indicator has no extra dimension beyond Country and Year."))
+  dim_col <- d$extra_dims[1]
+  sel <- input[[paste0("dimfilter_", dim_col)]]
+  highlighted_members <- if (is.null(sel) || length(sel) == 0 || "__ALL__" %in% sel) character(0) else sel
+  df2 <- build_dim_diff(d) %>%
+    mutate(is_highlighted = member %in% highlighted_members) %>%
+    arrange(is_highlighted)
+  if (nrow(df2) == 0) return(empty_plotly("No dimension member-year has both an internal and public value."))
+  p <- ggplot(df2, aes(
+    x = year, y = diff, group = member, color = is_highlighted,
+    text = paste0(
+      d$dim_labels[[dim_col]], ": ", member, "<br>Year: ", year, "<br>Difference (internal - public): ", scales::comma(diff, accuracy = 0.1),
+      "<br>Internal (matched): ", scales::comma(value_data, accuracy = 0.1),
+      "<br>Public (matched): ", scales::comma(value_pub, accuracy = 0.1)
+    )
+  )) +
+    geom_hline(yintercept = 0, linetype = "dashed", color = pal$ink2) +
+    geom_line(aes(linewidth = is_highlighted), alpha = 0.7) +
+    geom_point(aes(size = is_highlighted), alpha = 0.8) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$highlight), guide = "none") +
+    scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
+    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
+    scale_y_continuous(labels = scales::comma) +
+    expand_limits(y = 0) +
+    labs(x = "Year", y = "Difference (Internal - Public)") +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>%
+    style_plotly(legend_bottom = FALSE) %>%
+    plotly::layout(annotations = diff_direction_annotations())
+})
+```
+
+## Row {height=460px}
+
+```{r}
+#| title: "Difference by Country · Highlight: Country"
+plotlyOutput("diff_country_plot", height = "460px")
+```
+
+## Row {height=460px}
+
+```{r}
+#| title: "Difference by Dimension · Highlight: Dimension"
+plotlyOutput("diff_dim_plot", height = "460px")
+```
+
+# Outlier Detection
+
+This section detects for outliers in the updated internal dataset. It displays country and dimension series that contain at least one data point with a z-score ≥ 3, which can be adjusted in the **Outlier z-score threshold** slider. Z-scores are calculated as z = (x − mean) / standard deviation, computed separately for each country (top chart) or dimension member (bottom chart) across its own years. The red highlighted points that are more than 3 standard deviations away from the mean could indicate issues with the underlying data. 
+
+```{r}
+#| context: server
+output$outlier_plot <- renderPlotly({
+  fd <- filtered_data()
+  flagged_countries <- fd$comp %>%
+    filter(flag_some_na == FALSE, outlier_within_country == TRUE) %>%
+    pull(dim_208_label) %>%
+    unique()
+  if (length(flagged_countries) == 0) {
+    return(empty_plotly("No within-country outliers were found at this z-score threshold."))
+  }
+  highlight_country <- input$country
+  df2 <- fd$comp %>%
+    filter(dim_208_label %in% flagged_countries) %>%
+    mutate(
+      is_highlighted = if (is.null(highlight_country)) FALSE else dim_208_label == highlight_country,
+      point_color = case_when(
+        outlier_within_country ~ pal$flag,
+        is_highlighted ~ pal$highlight,
+        TRUE ~ pal$neutral
+      )
+    ) %>%
+    arrange(is_highlighted)
+  p <- ggplot(df2, aes(
+    x = as.numeric(dim_29117_label), y = value_data, group = dim_208_label, color = point_color,
+    text = paste0(
+      "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
+      "<br>Internal Value: ", scales::comma(value_data, accuracy = 0.1),
+      "<br>Z-Score: ", round(z_within_country, 1)
+    )
+  )) +
+    geom_line(aes(linewidth = is_highlighted), color = pal$neutral, alpha = 0.6) +
+    geom_point(aes(size = outlier_within_country | is_highlighted), alpha = 0.85) +
+    scale_color_identity() +
+    scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
+    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(x = "Year", y = NULL) +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+
+# Mirrors output$outlier_plot, one level up: sums internal value_data across every country per
+# dimension member-year (independent of public data, same as the country version), then flags
+# a member-year as an outlier against that MEMBER's own across-year mean/sd - not the country's.
+build_dim_outlier <- function(raw, outlier_z) {
+  dim_col <- raw$extra_dims[1]
+  raw$comp_detailed %>%
+    filter(!is.na(value_data)) %>%
+    group_by(across(all_of(c(dim_col, "dim_29117_label")))) %>%
+    summarize(
+      value_data = sum(value_data),
+      value_pub = if (all(is.na(value_pub))) NA_real_ else sum(value_pub, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    rename(member = all_of(dim_col)) %>%
+    mutate(year = as.numeric(dim_29117_label)) %>%
+    group_by(member) %>%
+    mutate(
+      z_within_member = round(as.numeric(scale(value_data)), 1),
+      outlier_within_member = abs(z_within_member) > outlier_z
+    ) %>%
+    ungroup()
+}
+
+output$outlier_dim_plot <- renderPlotly({
+  d <- qc_data()
+  if (!d$has_extra_dims) return(empty_plotly("This indicator has no extra dimension beyond Country and Year."))
+  dim_col <- d$extra_dims[1]
+  df_full <- build_dim_outlier(d, input$outlier_z)
+  flagged_members <- df_full %>% filter(outlier_within_member == TRUE) %>% pull(member) %>% unique()
+  if (length(flagged_members) == 0) {
+    return(empty_plotly("No within-dimension outliers were found at this z-score threshold."))
+  }
+  sel <- input[[paste0("dimfilter_", dim_col)]]
+  highlighted_members <- if (is.null(sel) || length(sel) == 0 || "__ALL__" %in% sel) character(0) else sel
+  df2 <- df_full %>%
+    filter(member %in% flagged_members) %>%
+    mutate(
+      is_highlighted = member %in% highlighted_members,
+      point_color = case_when(
+        outlier_within_member ~ pal$flag,
+        is_highlighted ~ pal$highlight,
+        TRUE ~ pal$neutral
+      )
+    ) %>%
+    arrange(is_highlighted)
+  p <- ggplot(df2, aes(
+    x = year, y = value_data, group = member, color = point_color,
+    text = paste0(
+      d$dim_labels[[dim_col]], ": ", member, "<br>Year: ", year,
+      "<br>Internal Value: ", scales::comma(value_data, accuracy = 0.1),
+      "<br>Z-Score: ", round(z_within_member, 1)
+    )
+  )) +
+    geom_line(aes(linewidth = is_highlighted), color = pal$neutral, alpha = 0.6) +
+    geom_point(aes(size = outlier_within_member | is_highlighted), alpha = 0.85) +
+    scale_color_identity() +
+    scale_linewidth_manual(values = c("FALSE" = 0.5, "TRUE" = 1.4), guide = "none") +
+    scale_size_manual(values = c("FALSE" = 1, "TRUE" = 2.2), guide = "none") +
+    scale_y_continuous(labels = scales::comma) +
+    labs(x = "Year", y = NULL) +
+    theme_qc()
+  ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
+})
+```
+
+## Row {height=500px}
+
+```{r}
+#| title: "Outliers by Country · Highlight: Country"
+plotlyOutput("outlier_plot", height = "500px")
+```
+
+## Row {height=500px}
+
+```{r}
+#| title: "Outlier by Dimension · Highlight: Dimension"
+plotlyOutput("outlier_dim_plot", height = "500px")
+```
+
+# Metadata Check
+
+<div id="metadata-check-marker" style="height:0;"></div>
+
+This shows the metadata currently published on CEPALSTAT in English and Spanish. It's fetched live from the CEPALSTAT API when this tab is visited.
+
+```{r}
+#| context: server
+# Field names come back from the API as raw keys in snake_case (e.g. "calculation_methodology" -
+# see technical_sheet.R, which already depends on these same key names) - prettified for display
+# only (underscores/camelCase -> spaced Title Case), not used for anything else.
+prettify_field_name <- function(x) {
+  x %>%
+    str_replace_all("_", " ") %>%
+    str_replace_all("([a-z])([A-Z])", "\\1 \\2") %>%
+    str_to_title()
+}
+
+# The full set of CEPALSTAT metadata fields is broader than what's useful at a glance - narrowed
+# to just these, matched by raw API key (not the prettified name, so a coincidental word match
+# elsewhere can't pull in the wrong field) and always shown in this order regardless of what order
+# the API returns them in. data_features/unit/last_update are a best guess at the actual key names
+# (definition/calculation_methodology/comments are confirmed via technical_sheet.R) - if one of
+# those three doesn't show up for a real indicator, the fix is just updating this list with the
+# actual key.
+metadata_fields_to_show <- c("data_features", "unit", "definition", "calculation_methodology", "comments", "last_update")
+
+# Some published metadata text has literal "<br>"/"<br/>" tags baked in (matches
+# strip_html_breaks() in technical_sheet.R, which strips them the same way before this same text
+# is fed to other tooling) - shown as plain text here rather than parsed as HTML, so left as-is
+# they'd read as literal "<br>" in the middle of a sentence. Removed outright rather than swapped
+# for a real newline - the source text already has its own paragraph breaks, so converting also
+# added extra visual gaps on top of those.
+strip_br_tags <- function(text) str_remove_all(text, regex("<br\\s*/?>", ignore_case = TRUE))
+
+format_metadata_block <- function(metadata_tbl) {
+  if (is.null(metadata_tbl) || nrow(metadata_tbl) == 0) {
+    return(div(style = glue("color:{pal$ink2};"), "No metadata available."))
+  }
+  tbl2 <- metadata_tbl %>%
+    filter(tolower(variable) %in% metadata_fields_to_show) %>%
+    mutate(variable = factor(tolower(variable), levels = metadata_fields_to_show)) %>%
+    arrange(variable)
+  if (nrow(tbl2) == 0) {
+    return(div(style = glue("color:{pal$ink2};"), "None of the expected metadata fields were found for this indicator."))
+  }
+  tagList(lapply(seq_len(nrow(tbl2)), function(i) {
+    div(
+      style = "margin-bottom:1rem;",
+      div(style = glue("font-weight:700; color:{pal$nav}; margin-bottom:0.2rem;"), prettify_field_name(as.character(tbl2$variable[i]))),
+      div(style = glue("color:{pal$ink}; white-space:pre-wrap;"), strip_br_tags(tbl2$value[i]))
+    )
+  }))
+}
+
+# Fetches once per (tab visit, indicator) rather than on every app load - gated on the JS
+# IntersectionObserver's input$metadata_tab_visited signal (see the top-of-file <script> block
+# and #metadata-check-marker below), and re-keyed on qc_data() (not raw input$indicator_id) so
+# it refetches only when a NEW
+# indicator has actually been loaded via the sidebar's Load button, consistent with how every
+# other reactive on this dashboard is gated.
+indicator_metadata <- eventReactive(
+  {
+    req(input$metadata_tab_visited)
+    qc_data()$indicator_id
+  },
+  {
+    id <- qc_data()$indicator_id
+    tryCatch(
+      list(en = get_indicator_metadata(id, lang = "en"), es = get_indicator_metadata(id, lang = "es")),
+      # Explicitly namespaced - see qc_data()'s comment on jsonlite::validate() masking
+      # shiny::validate().
+      error = function(e) shiny::validate(shiny::need(FALSE, glue("Could not load metadata from the CEPALSTAT API: {conditionMessage(e)}")))
+    )
+  }
+)
+
+output$metadata_en_ui <- renderUI({ format_metadata_block(indicator_metadata()$en) })
+output$metadata_es_ui <- renderUI({ format_metadata_block(indicator_metadata()$es) })
+```
+
+## Row
+
+```{r}
+#| title: Metadata (English)
+uiOutput("metadata_en_ui")
+```
+
+```{r}
+#| title: Metadata (Español)
+uiOutput("metadata_es_ui")
+```
+

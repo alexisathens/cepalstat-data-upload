@@ -1,12 +1,13 @@
+library(here)
 source(here("Scripts/technical_sheet.R"))
 source(here("Scripts/utils.R"))
 
 # ---- export metadata -----
 
 # run one "pilot" for indicator group, then update the metadata publicly
-pilot <- 5647
-suggest_metadata_en(pilot, gold_standard_indicators = 2487) # default: 2487
-translate_metadata_es(pilot, gold_standard_indicators = 2487)
+pilot <- 2531
+suggest_metadata_en(pilot, gold_standard_indicators = 2036) # default: 2487
+translate_metadata_es(pilot, gold_standard_indicators = 2036)
 export_metadata_admin(pilot)
 
 # human intervention: update pilot metadata publicly in CEPALSTAT Admin

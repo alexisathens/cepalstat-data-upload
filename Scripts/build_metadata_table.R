@@ -11,7 +11,8 @@ library(CepalStatR)
 
 source(here("Scripts/utils.R"))
 
-# Create basic metadata table with one row per indicator, including id, area, indicator, source, dimensions, anuario, code version
+# Create basic metadata table with one row per indicator and the following values:
+# id, indicator, cat1, cat2, cat3, source_id, source, dim_id, dimension, yearbook, profile, system, notes
 
 ## 1. Retrieve full list of environmental indicators ----
 
@@ -21,28 +22,27 @@ env <- ind %>%
   filter(Area == "Environmental" & !is.na(`Indicator ID`))
 
 env %<>% 
-  filter(Indicador.2 != "") %>% # this is the indicator level for env area
-  rename(cat1 = Dimension, cat2 = Subdimension, cat3 = Indicador.1,
-         indicator = Indicador.2, id = `Indicator ID`) %>% 
+  rename(cat1 = Dimension, cat2 = Subdimension, cat3 = Group,
+         indicator = `Indicator Name`, id = `Indicator ID`) %>% 
   select(id, indicator, cat1, cat2, cat3)
-
-# make manual adjustments
-env %<>% 
-  filter(!id %in% c(4264, 4252)) # make these invisible
 
 env_ids <- env$id
 
 
 ## 2. Get indicator source ----
 
-env <- env %>% mutate(source = NA_character_)
+env <- env %>% mutate(source_id = NA_integer_, source = NA_character_)
 
 for(i in 1:nrow(env)) {
+  message(glue("Getting source ", i, " of ", nrow(env)))
   source <- get_indicator_sources(env$id[i])
   # if(nrow(source) > 1) { stop() } # taking the first entry seems to work best
-  source %<>% slice(1)
-  acronym <- source %>% pull(organization_acronym)
-  env$source[i] <- acronym
+  # source %<>% slice(1)
+  id <- source %>% pull(id)
+  name <- source %>% pull(organization_acronym)
+  env$source_id[i] <- id
+  env$source[i] <- name
+  Sys.sleep(2) # give API a break
 }
 
 # make manual adjustments
@@ -54,10 +54,16 @@ env %<>%
 ## 3. Get indicator dimensions ----
 
 all_dims <- map_dfr(env_ids, function(id) {
-  dims <- get_indicator_dimensions(id) %>%
-    pull(name) %>%
-    setdiff(c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type"))
-  tibble(id = id, dimensions = paste(unique(dims), collapse = "; "))
+  message(glue("Getting dimensions of ", id))
+  Sys.sleep(2) # give API a break
+  dims <- get_indicator_dimensions(id) |> 
+    filter(!name %in% c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type"))
+  
+  tibble(
+    id = id,
+    dim_id = paste(unique(dims$id), collapse = "; "),
+    dimension = paste(unique(dims$name), collapse = "; ")
+  )
 })
 
 env <- env %>%
@@ -125,68 +131,10 @@ env %<>%
     TRUE ~ ""
   ))
 
-
-## Get indicator date info ----
-
-# env <- env %>%
-#   mutate(last_update = as.Date(NA),
-#          last_year = as.numeric(NA))
-# 
-# for (i in seq_len(nrow(env))) {
-#   # last update
-#   meta <- tryCatch(get_indicator_metadata(env$id[i]), error = function(e) NULL)
-#   if (!is.null(meta)) {
-#     last_update <- meta %>%
-#       filter(variable == "last_update") %>%
-#       pull(value) %>%
-#       str_squish()
-#     env$last_update[i] <- suppressWarnings(mdy_hm(last_update) %>% as_date())
-#   }
-#   
-#   # last year
-#   if (!is.na(env$id[i])) {
-#     data <- tryCatch(get_cepalstat_data(env$id[i]), error = function(e) NULL)
-#     if (!is.null(data) && "29117_name" %in% names(data)) {
-#       data <- match_cepalstat_labels(data)
-#       env$last_year[i] <- suppressWarnings(max(as.numeric(data$`29117_name`), na.rm = TRUE))
-#     }
-#   }
-# }
-# 
-# # ---- last update info ----
-# 
-# env %<>% mutate(last_update = as.Date(NA)) # initialize
-# 
-# for(i in 1:nrow(env)) {
-#   meta <- get_indicator_metadata(env$id[i])
-#   last_update <- meta %>% filter(variable == "last_update") %>% pull(value)
-#   last_update %<>% str_squish() %>% mdy_hm() %>% as_date()
-#   env$last_update[i] <- last_update
-# }
-# 
-# 
-# # ---- last year of data ----
-# 
-# env %<>% mutate(last_year = as.numeric(NA)) # initialize
-# 
-# for(i in 1:nrow(env)) {
-#   if(i == 69){ # this indicator data has some NAs and doesn't pass quality checks -- manually update year
-#     year = 2021
-#   } else if(i == 87) { # keep NA, there is no year field (yet) for this indicator
-#     
-#   } else {
-#     data <- get_cepalstat_data(env$id[i])
-#     year <- match_cepalstat_labels(data)
-#     year %<>% summarize(max = max(`29117_name`)) %>% pull(as.numeric(max))
-#   }
-#   env$last_year[i] <- year
-# }
-
-
 ## 8. Export master metadata table ----
 
 env %<>% 
-  select(id, indicator, cat1:cat3, source, dimensions, yearbook, profile, system, notes)
+  select(id, indicator, cat1:cat3, source_id, source, dim_id, dimension, yearbook, profile, system, notes)
 
 
 # writexl::write_xlsx(list(metadata = env), here("Data/indicator_metadata.xlsx"))

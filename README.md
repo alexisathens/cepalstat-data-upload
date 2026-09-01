@@ -4,13 +4,13 @@ Automates the collection and cleaning of environmental indicators in the CEPALST
 
 ## Overview
 
-This repository contains scripts to download, clean, standardize, and quality-check environmental indicator data originating from regional or international data sources (such as FAO, OLADE, Climate Watch, and EM-DAT) for upload to the CEPALSTAT database. The workflow ensures data consistency, validates against existing published data, and generates quality control reports.
+This repository contains scripts to download, clean, standardize, and quality-check environmental indicator data originating from regional or international data sources (such as FAO, OLADE, Climate Watch, and EM-DAT) for upload to the CEPALSTAT database. The workflow ensures data consistency, validates against existing published data, and supports interactive quality review.
 
 ## Process Flow
 
 1.  **Download data** - Fetch raw data from external sources. (Associated files start with `01_` and are organized by source.)
 2.  **Clean data** - Standardize, filter, and transform data to CEPALSTAT format. (Associated files start with `02_` and are organized by source.)
-3.  **Run QC check and manually review** - Generate quality control reports comparing new data with published data using file `03_qc_report.qmd`. Manually review the file by checking for any discrepancies, missing data, or statistical anomalies.
+3.  **Run QC check and manually review** - Load the indicator into `dashboard/dashboard.qmd`, an interactive Quarto Dashboard comparing new data with published data, and manually review it for discrepancies, missing data, or statistical anomalies.
 4.  **Upload cleaned data to Wasabi** - Manually upload the validated data in folder `Data/Cleaned/` to [Wasabi](ETL%20%7C%20LOGIN), CEPALSTAT's automated data ingestion tool.
 5.  **Revise metadata** (optional) - Leverage AI to standardize indicator metadata using file `04_technical_sheet.R`.
 
@@ -28,12 +28,12 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 | `02_other.R` | Clean miscellaneous indicators |
 | `0102_emdat.R` | Download and clean EM-DAT natural disaster data |
 | `0102_fao.R` | Download and clean FAO data (FAOSTAT, FishStat, Aquastat) |
-| `03_qc_report.qmd` | Generate QC HTML report comparing new vs. published data |
 | `04_technical_sheet.R` | Generate technical metadata sheet |
 | `utils.R` | Shared utility functions (API calls, formatting, validation) |
 | `process_indicator_fn.R` | Core `process_indicator()` function used by all cleaning scripts |
 | `build_iso_table.R` | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
 | `build_metadata_table.R` | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
+| `dashboard/dashboard.qmd` | Interactive Quarto Dashboard for QC review - load an indicator ID to compare new vs. published data |
 
 ## The `process_indicator()` Function
 
@@ -63,5 +63,4 @@ Data/
 ├── iso_codes.xlsx           # Country name ↔ CEPALSTAT ID mapping
 └── indicator_metadata.xlsx  # Indicator reference table (id, area, source, dimensions, notes), rebuilt via `build_metadata_table.R`
 Docs/       # Misc documentation and visuals
-QC Reports/       # Generated QC HTML reports
 ```
