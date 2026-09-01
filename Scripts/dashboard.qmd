@@ -226,13 +226,15 @@ callout <- function(text, type = c("note", "good", "flag")) {
 }
 
 # Cached per indicator_id - the expensive part (read files, resolve dimension names via API).
+# Keyed on the comp file's own modification time, not just the indicator_id: a plain
+# id-keyed cache would keep serving an old in-memory copy forever if comp_id{id}.xlsx gets
+# regenerated (e.g. a corrected re-export) while the R session stays running, silently showing
+# stale numbers with no indication anything was wrong - "Load indicator" alone wouldn't have
+# picked up the change.
 .qc_raw_cache <- new.env(parent = emptyenv())
 
 load_qc_raw <- function(indicator_id, use_cache = TRUE) {
   cache_key <- as.character(indicator_id)
-  if (use_cache && exists(cache_key, envir = .qc_raw_cache)) {
-    return(get(cache_key, envir = .qc_raw_cache))
-  }
 
   comp_path <- here(glue("Data/Checks/comp_id{indicator_id}.xlsx"))
   if (!file_exists(comp_path)) {
@@ -240,6 +242,14 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
       "No comparison file found for indicator {indicator_id} at Data/Checks/comp_id{indicator_id}.xlsx. ",
       "Run the indicator through the processing pipeline (export = TRUE) first."
     ))
+  }
+  file_mtime <- file.info(comp_path)$mtime
+
+  if (use_cache && exists(cache_key, envir = .qc_raw_cache)) {
+    cached <- get(cache_key, envir = .qc_raw_cache)
+    if (identical(cached$file_mtime, file_mtime)) {
+      return(cached$result)
+    }
   }
 
   comp_detailed <- read_xlsx(comp_path)
@@ -313,7 +323,7 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
     has_public_data = has_public_data, has_extra_dims = has_extra_dims,
     n_records = nrow(comp_detailed)
   )
-  if (use_cache) assign(cache_key, result, envir = .qc_raw_cache)
+  if (use_cache) assign(cache_key, list(result = result, file_mtime = file_mtime), envir = .qc_raw_cache)
   result
 }
 
