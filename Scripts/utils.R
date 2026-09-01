@@ -16,6 +16,7 @@ library(pdftools)
 library(CepalStatR)
 library(FAOSTAT)
 library(fishstat)
+library(usethis)
 
 # ---- Global variables ----
 
