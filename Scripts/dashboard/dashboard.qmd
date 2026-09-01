@@ -1373,6 +1373,7 @@ output$value_comp_kpi_ui <- renderUI({
   mean_abs <- round(mean(abs_pct, na.rm = TRUE), 1)
   mean_signed <- round(mean(signed_pct, na.rm = TRUE), 1)
   pct_above <- round(mean(present$flag_large_diff, na.rm = TRUE) * 100, 1)
+  n_above <- sum(present$flag_large_diff, na.rm = TRUE)
 
   median_abs_diff <- median(present$abs_diff[is.finite(present$abs_diff)], na.rm = TRUE)
   median_val <- median(present$value_data, na.rm = TRUE)
@@ -1405,7 +1406,7 @@ output$value_comp_kpi_ui <- renderUI({
     ),
     kpi_tile(
       svg_icon("warning", above_color), fmt_pct(pct_above), "Above Threshold", above_color,
-      caption = glue("of values differ by more than {input$threshold}% from what's published")
+      caption = glue("of values differ by more than {input$threshold}% from what's published ({n_above} country-year pairs)")
     ),
     kpi_tile(
       # Raw units, not a %, so there's no universal good/bad cutoff to color against (a
