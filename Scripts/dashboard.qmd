@@ -607,6 +607,8 @@ sliderInput("outlier_z", "Outlier z-score threshold", min = 1, max = 5, value = 
 
 # Overview
 
+*KPI figures below (and throughout this dashboard) are computed at the country-year level. If this indicator has an extra dimension, values are summed across every member before comparing internal to published, so a single member's own difference can be smoothed out in these totals - for a per-member view, check the raw comparison file directly (Data/Checks/comp_id{id}.xlsx).*
+
 ```{r}
 #| context: server
 # Shared styling for the Overview page's two metadata tables (see below) - bold nav-colored
@@ -1336,7 +1338,7 @@ uiOutput("dim_faceted_ui")
 
 # Value Changes
 
-This section analyzes changes in values between **matched pairs** in the public and internal data sets. It gives key statistics that quantify how much values are changing with the data update and displays changes on a percentile change basis. The red coloring is applied to values with a 20% or more change by default and can be adjusted with the **Difference threshold (%)** slider.
+This section analyzes changes in values between **matched pairs** in the public and internal data sets. It gives key statistics that quantify how much values are changing with the data update and displays changes on a percentile change basis. The red coloring is applied to values with a 20% or more change by default and can be adjusted with the **Difference threshold (%)** slider. As on the Overview page, all figures here are computed at the country-year level (summed across any extra dimension first, if one exists).
 
 ```{r}
 #| context: server
