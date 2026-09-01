@@ -11,7 +11,7 @@ source(here("Scripts/other.R"))
 
 # define global specs
 global_spec <- list(diagnostics = TRUE, export = FALSE) # for init testing
-#global_spec <- list(diagnostics = TRUE, export = TRUE) # for export - review results in Scripts/dashboard.qmd
+#global_spec <- list(diagnostics = TRUE, export = TRUE) # for export - review results in Scripts/dashboard/dashboard.qmd
 
 # define run_list and run many
 run_list <- meta %>% filter(source == "CRED") %>% pull(id)

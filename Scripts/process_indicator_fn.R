@@ -68,7 +68,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     format_for_wasabi(., indicator_id) %>% 
     assert_no_na_cols()
   
-  # export data for wasabi + QC dashboard (Scripts/dashboard.qmd reads comp_id{id}.xlsx directly)
+  # export data for wasabi + QC dashboard (Scripts/dashboard/dashboard.qmd reads comp_id{id}.xlsx directly)
   if (export) {
     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 

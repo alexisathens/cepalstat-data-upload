@@ -10,7 +10,7 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 
 1.  **Download data** - Fetch raw data from external sources. (Associated files start with `01_` and are organized by source.)
 2.  **Clean data** - Standardize, filter, and transform data to CEPALSTAT format. (Associated files start with `02_` and are organized by source.)
-3.  **Run QC check and manually review** - Load the indicator into `dashboard.qmd`, an interactive Quarto Dashboard comparing new data with published data, and manually review it for discrepancies, missing data, or statistical anomalies.
+3.  **Run QC check and manually review** - Load the indicator into `dashboard/dashboard.qmd`, an interactive Quarto Dashboard comparing new data with published data, and manually review it for discrepancies, missing data, or statistical anomalies.
 4.  **Upload cleaned data to Wasabi** - Manually upload the validated data in folder `Data/Cleaned/` to [Wasabi](ETL%20%7C%20LOGIN), CEPALSTAT's automated data ingestion tool.
 5.  **Revise metadata** (optional) - Leverage AI to standardize indicator metadata using file `04_technical_sheet.R`.
 
@@ -33,7 +33,7 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 | `process_indicator_fn.R` | Core `process_indicator()` function used by all cleaning scripts |
 | `build_iso_table.R` | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
 | `build_metadata_table.R` | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
-| `dashboard.qmd` | Interactive Quarto Dashboard for QC review - load an indicator ID to compare new vs. published data |
+| `dashboard/dashboard.qmd` | Interactive Quarto Dashboard for QC review - load an indicator ID to compare new vs. published data |
 
 ## The `process_indicator()` Function
 
