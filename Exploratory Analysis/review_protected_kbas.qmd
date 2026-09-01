@@ -11,6 +11,8 @@ format:
 params:
   indicator_a: 5731
   indicator_b: 3963
+  indicator_a_data_path: "KBA_revisado_v2.xlsx"
+  indicator_a_year: 2026
 execute:
   echo: false
   warning: false
@@ -27,6 +29,13 @@ technical sheets / metadata, both pulled live from the CEPALSTAT API below). In 
 published values diverge, and the goal of this notebook is to characterize *how* and *where* they
 diverge -- by country, by year, and structurally (source, methodology, dimensions) -- so that a
 root cause can be identified and written up in the Summary of Findings section at the end.
+
+Indicator A's data values can come from either the live CEPALSTAT API or a local revised-methodology
+export (params$indicator_a_data_path, a two-column ISO3/percentage extract with no year column of
+its own -- every row is assigned params$indicator_a_year). Set indicator_a_data_path to "" to fall
+back to pulling indicator A's data from the API instead. Indicator A's technical sheet (metadata,
+source, dimensions) is always pulled live from the API regardless of this setting, since that's
+unaffected by which data extract is used for values.
 -->
 
 ```{r setup}
@@ -49,12 +58,16 @@ id_b <- params$indicator_b
 DIM_COUNTRY <- 208
 DIM_YEAR    <- 29117
 
+use_local_a <- nzchar(params$indicator_a_data_path)
+
 # Strip stray <br> tags that sometimes leak into CEPALSTAT's published metadata text, and collapse
 # extra whitespace, so long-form fields (definition, methodology, comments) read cleanly in the report.
 strip_html <- function(x) {
   x %>% str_remove_all("<br\\s*/?>") %>% str_squish()
 }
 ```
+
+`r if (use_local_a) glue("**Note:** indicator {id_a}'s values in this report come from a local revised-methodology export ('{params$indicator_a_data_path}'), not the CEPALSTAT API, and are all treated as year {params$indicator_a_year}. Its technical sheet below (definition, methodology, source) still reflects whatever is currently published on CEPALSTAT, which may not yet include this revision.") else ""`
 
 ## Technical Sheet Comparison
 
@@ -109,6 +122,10 @@ for (f in key_fields) {
 ```
 
 ### Data Source
+
+*This shows each indicator's currently catalogued CEPALSTAT source. Note this reflects the*
+*published/catalogued source only -- see the note under the report title if indicator `r id_a`'s*
+*values below are coming from a local revised-methodology extract instead.*
 
 ```{r compare source}
 source_a <- get_indicator_source(id_a) %>% slice(1)
@@ -180,12 +197,12 @@ reactable(
 country-by-country basis.*
 
 ```{r fetch data}
-raw_a <- get_cepalstat_data(id_a)
+if (!use_local_a) raw_a <- get_cepalstat_data(id_a)
 raw_b <- get_cepalstat_data(id_b)
 
 base_dim_cols <- paste0("dim_", c(DIM_COUNTRY, DIM_YEAR))
 
-extra_dims_a <- setdiff(raw_a %>% select(starts_with("dim_")) %>% names(), base_dim_cols)
+extra_dims_a <- if (use_local_a) character(0) else setdiff(raw_a %>% select(starts_with("dim_")) %>% names(), base_dim_cols)
 extra_dims_b <- setdiff(raw_b %>% select(starts_with("dim_")) %>% names(), base_dim_cols)
 ```
 
@@ -212,9 +229,43 @@ summarize_indicator <- function(raw) {
     mutate(year_num = as.numeric(year))
 }
 
-sum_a <- summarize_indicator(raw_a)
+# Read indicator A's revised-methodology extract (ISO3, country name, percentage) and match it to
+# CEPALSTAT's own country list by ISO3 rather than by name, since the extract's country names are
+# in Spanish and don't necessarily match CEPALSTAT's own spelling. Rows whose ISO3 code has no
+# CEPALSTAT match (e.g. a territory CEPALSTAT doesn't track) are dropped and reported below rather
+# than silently mishandled.
+load_local_indicator_a <- function(path, year) {
+  iso_lookup <- read_xlsx(here("Data/iso_codes.xlsx")) %>%
+    filter(ECLACa == "Y") %>%
+    distinct(iso3, country = std_name)
+
+  local_raw <- read_xlsx(here("Exploratory Analysis", path)) %>%
+    transmute(iso3 = ISO3, pais = pais, value = as.numeric(porcentaje))
+
+  matched <- local_raw %>%
+    inner_join(iso_lookup, by = "iso3") %>%
+    mutate(year = as.character(year), year_num = as.numeric(year)) %>%
+    select(country, value, year, year_num)
+
+  list(
+    data = matched,
+    unmatched = local_raw %>% filter(!iso3 %in% iso_lookup$iso3)
+  )
+}
+
+if (use_local_a) {
+  local_a <- load_local_indicator_a(params$indicator_a_data_path, params$indicator_a_year)
+  sum_a <- local_a$data
+  unmatched_a <- local_a$unmatched
+} else {
+  sum_a <- summarize_indicator(raw_a)
+  unmatched_a <- tibble()
+}
+
 sum_b <- summarize_indicator(raw_b)
 ```
+
+`r if (nrow(unmatched_a) > 0) glue("**Note:** {nrow(unmatched_a)} entities in the indicator {id_a} extract could not be matched to a CEPALSTAT country/territory and were dropped from the comparison: {paste(glue('{unmatched_a$pais} ({unmatched_a$iso3})'), collapse = ', ')}.") else ""`
 
 ### Year Coverage
 
@@ -507,10 +558,16 @@ fields_sentence <- if (fields_differ) {
   "The key technical sheet fields (definition, methodology, source, comments) read as identical, so the divergence is likely coming from the underlying data itself rather than a documented methodological change."
 }
 
+local_sentence <- if (use_local_a) {
+  glue("These figures for indicator {id_a} reflect the revised methodology (aligned to UN SDG processing) in `{params$indicator_a_data_path}`, not what's currently published on CEPALSTAT -- any remaining gap to indicator {id_b} should be interpreted as the effect of that revision, not a data error to fix.")
+} else {
+  ""
+}
+
 cat(glue(
   "Across **{n_both}** countries compared, the mean absolute percent difference is **{mean_pct}%**, ",
   "and **{pct_large}%** of countries differ by more than 20%. ",
-  "{year_sentence} {coverage_sentence} {fields_sentence}"
+  "{year_sentence} {coverage_sentence} {fields_sentence} {local_sentence}"
 ))
 ```
 
