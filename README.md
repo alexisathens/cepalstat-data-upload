@@ -56,7 +56,7 @@ The data cleaning phase standardizes, filters, and transforms the raw data into 
 
 The central function of the cleaning process is the `process_indicator()` function, which handles the full indicator processing pipeline in a standardized way:
 
-![process_indicator workflow](Docs/process_indicator_flowchart_old.png)
+![process_indicator workflow](Docs/process_indicator_flowchart.png)
 
 The `process_indicator()` function, found in the file `process_indicator_fn.R,` is the workhorse for the indicator cleaning. It defines the shared processing steps between all indicators, such as standardizing country names, joining dimension members, and formatting for export.
 
@@ -140,16 +140,25 @@ To manage this two-step metadata revision easily, utilize the wrapper script `ru
 
 ## Global Files
 
-| Script | Associated Step | Purpose |
-|----|----|----|
-| `build_iso_table.R` | 0\. setup | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
-| `build_metadata_table.R` | 0\. setup | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
-| `process_indicator_fn.R` | 2\. clean data | Core `process_indicator()` function used by all cleaning scripts |
-| `run_all.R` | 2\. clean data | Controller for `process_indicator_fn.R` |
-| `utils.R` | 2\. clean data | Shared utility functions (API calls, formatting, validation) |
-| `dashboard/dashboard.qmd` | 3\. quality check | Interactive Quarto Dashboard for QC review |
-| `technical_sheet.R` | 5\. metadata | Generate technical metadata sheet |
-| `run_meta.R` | 5\. metadata | Controller for `technical_sheet.R` |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| Script                    | Associated Step   | Purpose                                                                |
++===========================+===================+========================================================================+
+| `build_iso_table.R`       | 0\. setup         | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `build_metadata_table.R`  | 0\. setup         | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `process_indicator_fn.R`  | 2\. clean data    | Core `process_indicator()` function used by all cleaning scripts       |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `run_all.R`               | 2\. clean data    | Controller for `process_indicator_fn.R`                                |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `utils.R`                 | 2\. clean data    | Shared utility functions (API calls, formatting, validation)           |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `dashboard/dashboard.qmd` | 3\. quality check | Interactive Quarto Dashboard for QC review                             |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `technical_sheet.R`       | 5\. metadata      | Generate technical metadata sheet                                      |
++---------------------------+-------------------+------------------------------------------------------------------------+
+| `run_meta.R`              | 5\. metadata      | Controller for `technical_sheet.R`                                     |
++---------------------------+-------------------+------------------------------------------------------------------------+
 
 ## File Organization
 
