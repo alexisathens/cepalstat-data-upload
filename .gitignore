@@ -5,7 +5,6 @@
 .quarto/
 *_files/
 *_cache/
-Data/Checks/
 Data/Cleaned/
 Data/Misc/
 Data/Raw/
