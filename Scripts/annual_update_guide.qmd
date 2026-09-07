@@ -1,0 +1,288 @@
+---
+title: "Annual Update Guide: WIP!"
+format: html
+---
+
+Recommend processing by delivery & by source.
+
+Link at bottom of README.
+
+## Before you start
+
+### Software and access checklist
+
+- [ ] R and RStudio installed
+- [ ] This repository cloned locally, opened via `cepalstat-data-upload.Rproj`
+- [ ] Required R packages installed — see the `library()` calls at the top of `Scripts/utils.R` for the full list
+- [ ] An account on each manual-download source: EM-DAT, IRENA, IAF/ISO Survey, UNEP, Ramsar (see `Scripts/manual_download.qmd` for account creation links)
+- [ ] Wasabi login credentials
+- [ ] CEPALSTAT Admin login credentials
+- [ ] Only needed for the optional metadata phase: an `ANTHROPIC_API_KEY` added to your `.Renviron` file
+      (`usethis::edit_r_environ()` opens it)
+      
+## File preparations (July)
+
+- Get most recent yearbook index
+- Refresh build_metadata_table.R, rerun in case there were any metadata changes, update yearbook flag (#4)
+
+## First yearbook delivery -- sources FAO & OLADE (Sept)
+
+### FAO
+
+All of the processing code related for FAO data can be found in the file `fao.R`. 
+
+
+### OLADE
+
+There are three files associated with the processing of the OLADE energy data: `manual_olade.qmd`, `format_olade.qmd` and `olade.R`. 
+
+The first step is to follow the instructions in the file `manual_olade.qmd` to manually download the necessary raw files. You will need to create an account with OLADE to download the 6 tables detailed in the instructions. Download and save the files locally as described.
+
+Next, run the script `format_olade.R` to take the raw OLADE files and transform them into standard, long data tables.
+
+Finally, source the script `olade.R` to get the indicator-specific cleaning functions. Process the indicators via the `run_all.R` driver.
+
+Quality check them, upload them to Wasabi, and assess their metadata like usual.
+
+
+## Second yearbook delivery -- all other sources (Nov)
+
+
+
+
+
+For the second delivery:
+manual_download.qmd has instructions for EM-DAT and all other sources
+
+Update EM-DAT data: manual_download.qmd
+Update Climate Watch data:
+Update all other data (from mixed sources):
+      
+## Phase 1: Manually download raw data for sources without APIs
+
+
+- manual_download.qmd
+- manual_olade.qmd
+
+## Phase 2: Run download scripts for cleaning manual downloads and accessing APIs
+
+- download_climatewatch.R
+- download_informea.R
+- format_olade.qmd
+
+
+Downloading works differently per source. Follow the instructions for each:
+
+| Source | How | Where |
+|---|---|---|
+| Climate Watch | Run `Scripts/download_climatewatch.R` | Saves automatically |
+| InforMEA | Run `Scripts/download_informea.qmd` | Saves automatically |
+| FAOSTAT / FishStat / Aquastat | Run `Scripts/fao.R`'s download section | Saves automatically |
+| OLADE | Follow `Scripts/download_olade.qmd` | Manual — multiple files |
+| EM-DAT, IRENA, IAF/ISO Survey, UNEP, Ramsar | Follow `Scripts/download_other.qmd` (one section per source) | Manual — save to the exact filename each section specifies |
+
+For the manual sources, `download_other.qmd` and `download_olade.qmd` spell out exactly which filters to select
+on each provider's website and what to name the saved file. Getting the filename right matters — the cleaning
+scripts look for that exact pattern.
+
+
+# Claude version
+# Annual Update Guide
+
+This guide walks through running a full annual update of CEPALSTAT's environmental indicators, start to finish.
+It's written for someone with limited R experience and no prior exposure to this repository — if you can follow
+along and get through one full cycle, you'll understand how the pieces connect. For the bigger-picture explanation
+of *why* each stage exists and how the scripts are organized, see **[README.md](README.md)**; this guide is the
+step-by-step companion to it.
+
+> ✏️ **Note to reviewer (Alexis):** sections marked with ✏️ need repo- or org-specific detail filled in
+> (login links, package install sources, credential locations) before this goes out for training — I don't have
+> that operational information to fill in accurately.
+
+## When to use this guide
+
+Once a year, when a new year of data becomes available from each source. This is about **refreshing existing
+indicators with a new year of data** — it does not cover adding a brand-new indicator to the pipeline (that
+involves writing a new `indicator_spec()`, which is a separate, more involved task).
+
+## Before you start
+
+### Software and access checklist
+
+- [ ] R and RStudio installed
+- [ ] This repository cloned locally, opened via `cepalstat-data-upload.Rproj`
+- [ ] Required R packages installed — see the `library()` calls at the top of `Scripts/utils.R` for the full list
+      (tidyverse, magrittr, readxl, writexl, httr2, jsonlite, glue, here, assertthat, quarto, memoise, beepr,
+      pdftools, `CepalStatR`, `FAOSTAT`, `fishstat`)
+  - ✏️ *Alexis: note here where `CepalStatR`/`fishstat` install from if not CRAN (e.g. a GitHub remote / internal
+    package source), and any access token needed.*
+- [ ] An account on each manual-download source: EM-DAT, IRENA, IAF/ISO Survey, UNEP, Ramsar (see
+      `Scripts/download_other.qmd` for account creation links)
+- [ ] ✏️ *Wasabi login — link and where credentials live*
+- [ ] ✏️ *CEPALSTAT Admin login — link and where credentials live*
+- [ ] Only needed for the optional metadata phase: an `ANTHROPIC_API_KEY` added to your `.Renviron` file
+      (`usethis::edit_r_environ()` opens it)
+
+### Local folders
+
+`Data/Raw/`, `Data/Cleaned/`, and `Data/Checks/` are not stored in git — they're created and filled locally as
+you work. If they don't exist yet under `Data/`, create them (with a subfolder per source under `Raw/`, e.g.
+`Data/Raw/climate watch/`, `Data/Raw/olade/`, `Data/Raw/emdat/`, `Data/Raw/fao/`, `Data/Raw/other/`).
+
+### A few R conventions used throughout this repo
+
+You don't need to be an R expert to run the annual update, but these patterns show up constantly:
+
+- **`source(here("Scripts/utils.R"))`** at the top of a script loads shared functions from another file — you'll
+  see this in nearly every script.
+- **The pipe, `%>%`** — reads as "then." `data %>% filter(x) %>% summarize(y)` means "take `data`, then filter it,
+  then summarize it."
+- **`spec_<indicator_id>`** — each indicator has a "spec" object (built with `indicator_spec()`) bundling
+  everything needed to clean it: its raw data, its max year, how to filter/transform it, etc. You won't need to
+  write new ones for an annual update, but you will edit a couple of values inside existing ones (Phase 2 below).
+
+## The annual cycle at a glance
+
+1. Download this year's raw data from each source
+2. Update the "max year" in each cleaning script
+3. Run the cleaning pipeline
+4. Review each indicator in the QC dashboard
+5. Upload validated files to Wasabi
+6. *(Optional)* Refresh indicator metadata
+
+---
+
+## Phase 1: Download this year's raw data
+
+Downloading works differently per source. Follow the instructions for each:
+
+| Source | How | Where |
+|---|---|---|
+| Climate Watch | Run `Scripts/download_climatewatch.R` | Saves automatically |
+| InforMEA | Run `Scripts/download_informea.qmd` | Saves automatically |
+| FAOSTAT / FishStat / Aquastat | Run `Scripts/fao.R`'s download section | Saves automatically |
+| OLADE | Follow `Scripts/download_olade.qmd` | Manual — multiple files |
+| EM-DAT, IRENA, IAF/ISO Survey, UNEP, Ramsar | Follow `Scripts/download_other.qmd` (one section per source) | Manual — save to the exact filename each section specifies |
+
+For the manual sources, `download_other.qmd` and `download_olade.qmd` spell out exactly which filters to select
+on each provider's website and what to name the saved file. Getting the filename right matters — the cleaning
+scripts look for that exact pattern.
+
+## Phase 2: Point the pipeline at the new year
+
+Each source's cleaning script defines its own "max year" constant near the top of the file — this is what tells
+`process_indicator()` how far to trust the new data. Update each one before running the pipeline:
+
+| Script | Constant |
+|---|---|
+| `climatewatch.R` | `max_year_cw` |
+| `emdat.R` | `max_year_emdat` |
+| `fao.R` | `max_year_fao` |
+| `olade.R` | `max_year_olade` |
+| `other.R` | `max_year_other` |
+
+For example, in `climatewatch.R`:
+
+```r
+max_year_cw <- 2023 # as of July 2026
+```
+
+Change the year (and update the comment) to reflect the latest year with complete data from that source — this
+isn't always the current calendar year, since sources publish on their own schedules. If a source's data is
+incomplete for its most recent year (see the code comments near each constant for known caveats), use the last
+*complete* year instead.
+
+## Phase 3: Run the cleaning pipeline
+
+`Scripts/run_all.R` is the entry point. Open it and work through it top to bottom:
+
+1. It sources every cleaning script (`utils.R`, `process_indicator_fn.R`, `fao.R`, `olade.R`, `emdat.R`,
+   `climatewatch.R`, `other.R`) — this reads in this year's raw data and (re)defines every indicator's spec.
+2. `global_spec` controls two things:
+   - `diagnostics = TRUE` prints a comparison summary against currently published data — leave this on.
+   - `export` — leave `FALSE` for an initial test run (nothing is written to disk yet); set `TRUE` once you're
+     ready to actually produce files for QC review and upload.
+3. Define `run_list` — the indicator IDs you want to process. You can filter the metadata table
+   (`meta %>% filter(source == "...") %>% pull(id)`) to run a whole source at once, or list specific IDs.
+4. Run `run_many_indicators(run_list)` to process them all, or `run_one_indicator(id)` for a single one.
+
+Watch the console output as it runs:
+
+- `✅` messages mean that step succeeded.
+- `⚠️` messages are worth reading but don't stop execution — e.g. "Source changed" or "Footnotes changed" — they
+  flag something to double-check in Phase 4, not necessarily a problem.
+- `❌` means something failed validation (see **Troubleshooting** below) — that indicator was not processed and
+  needs to be fixed before moving on.
+
+With `export = TRUE`, each successfully processed indicator writes two files:
+
+- `Data/Cleaned/id{indicator_id}_{timestamp}.xlsx` — the final file that will eventually go to Wasabi
+- `Data/Checks/comp_id{indicator_id}.xlsx` — the comparison file the QC dashboard reads next
+
+## Phase 4: QC review in the dashboard
+
+Open `Scripts/dashboard/dashboard.qmd` and run it (in RStudio, click **Run Document**). Enter an indicator ID to
+review.
+
+The dashboard compares the newly cleaned data against what's currently published on CEPALSTAT and flags:
+
+- **Value differences** — entries where the new value differs from the published value by more than 20%
+- **Statistical outliers** — entries flagged by a z-score threshold
+- **New / missing entries** — data points present in one version but not the other
+
+Use the sidebar filters (Country, plus one per additional dimension) and the Inspect Country view to dig into any
+flag. A flag isn't automatically wrong — it might be a real, expected change (e.g. a source revised historical
+values) — but it needs a human decision either way. The dashboard's Metadata Check page also compares this
+indicator's assigned source and footnotes against what's currently published.
+
+**If something looks wrong:** go back to the relevant cleaning script, adjust that indicator's spec (e.g. its
+`filter_data` or `transform_data` function), and re-run Phase 3 for that indicator. Only touch
+`Scripts/process_indicator_fn.R` or `Scripts/utils.R` if the issue is genuinely shared across every indicator —
+it isn't the first place to look.
+
+**Once it looks right:** that indicator is ready for upload.
+
+## Phase 5: Upload to Wasabi
+
+✏️ *Alexis: fill in the actual steps here — Wasabi login, where to point it at `Data/Cleaned/`, and any
+naming/versioning convention to follow when multiple timestamped files exist for the same indicator.*
+
+## Phase 6 (optional): Refresh indicator metadata
+
+This step is independent of the data refresh above and doesn't need to happen every year for every indicator —
+use it when an indicator's written definition/methodology is stale.
+
+`Scripts/run_meta.R` walks through the workflow, using functions from `Scripts/technical_sheet.R`:
+
+1. Pick one indicator from a group as the **pilot**, and run `suggest_metadata_en()` on it — this drafts English
+   metadata using AI assistance, saved to `Metadata/Outputs/`.
+2. **Review and edit the draft by hand.** This is a required checkpoint, not optional — the draft is a starting
+   point.
+3. Run `translate_metadata_es()`, then `export_metadata_admin()` to produce a CEPALSTAT Admin-ready import file.
+4. Manually publish the pilot indicator's metadata in CEPALSTAT Admin.
+5. Loop the same steps (`suggest_metadata_en()`, review, `translate_metadata_es()`, `export_metadata_admin()`)
+   over the rest of the indicator group, using the pilot as the "gold standard" example for consistency.
+6. Review the full batch, then publish in CEPALSTAT Admin.
+
+## Troubleshooting
+
+| Message | What it means |
+|---|---|
+| `❌ NA values found in ...` | A row is missing a value where one is required — usually a raw file formatting change from the source, or a country name that failed to standardize. Check the raw file first. |
+| `❌ Duplicate keys found in ...` | The same combination of dimensions (e.g. same country + year) appears more than once — usually a raw file that wasn't filtered/aggregated as expected. |
+| `❌ extra columns found: ...` | The cleaned data has a column that doesn't match the indicator's `dim_config` — check the `transform_data` function for that indicator. |
+| A cleaning script errors on `read_csv`/`read_xlsx` before anything else runs | The expected raw file isn't where the script is looking, or was saved under a different name — recheck Phase 1. |
+
+If you're stuck beyond this table, the `⚠️`/`❌` messages plus the failing indicator's spec (in its source's
+cleaning script) are the fastest way to narrow down what changed.
+
+## Glossary
+
+- **Indicator ID** — CEPALSTAT's numeric identifier for a single indicator (e.g. `2487`).
+- **Spec** — an `indicator_spec()` object bundling everything needed to clean one indicator.
+- **`dim_config`** — a small table mapping an indicator's data columns (e.g. `Country`, `Years`) to CEPALSTAT's
+  internal dimension IDs.
+- **Comp file** — the `comp_id{id}.xlsx` file comparing newly cleaned data to currently published data; what the
+  QC dashboard reads.
+- **LAC** — Latin America and the Caribbean; most indicators include an aggregated regional total for it.
+- **Wasabi** — CEPALSTAT's automated data ingestion tool; the final upload destination for cleaned files.
