@@ -6,11 +6,6 @@ library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-# Define max year of reliable FAO data
-max_year_fao <- 2025 # as of July 2026
-# missing Land area item from RL dataset for year 2025 as of July 2026...
-# hopefully all FAO data will be available for 2025 in time for the yearbook
-
 # ---- download data ----
 
 # Load information about all datasets into a data frame
