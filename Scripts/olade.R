@@ -7,9 +7,6 @@ library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-# Define last year of full OLADE data
-max_year_olade <- 2025
-
 # read energy type dimension mappings
 input_path <- here("Data/Raw/olade")
 energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))

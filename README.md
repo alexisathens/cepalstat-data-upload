@@ -1,6 +1,6 @@
 # cepalstat-data-upload
 
-Automates the collection and cleaning of environmental indicators in the CEPALSTAT database.
+Automates the collection and cleaning of environmental indicators in the [CEPALSTAT](https://statistics.cepal.org/portal/cepalstat/dashboard.html?theme=3&lang=en) database.
 
 ## Overview
 
@@ -16,31 +16,14 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 
 ## Data Sources
 
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
-| Source                               | Data                                                                                                                        | Associated steps/files                                                            |
-+======================================+=============================================================================================================================+===================================================================================+
-| FAO                                  | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides, fish capture, aquaculture, water withdrawal | - Download and clean with `fao.R`, which uses the `FAOSTAT` R package             |
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
-| OLADE                                | Energy production and consumption                                                                                           | - Manual download following `manual_olade.qmd` instructions                       |
-|                                      |                                                                                                                             |                                                                                   |
-|                                      |                                                                                                                             | - Restructure raw data with `format_olade.R`                                      |
-|                                      |                                                                                                                             |                                                                                   |
-|                                      |                                                                                                                             | - Clean with `olade.R`                                                            |
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
-| Climate Watch                        | GHG emissions (CO₂, CH₄, N₂O, etc.)                                                                                         | - API download with `download_climatewatch.R`                                     |
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
-| EM-DAT                               | Natural disaster deaths, affected, economic damage                                                                          | - Manual download following `manual_download.qmd`                                 |
-|                                      |                                                                                                                             |                                                                                   |
-|                                      |                                                                                                                             | - Clean with `emdat.R`                                                            |
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
-| InforMEA                             | Environmental treaty indicators                                                                                             | - Download with `download_informea.qmd`, which scrapes web data from informea.org |
-|                                      |                                                                                                                             |                                                                                   |
-|                                      |                                                                                                                             | - Clean with `other.R`                                                            |
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
-| Other (UNEP/Ramsar/IRENA/ISO Survey) |                                                                                                                             | - Download with `manual_download.qmd`                                             |
-|                                      |                                                                                                                             |                                                                                   |
-|                                      |                                                                                                                             | - Clean with `other.R`                                                            |
-+--------------------------------------+-----------------------------------------------------------------------------------------------------------------------------+-----------------------------------------------------------------------------------+
+| Source | Data | Associated steps/files |
+|---|---|---|
+| FAO | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides, fish capture, aquaculture, water withdrawal | <ul><li>Download and clean with `fao.R`, which uses the `FAOSTAT` R package</li></ul> |
+| OLADE | Energy production and consumption | <ul><li>Manual download following `manual_olade.qmd` instructions</li><li>Restructure raw data with `format_olade.R`</li><li>Clean with `olade.R`</li></ul> |
+| Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | API download with `download_climatewatch.R` |
+| EM-DAT | Natural disaster deaths, affected, economic damage | <ul><li>Manual download following `manual_download.qmd`</li><li>Clean with `emdat.R`</li></ul> |
+| InforMEA | Environmental treaty indicators | <ul><li>Download with `download_informea.qmd`, which scrapes web data from informea.org</li><li>Clean with `other.R`</li></ul> |
+| Other (UNEP/Ramsar/IRENA/ISO Survey) | | <ul><li>Download with `manual_download.qmd`</li><li>Clean with `other.R`</li></ul> |
 
 ## Detailed Steps
 
@@ -140,25 +123,16 @@ To manage this two-step metadata revision easily, utilize the wrapper script `ru
 
 ## Global Files
 
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| Script                    | Associated Step   | Purpose                                                                |
-+===========================+===================+========================================================================+
-| `build_iso_table.R`       | 0\. setup         | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `build_metadata_table.R`  | 0\. setup         | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `process_indicator_fn.R`  | 2\. clean data    | Core `process_indicator()` function used by all cleaning scripts       |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `run_all.R`               | 2\. clean data    | Controller for `process_indicator_fn.R`                                |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `utils.R`                 | 2\. clean data    | Shared utility functions (API calls, formatting, validation)           |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `dashboard/dashboard.qmd` | 3\. quality check | Interactive Quarto Dashboard for QC review                             |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `technical_sheet.R`       | 5\. metadata      | Generate technical metadata sheet                                      |
-+---------------------------+-------------------+------------------------------------------------------------------------+
-| `run_meta.R`              | 5\. metadata      | Controller for `technical_sheet.R`                                     |
-+---------------------------+-------------------+------------------------------------------------------------------------+
+| Script | Associated Step | Purpose |
+|---|---|---|
+| `build_iso_table.R` | 0. setup | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
+| `build_metadata_table.R` | 0. setup | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
+| `process_indicator_fn.R` | 2. clean data | Core `process_indicator()` function used by all cleaning scripts |
+| `run_all.R` | 2. clean data | Controller for `process_indicator_fn.R` |
+| `utils.R` | 2. clean data | Shared utility functions (API calls, formatting, validation) |
+| `dashboard/dashboard.qmd` | 3. quality check | Interactive Quarto Dashboard for QC review |
+| `technical_sheet.R` | 5. metadata | Generate technical metadata sheet |
+| `run_meta.R` | 5. metadata | Controller for `technical_sheet.R` |
 
 ## File Organization
 
