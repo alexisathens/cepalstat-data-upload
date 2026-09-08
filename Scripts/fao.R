@@ -118,6 +118,10 @@ calculate_regional_intensity <- function(df) {
     select(-area)
 }
 
+define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
+}
+
 
 ## ---- indicator 3381 - mean annual temperature change ----
 
@@ -325,7 +329,8 @@ spec_2021 <- indicator_spec(
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
-  calculate_regional = calculate_regional_wgt_avg
+  calculate_regional = calculate_regional_wgt_avg,
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 
@@ -356,7 +361,8 @@ spec_2530 <- indicator_spec(
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
-  calculate_regional = calculate_regional_wgt_avg
+  calculate_regional = calculate_regional_wgt_avg,
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 ## ---- indicator 2531 - forest plantations proportion of total forest ----
@@ -937,15 +943,15 @@ transform_4185 <- function(data) {
 }
 
 # ** double check maintain regional calc
-spec_4185 <- indicator_spec(
-  indicator_id = 4185,
-  data = aquastat, # check **
-  max_year = max_year_fao,
-  dim_config = dim_config_4185,
-  filter_data = filter_4185,
-  transform_data = transform_4185,
-  calculate_regional = maintain_regional
-)
+# spec_4185 <- indicator_spec(
+#   indicator_id = 4185,
+#   data = aquastat, # check **
+#   max_year = max_year_fao,
+#   dim_config = dim_config_4185,
+#   filter_data = filter_4185,
+#   transform_data = transform_4185,
+#   calculate_regional = maintain_regional
+# )
 
 
 ## ---- indicator 4186 - water intensity of agriculture value added ----
@@ -979,12 +985,12 @@ transform_4186 <- function(data) {
     select(Country, Years, value = intensity)
 }
 
-spec_4186 <- indicator_spec(
-  indicator_id = 4186,
-  data = aquastat,
-  max_year = max_year_fao,
-  dim_config = dim_config_4186,
-  filter_data = filter_4186,
-  transform_data = transform_4186,
-  calculate_regional = maintain_regional # no ECLAC average **
-)
+# spec_4186 <- indicator_spec(
+#   indicator_id = 4186,
+#   data = aquastat,
+#   max_year = max_year_fao,
+#   dim_config = dim_config_4186,
+#   filter_data = filter_4186,
+#   transform_data = transform_4186,
+#   calculate_regional = maintain_regional # no ECLAC average **
+# )

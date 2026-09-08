@@ -48,7 +48,8 @@ for(i in 1:nrow(env)) {
 # make manual adjustments
 
 env %<>% 
-  mutate(source = ifelse(source == "CEPAL", "ECLAC", source))
+  mutate(source = ifelse(source == "CEPAL", "ECLAC", source),
+         source = ifelse(source == "OLACDE", "OLADE", source))
 
 
 ## 3. Get indicator dimensions ----
