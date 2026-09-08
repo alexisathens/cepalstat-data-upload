@@ -5,8 +5,12 @@
 .quarto/
 *_files/
 *_cache/
-Data/Checks/
-Data/Cleaned/
+Data/Checks/*
+!Data/Checks/comp_id3381.xlsx
+!Data/Checks/comp_id4243.xlsx
+!Data/Checks/comp_id5646.xlsx
+Data/Cleaned/*
+!Data/Cleaned/.gitkeep
 Data/Misc/
 Data/Raw/
 Pilot/

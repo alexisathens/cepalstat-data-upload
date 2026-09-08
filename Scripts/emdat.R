@@ -6,9 +6,6 @@ library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-# Define latest year of reliable data
-max_year_emdat <- 2025 # as of July 2026
-
 # ---- data ----
 
 # Read in the most recently downloaded emdat data file (auto-detects latest by file date)

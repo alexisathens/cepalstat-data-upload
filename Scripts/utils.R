@@ -28,6 +28,15 @@ iso %<>%
 
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
+# Define max year of reliable data by data by source
+# This serves as a maximum, and can be overwritten in indicator spec files if reliability for one indicator lags the general source
+max_year_fao <- 2025 # as of July 2026
+max_year_olade <- 2025
+max_year_emdat <- 2025 # as of July 2026
+max_year_cw <- 2023 # as of July 2026
+max_year_other <- 2025
+
+
 # ---- Small helpers ----
 
 # Helper: take sum, but retain NA if every value in the group is NA (rather than summing to 0)

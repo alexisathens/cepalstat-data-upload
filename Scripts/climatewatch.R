@@ -7,9 +7,6 @@ source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 #source(here("Scripts/climatewatch_download.R"))
 
-# Define max year of Climate Watch data
-max_year_cw <- 2023 # as of July 2026
-
 # ---- read downloaded files ----
 
 cw_path <- here("Data/Raw/climate watch")

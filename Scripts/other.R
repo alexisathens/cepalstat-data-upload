@@ -9,8 +9,6 @@ source(here("Scripts/process_indicator_fn.R"))
 
 input_path <- here("Data/Raw/other")
 
-max_year_other <- 2025 # define most recent year with full data
-
 # ---- read downloaded files ----
 
 data_irena <- read_xlsx(paste0(input_path, "/irena_raw.xlsx"))
