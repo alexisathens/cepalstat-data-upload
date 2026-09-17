@@ -12,31 +12,31 @@ source(here("Scripts/process_indicator_fn.R"))
 fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
 # Alternatively go here to see data areas: https://www.fao.org/faostat/en/#data
 
-## create custom bulk download function while API is broken
+## create custom bulk download function
 get_fao_bulk <- function(filename) {
   data_folder <- here("Data/Raw/fao")
   download_faostat_bulk(url_bulk = paste0("https://bulks-faostat.fao.org/production/", filename), 
                         data_folder = data_folder)
-  read_faostat_bulk(file.path(data_folder, filename)) %>% as_tibble()
+  read_faostat_bulk(file.path(data_folder, filename)) %>% as_tibble() %>% filter(!is.na(value))
 }
 
 # download land use (RL) data
-use <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+use <- get_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip")
 
 # download climate change (ET) data
-clim <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+clim <- get_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip")
 
 # download land cover (LC) data
-cover <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+cover <- get_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip")
 
 # download crops and livestock products (QCL) data
-crop <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+crop <- get_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip")
 
 # download fertilizers by Nutrient (RFN) data
-fert <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+fert <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip")
 
 # download pesticide use (RP) data
-pest <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip") %>% filter(!is.na(value))
+pest <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip")
 
 ## fishstat & aquastat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
