@@ -9,10 +9,10 @@ source(here("Scripts/process_indicator_fn.R"))
 
 # read energy type dimension mappings
 input_path <- here("Data/Raw/olade")
-energy_types <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"))
+energy_types <- read_excel(paste0(input_path, "/Mappings/energy_dimensions_crosswalk.xlsx"))
 
 # get mappings from olade energy sectors to cepalstat energy sectors
-energy_econ_sectors <- read_excel(paste0(input_path, "/energy_dimensions_crosswalk.xlsx"), sheet = "dimensions_crosswalk_78134")
+energy_econ_sectors <- read_excel(paste0(input_path, "/Mappings/energy_dimensions_crosswalk.xlsx"), sheet = "dimensions_crosswalk_78134")
 
 
 # ---- read downloaded files ----
@@ -28,6 +28,11 @@ data_infra <- read_csv(paste0(input_path, "/electricity_infra_clean.csv"))
 
 # Shared no-op filter
 filter_none <- function(data) data
+
+define_source_olade_w_cepal_calcs <- function(df, indicator_id) {
+  df %>% mutate(source_id = 885) # Calculations made by ECLAC based on data from the Energy Information System of OLACDE
+}
+
 
 # ---- indicator 5672 — energy production ----
 
@@ -277,7 +282,7 @@ transform_4174 <- function(data) {
   
   pib %<>%
     mutate(Years = as.numeric(Years)) %>%
-    select(Country, Years, pib = value)
+    select(Country, Years, pib = Value)
   
   # Join PIB data and calculate energy intensity
   data %>%
@@ -321,7 +326,7 @@ transform_4183 <- function(data) {
   
   pib %<>%
     mutate(Years = as.numeric(Years)) %>%
-    select(Country, Years, pib = value)
+    select(Country, Years, pib = Value)
   
   # Join GDP data and calculate energy intensity
   data %<>%
@@ -353,7 +358,8 @@ spec_4183 <- indicator_spec(
   dim_config = dim_config_4183,
   filter_data = filter_4183,
   transform_data = transform_4183,
-  calculate_regional = maintain_regional # keep source LAC data from OLADE
+  calculate_regional = maintain_regional, # keep source LAC data from OLADE
+  define_source = define_source_olade_w_cepal_calcs
 )
 
 
@@ -378,7 +384,7 @@ transform_2023 <- function(data) {
   
   pib %<>%
     mutate(Years = as.numeric(Years)) %>%
-    select(Country, Years, pib = value)
+    select(Country, Years, pib = Value)
   
   # Join PIB data and calculate energy intensity
   data %>%
@@ -422,7 +428,7 @@ transform_4184 <- function(data) {
   
   pib %<>%
     mutate(Years = as.numeric(Years)) %>%
-    select(Country, Years, pib = value)
+    select(Country, Years, pib = Value)
   
   # Join PIB data and calculate energy intensity
   data %<>%
@@ -454,7 +460,8 @@ spec_4184 <- indicator_spec(
   dim_config = dim_config_4184,
   filter_data = filter_4184,
   transform_data = transform_4184,
-  calculate_regional = maintain_regional # keep source LAC data from OLADE
+  calculate_regional = maintain_regional, # keep source LAC data from OLADE
+  define_source = define_source_olade_w_cepal_calcs
 )
 
 # ---- indicator 4243 — energy intensity (final energy consumption / GDP), by economic activity ----
@@ -482,11 +489,12 @@ transform_4243 <- function(data) {
   # 2216 - Annual Gross Domestic Product (GDP) by activity at constant prices in dollars (Millions of dollars, 2018$)
   
   pib_sector %<>% 
-    distinct(Country, Years, Type = Rubro__Sector_Cuentas_nacionales_anuales, value) %>% # there are currently exact duplicates in cepalstat, take distinct values until this is fixed (issue confirmed by Patricia)
+    distinct(Country, Years, Type = Rubro__Sector_Cuentas_nacionales_anuales, Value) %>% # there are currently exact duplicates in cepalstat, take distinct values until this is fixed (issue confirmed by Patricia)
     left_join(energy_econ_sectors %>% distinct(econ_label, dim_label), by = c("Type" = "econ_label")) %>% 
     group_by(Country, Years, dim_label) %>% 
-    summarize(pib = sum(value, na.rm = TRUE), .groups = "drop") %>% 
-    filter(!is.na(dim_label)) # remove extra econ categories
+    summarize(pib = sum(Value, na.rm = TRUE), .groups = "drop") %>% 
+    filter(!is.na(dim_label)) %>%   # remove extra econ categories
+    mutate(Years = as.numeric(Years))
   
   data %>% 
     left_join(pib_sector, by = c("Country", "Years", "dim_label")) %>% 
