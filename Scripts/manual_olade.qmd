@@ -5,7 +5,7 @@ format: html
 
 # OLADE Energy Data Download Instructions
 
-Navigate to the [OLADE website](SIE) and create an account and log in to access all years of energy data. There are six different Excel files to download to build the energy indicators in CEPALSTAT.
+Navigate to the [OLADE website](SIE) and create an account and **log in to access all years of energy data**. There are six different Excel files to download to build the energy indicators in CEPALSTAT.
 
 ## Total energy production
 
