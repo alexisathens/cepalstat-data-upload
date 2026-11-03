@@ -38,7 +38,7 @@ fert <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip")
 # download pesticide use (RP) data
 pest <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip")
 
-## fishstat & aquastat downloads
+## fishstat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
 fish <- capture %>%
   inner_join(country, by = "country") %>%
@@ -67,7 +67,14 @@ aqua <- aqua %>%
     Area = inlandmarine
   )
 
-## **note: still need to download aquastat (water resources) manually? or is there an API now?
+## aquastat manual download
+# follow instructions in manual_download.qmd for bulk file
+aquastat_folder <- here("Data/Raw/fao/aquastat")
+aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
+
+aquastat %<>% 
+  rename(Country = AREA, Years = timePointYears...5, Variable = aquastatElement...2, value = Value) %>% 
+  select(Country, Years, Variable, value)
 
 
 # ---- shared functions ----
@@ -912,9 +919,10 @@ dim_config_4185 <- tibble(
 
 filter_4185 <- function(data) {
   data %>%
-    filter(str_detect(Variable, "as \\% of total")) %>% 
-    filter(!Area %in% c("Sint Maarten (Dutch part)")) %>% 
-    select(Country = Area, Years = Year, Sector = Variable, value = Value)
+    filter(str_detect(Variable, "as \\% of total w")) %>% 
+    filter(Years >= 1990) %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, Sector = Variable, value)
 }
 
 # ** check if bolivia issue still exists this year
@@ -942,16 +950,15 @@ transform_4185 <- function(data) {
     ))
 }
 
-# ** double check maintain regional calc
-# spec_4185 <- indicator_spec(
-#   indicator_id = 4185,
-#   data = aquastat, # check **
-#   max_year = max_year_fao,
-#   dim_config = dim_config_4185,
-#   filter_data = filter_4185,
-#   transform_data = transform_4185,
-#   calculate_regional = maintain_regional
-# )
+spec_4185 <- indicator_spec(
+  indicator_id = 4185,
+  data = aquastat,
+  max_year = max_year_fao,
+  dim_config = dim_config_4185,
+  filter_data = filter_4185,
+  transform_data = transform_4185,
+  calculate_regional = maintain_regional
+)
 
 
 ## ---- indicator 4186 - water intensity of agriculture value added ----
@@ -964,9 +971,10 @@ dim_config_4186 <- tibble(
 
 filter_4186 <- function(data) {
   data %>% 
-    filter(Variable == "Agricultural water withdrawal") %>% 
-    filter(!Area %in% c("Sint Maarten (Dutch part)")) %>% 
-    select(Country = Area, Years = Year, value = Value)
+    filter(Variable == "Agricultural water withdrawal [10^9 m3/year]") %>% 
+    filter(Years >= 1990) %>% 
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, value)
 }
 
 transform_4186 <- function(data) {
@@ -976,7 +984,8 @@ transform_4186 <- function(data) {
   gdp %<>% 
     rename(Sector = Rubro__Sector_Cuentas_nacionales_anuales) %>% 
     filter(Sector %in% c("Agriculture, hunting, forestry and fishing")) %>% 
-    select(Country, Years, gdp = value)
+    mutate(Years = as.numeric(Years)) %>% 
+    select(Country, Years, gdp = Value)
   
   data %>% 
     left_join(gdp, by = c("Country", "Years")) %>% 
@@ -985,12 +994,12 @@ transform_4186 <- function(data) {
     select(Country, Years, value = intensity)
 }
 
-# spec_4186 <- indicator_spec(
-#   indicator_id = 4186,
-#   data = aquastat,
-#   max_year = max_year_fao,
-#   dim_config = dim_config_4186,
-#   filter_data = filter_4186,
-#   transform_data = transform_4186,
-#   calculate_regional = maintain_regional # no ECLAC average **
-# )
+spec_4186 <- indicator_spec(
+  indicator_id = 4186,
+  data = aquastat,
+  max_year = max_year_fao,
+  dim_config = dim_config_4186,
+  filter_data = filter_4186,
+  transform_data = transform_4186,
+  calculate_regional = maintain_regional # no ECLAC average **
+)

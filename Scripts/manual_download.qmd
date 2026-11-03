@@ -37,7 +37,7 @@ Save as: Data/Raw/other/**irena_raw.xlsx**
 
 ## International Accreditation Forum (IAF) - ISO Survey
 
-*Indicator 1763 - ISO 14001-certified enterprises* *Indicator 2030 - ISO 14001-certified enterprises by economic activities* (this indicator is to be removed) *Indicator ISO 14001-certified enterprises per billion dollars of GDP*
+*Indicator 1763 - ISO 14001-certified enterprises*; *Indicator 2029 - ISO 14001-certified enterprises per billion dollars of GDP*
 
 **Data source:** IAF/Market Intelligence (ISO Survey)/ISO Survey Data
 
@@ -88,3 +88,21 @@ For the report, select:
 - Enter your email for the results to be sent
 
 Save as: Data/Raw/other/**ramsar_raw.xlsx**
+
+## AQUASTAT
+
+*Indicator 4185 - Water withdrawal, by sector*; *Indicator 4186 - Water intensity of agricultural value added*
+
+**Data source:** FAO/AQUASTAT/Database
+
+Main website: <https://www.fao.org/aquastat/en/databases/maindatabase/>
+
+Tableau database dashboard: <https://data.apps.fao.org/aquastat/?lang=en>
+
+For the report:
+
+- Click the "Share/Download" button in the top-right corner
+
+- Click the "Bulk Download" carrot and select "AQUASTAT Statistics Bulk Download - English"
+
+Save as: Data/Raw/fao/aquastat/**bulk_aquastat_raw.xlsx**
