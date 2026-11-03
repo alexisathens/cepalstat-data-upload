@@ -22,4 +22,4 @@ run_many_indicators(run_list)
 #beepr::beep(1) # notify when done running
 
 # run single indicator
-run_one_indicator(2031)
+run_one_indicator(4186)

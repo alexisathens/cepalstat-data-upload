@@ -8,7 +8,7 @@ indicator_spec <- function(
 }
 
 # debugging
-# spec <- spec_2031
+# spec <- spec_4185
 # global <- list(diagnostics = TRUE, export = FALSE)
 
 # generic CEPALSTAT indicator processing function
