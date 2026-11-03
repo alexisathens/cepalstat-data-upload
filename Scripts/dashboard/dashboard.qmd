@@ -1432,20 +1432,12 @@ output$scatter_plot <- renderPlotly({
   # value_pub - otherwise a country-year with a newly added/removed dimension member (or any
   # member unique to one side) would plot as a false discrepancy here even though it's excluded
   # from the % difference used for the color/threshold below.
-  # The sidebar's Country is highlighted (not filtered): its points take the highlight color and
-  # a larger size, and are drawn last so they sit on top. All other points keep the threshold
-  # gradient coloring.
-  highlight_country <- input$country
   df2 <- fd$comp %>%
     filter(status == "Present in Both") %>%
-    mutate(
-      is_highlighted = if (is.null(highlight_country)) FALSE else dim_208_label == highlight_country,
-      point_color = if_else(is_highlighted, pal$highlight, threshold_gradient_color(abs_perc_diff, input$threshold))
-    ) %>%
-    arrange(is_highlighted)
+    mutate(point_color = threshold_gradient_color(abs_perc_diff, input$threshold))
   if (nrow(df2) == 0) return(empty_plotly("No country-year has both an internal and public value."))
   p <- ggplot(df2, aes(
-    x = value_data_matched, y = value_pub_matched, color = point_color, size = is_highlighted,
+    x = value_data_matched, y = value_pub_matched, color = point_color,
     text = paste0(
       "Country: ", dim_208_label, "<br>Year: ", dim_29117_label,
       "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1),
@@ -1453,9 +1445,8 @@ output$scatter_plot <- renderPlotly({
     )
   )) +
     geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = pal$ink2) +
-    geom_point(alpha = 0.85) +
+    geom_point(alpha = 0.85, size = 1.8) +
     scale_color_identity() +
-    scale_size_manual(values = c("FALSE" = 1.8, "TRUE" = 3), guide = "none") +
     labs(x = "Internal Data", y = "Public Data") +
     theme_qc()
 
@@ -1488,20 +1479,8 @@ output$pctdiff_plot <- renderPlotly({
   fd <- filtered_data()
   yr <- range(as.numeric(fd$comp$dim_29117_label), na.rm = TRUE)
   threshold <- input$threshold
-  # Flag points against the sidebar's Threshold (not a fixed 20%), and highlight the sidebar's
-  # Country: its line and points take the highlight color and are drawn last so they sit on top.
-  highlight_country <- input$country
-  df2 <- fd$comp %>%
-    filter(status == "Present in Both") %>%
-    mutate(
-      is_highlighted = if (is.null(highlight_country)) FALSE else dim_208_label == highlight_country,
-      point_group = case_when(
-        is_highlighted ~ "highlight",
-        !is.na(abs_perc_diff) & abs_perc_diff > threshold ~ "flag",
-        TRUE ~ "neutral"
-      )
-    ) %>%
-    arrange(is_highlighted)
+  # Flag points against the sidebar's Threshold (not a fixed 20%)
+  df2 <- fd$comp %>% filter(status == "Present in Both")
   if (nrow(df2) == 0) return(empty_plotly("No country-year has both an internal and public value."))
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = perc_diff,
@@ -1514,14 +1493,9 @@ output$pctdiff_plot <- renderPlotly({
     # Connects each country's own points across years at their true (unjittered) year position -
     # a separate layer from the jittered points below, so the line traces the real year-by-year
     # path even though the points themselves are nudged sideways to reduce overplotting.
-    geom_line(
-      aes(group = dim_208_label, color = if_else(is_highlighted, "highlight", "neutral"), linewidth = is_highlighted),
-      alpha = 0.45
-    ) +
-    geom_jitter(aes(color = point_group, size = is_highlighted), width = 0.2, height = 0, alpha = 0.8) +
-    scale_color_manual(values = c("neutral" = pal$neutral, "flag" = pal$flag, "highlight" = pal$highlight), guide = "none") +
-    scale_linewidth_manual(values = c("FALSE" = 0.3, "TRUE" = 1.2), guide = "none") +
-    scale_size_manual(values = c("FALSE" = 1.4, "TRUE" = 2.2), guide = "none") +
+    geom_line(aes(group = dim_208_label), color = pal$neutral, linewidth = 0.3, alpha = 0.45) +
+    geom_jitter(aes(color = !is.na(abs_perc_diff) & abs_perc_diff > threshold), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
+    scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
     labs(x = "Year", y = "Percent Difference") +
     theme_qc()
   ggplotly(p, tooltip = "text") %>% style_plotly(legend_bottom = FALSE)
@@ -1537,14 +1511,14 @@ uiOutput("value_comp_kpi_ui")
 ## Row {height=560px}
 
 ```{r}
-#| title: "Public vs. Internal Value Comparison · Highlight: Country"
+#| title: Public vs. Internal Value Comparison
 plotlyOutput("scatter_plot", height = "560px")
 ```
 
 ## Row {height=420px}
 
 ```{r}
-#| title: "Percent Change Over Time · Highlight: Country"
+#| title: Percent Change Over Time
 plotlyOutput("pctdiff_plot", height = "420px")
 ```
 
