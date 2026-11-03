@@ -8,8 +8,8 @@ indicator_spec <- function(
 }
 
 # debugging
-# spec <- spec_5647
-# global <- list(diagnostics = TRUE, export = FALSE, metadata = FALSE)
+# spec <- spec_2031
+# global <- list(diagnostics = TRUE, export = FALSE)
 
 # generic CEPALSTAT indicator processing function
 process_indicator <- function(spec = indicator_spec, global = global_spec) {
@@ -76,8 +76,10 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
+    message(glue("✅ Indicator {indicator_id} processing complete"))
+  } else {
+    message(glue("✅ Indicator {indicator_id} processing complete (but not exported)"))
   }
 
-  message(glue("✅ Indicator {indicator_id} processing complete"))
   return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))
 }
