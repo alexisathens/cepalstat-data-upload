@@ -1,5 +1,5 @@
 ---
-title: "01_informea"
+title: "InforMEA Data Scraping"
 format: html
 ---
 
@@ -8,6 +8,8 @@ This script downloads environmental treaty data from the InforMEA website
 ## Get treaties list from API
 
 ```{r}
+library(tidyverse)
+library(magrittr)
 library(httr)
 library(jsonlite)
 library(dplyr)
