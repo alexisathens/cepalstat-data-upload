@@ -25,6 +25,37 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 | InforMEA | Environmental treaty indicators | <ul><li>Download with `download_informea.qmd`, which scrapes web data from informea.org</li><li>Clean with `other.R`</li></ul> |
 | Other (UNEP/Ramsar/IRENA/ISO Survey) | | <ul><li>Download with `manual_download.qmd`</li><li>Clean with `other.R`</li></ul> |
 
+## Setup
+
+### R packages
+
+Install the packages loaded at the top of each script (e.g., `tidyverse`, `httr`, `jsonlite`, `here`, `reticulate`) with `install.packages()`.
+
+### Python setup (required only for `download_informea.qmd`)
+
+`download_informea.qmd` uses Python, called from R through the `reticulate` package, to scrape treaty party data with Playwright. Run the following once per computer in the R console:
+
+``` r
+library(reticulate)
+
+# 1. Install Python (skip if Python is already installed)
+install_python()
+
+# 2. Create the project environment with the required Python packages
+virtualenv_create("cepalstat", packages = c("pandas", "playwright"))
+
+# 3. Download the Chromium browser that Playwright controls
+system2(virtualenv_python("cepalstat"), c("-m", "playwright", "install", "chromium"))
+```
+
+The script then loads this environment by name with `use_virtualenv("cepalstat")`, so no computer-specific file paths are needed.
+
+**Troubleshooting**
+
+- *"Directory ... is not a Python virtualenv"* or similar: the environment has not been created on this computer. Run the setup commands above.
+- *A different Python is used, or Python fails to load*: restart R (Session → Restart R) and render again. R can only connect to one Python per session.
+- *Playwright reports that the browser executable is missing*: rerun step 3 above.
+
 ## Detailed Steps
 
 ### 1. Download data
