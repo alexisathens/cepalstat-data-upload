@@ -323,7 +323,6 @@ parties %<>%
 
 Clean and join Heritage treaty info
 ```{r}
-parties <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
 heritage <- py$heritage
 
 # Clean heritage file to match parties
