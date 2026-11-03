@@ -282,7 +282,7 @@ transform_2016 <- function(data) {
     # expend year data since data source only lists the start year it was designated
     mutate(start_year = year(Date)) %>% 
     rowwise() %>%
-    mutate(Years = list(seq(start_year, max_year))) %>%
+    mutate(Years = list(seq(start_year, max_year_other))) %>%
     ungroup() %>%
     unnest(Years) %>% 
     group_by(Country, Years) %>% 
