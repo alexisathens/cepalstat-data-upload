@@ -45,9 +45,9 @@ Website: <https://www.iafcertsearch.org/analytics/iso-survey> Note that you'll n
 
 For the report, select the latest year of data:
 
-- Download the file with the title "1. ISO Survey 2024 results - number of certificates and sites per country and the number of sectors overall"
+- Download the file with the title "1. ISO Survey 202X results - number of certificates and sites per country and the number of sectors overall"
 
-Save as: Data/Raw/other/**iso_raw.xlsx**
+Save as: Data/Raw/other/**iso_raw_202X.xlsx** (replace with year #)
 
 ## UNEP
 
