@@ -363,7 +363,14 @@ standardize_countries <- function(df, indicator_id) {
   df
 }
 
-# Default regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
+# Default regional strategy: keep the source's own LAC total as-is (no recalculation).
+# Used for all OLADE indicators, which publish their own regional aggregate (see 02_olade.R).
+# Sample usage: df %>% maintain_regional()
+maintain_regional <- function(df) {
+  df
+}
+
+# Regional strategy: drop the source's own LAC total and recalculate it as a simple sum across countries.
 # Sample usage: df %>% calculate_regional_sum() # with "value" as col name
 calculate_regional_sum <- function(df) {
   # remove all LAC sub/regional totals
@@ -384,32 +391,72 @@ calculate_regional_sum <- function(df) {
 
 # Regional strategy: recalculate the LAC total as a weighted average (e.g. sum(num)/sum(denom) across countries).
 # Sample usage: df %>% calculate_regional_wgt_avg() # with "num" and "denom" col names
-calculate_regional_wgt_avg <- function(df) {
-  # remove all LAC sub/regional totals
-  df %<>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean",
-                           "Latin America and the Caribbean", "Latin America"))
+# calculate_regional_wgt_avg <- function(df) {
+#   # remove all LAC sub/regional totals
+#   df %<>%
+#     filter(!Country %in% c("South America", "Central America", "Caribbean",
+#                            "Latin America and the Caribbean", "Latin America"))
+#   
+#   # calculate LAC region sum
+#   lac_total <- df %>%
+#     filter(Country != "World") %>%
+#     group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
+#     summarise(num = sum_or_na(num),
+#               denom = sum_or_na(denom), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   df %>% 
+#     bind_rows(lac_total) %>% 
+#     mutate(value = round((num / denom) * 100, 1)) %>%
+#     select(-num, -denom)
+# }
+
+
+# Regional strategy for ratio indicators (num / denom): percentages, per-capita and per-GDP rates.
+# Recomputes the value for each country and for the LAC total from the summed num and denom
+# (i.e., a weighted average), multiplied by `multiplier` and optionally rounded to `digits`.
+#
+# This is a "function factory": calling it with settings returns the function that
+# process_indicator() runs later on the data. In a spec, always include the parentheses:
+#   calculate_regional = calculate_regional_ratio(multiplier = 1000)  # e.g. per billion $ (denom in millions of $)
+#   calculate_regional = calculate_regional_ratio()                   # plain ratio (multiplier = 1)
+calculate_regional_ratio <- function(multiplier = 1, digits = NULL) {
+  # Catch a spec that left off the parentheses (the data frame would arrive here as `multiplier`)
+  if (!is.numeric(multiplier)) {
+    stop("calculate_regional_ratio() needs parentheses in the spec, e.g. calculate_regional_ratio(multiplier = 100)")
+  }
   
-  # calculate LAC region sum
-  lac_total <- df %>%
-    filter(Country != "World") %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
-    summarise(num = sum_or_na(num),
-              denom = sum_or_na(denom), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
+  # Lock in the settings now, rather than when the indicator runs (R evaluates arguments lazily)
+  force(multiplier)
+  force(digits)
   
-  df %>% 
-    bind_rows(lac_total) %>% 
-    mutate(value = round((num / denom) * 100, 1)) %>%
-    select(-num, -denom)
+  function(df) {
+    # remove all LAC sub/regional totals
+    df <- df %>%
+      filter(!Country %in% c("South America", "Central America", "Caribbean",
+                             "Latin America and the Caribbean", "Latin America"))
+    
+    # calculate LAC totals of num and denom
+    lac_total <- df %>%
+      filter(Country != "World") %>%
+      group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
+      summarise(num = sum_or_na(num), denom = sum_or_na(denom), .groups = "drop") %>%
+      mutate(Country = "Latin America and the Caribbean")
+    
+    df <- df %>%
+      bind_rows(lac_total) %>%
+      mutate(value = num / denom * multiplier) %>%
+      select(-num, -denom)
+    
+    if (!is.null(digits)) df <- df %>% mutate(value = round(value, digits))
+    df
+  }
 }
 
-# Regional strategy: keep the source's own LAC total as-is (no recalculation).
-# Used for all OLADE indicators, which publish their own regional aggregate (see 02_olade.R).
-# Sample usage: df %>% maintain_regional()
-maintain_regional <- function(df) {
-  df
-}
+# Shortcut for percentage indicators: num / denom * 100, rounded to 1 decimal.
+# Already a finished function, so use it in a spec WITHOUT parentheses:
+#   calculate_regional = calculate_regional_ratio_pct
+calculate_regional_ratio_pct <- calculate_regional_ratio(multiplier = 100, digits = 1)
 
 
 # ---- Footnotes & source ----
