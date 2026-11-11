@@ -9,7 +9,7 @@ This guide walks through adding a brand-new environmental indicator to CEPALSTAT
 | 1\. Create the indicator | CEPALSTAT Admin |
 | 2\. Define the dimensional structure | CEPALSTAT Admin |
 | 3\. Add the indicator to the metadata table | `Data/indicator_metadata.xlsx` |
-| 4\. Write the processing code | `Scripts/` |
+| 4\. Write the processing code | R |
 | 5\. Check the data | QC dashboard |
 | 6\. Upload the data | Wasabi |
 | 7\. Request publication in the thematic tree | Email to Andrés Yañez |
@@ -47,7 +47,7 @@ Save and close the file, then restart R (or re-source `Scripts/utils.R`) so the 
 
 ## 4. Write the processing code
 
-1.  Download the source data and write the indicator's processing functions: `filter_*`, `transform_*`, and the `calculate_regional` strategy. See the README's [Clean data](../README.md#2-clean-data) section for how these fit into `process_indicator()`.
+1.  Download the source data and write the indicator's processing functions: `filter_*`, `transform_*`, and the `calculate_regional` strategy.
 2.  Because the indicator is new, the spec needs two additional settings:
     - **`define_source`:** a function that assigns the indicator's source ID. The default (`existing_source`) looks up the source already published in CEPALSTAT, which a new indicator does not have yet.
     - **`new_indicator = TRUE`:** skips the comparisons against published data, since none exists yet.
@@ -81,14 +81,14 @@ Run `Scripts/dashboard/dashboard.qmd` and load the new indicator.
 Because there is no published data yet, the comparison views (e.g., Value Comparisons, Value Differences) will be empty. Use the remaining views to sanity-check the data instead:
 
 - Does the Latin America and the Caribbean total look reasonable?
-- Are the country series consistent over time, without unexpected jumps or gaps?
+- Are the country series consistent over time?
 - Do a few spot-checked values match the raw source data?
 
 ## 6. Upload the data to Wasabi
 
-As with any indicator, select the new file from `Data/Cleaned` in Wasabi and upload it (see the README's [Upload data](../README.md#4-upload-data) section).
+As with any indicator, select the new file from `Data/Cleaned` in Wasabi and upload it.
 
-If you receive an access error, email Andrés Yañez with the new indicator number.
+If you receive an access error, email Andrés with the new indicator number.
 
 ## 7. Request publication in the thematic tree
 
@@ -103,18 +103,15 @@ Only Andrés can publish an indicator in the CEPALSTAT thematic tree. Email him 
 
 While waiting for Andrés, open the indicator in the CEPALSTAT Admin area (**Editar**) and check the red box at the top: **Indicador visible al usuario externo**.
 
-An indicator appears in the CEPALSTAT tree only when both conditions are met:
-
-1.  It is **published** (done by Andrés, Step 7).
-2.  It is **visible** (done by you, this step).
+An indicator appears in the CEPALSTAT tree only once it's **published** (done by Andrés) and it's **visible** (done by you).
 
 ## 9. Complete the technical sheet
 
-Once the indicator is published and visible, the changes take a couple of hours to appear in CEPALSTAT. Use this time to finish the technical sheet (the indicator's **Editar** page in the CEPALSTAT Admin area).
+Once the indicator is published and visible, the changes take a couple of hours to appear in CEPALSTAT. You can use this time to finish the technical sheet (the indicator's **Editar** page in the CEPALSTAT Admin area).
 
 | Field | Guidance |
 |------------------------------------|------------------------------------|
-| **Orden de despliegue** | Must match the position you gave Andrés in Step 7. |
+| **Orden de despliegue** | Should match the position you gave Andrés - this is for its internal ordering in the Admin area. |
 | **Unidad de medida** | The unit of the published values. Double-check it against the calculation in the R code. |
 | **Características** | Almost always: *Periodicity: Annual / Coverage: National* (EN) and *Periodicidad: Anual / Cobertura: Nacional* (ES). |
 | **Definición** | Write a complete first draft with all the necessary technical information. Content matters more than style at this stage, since these three fields can be polished in Step 10. |
