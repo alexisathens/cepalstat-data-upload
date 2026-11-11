@@ -14,12 +14,10 @@ global_spec <- list(diagnostics = TRUE, export = FALSE) # for init testing
 global_spec <- list(diagnostics = TRUE, export = TRUE) # for export
 
 # define run_list and run many
-run_list <- meta %>% filter(source == "OLACDE" | id %in% c(4174, 4243)) %>% pull(id)
-run_list <- meta %>% filter(id %in% c(2016,2037,2031)) %>% pull(id)
-#run_list <- c("5647")
+run_list <- meta %>% filter(source == "CAIT - WRI") %>% pull(id)
 
 run_many_indicators(run_list)
 #beepr::beep(1) # notify when done running
 
 # run single indicator
-run_one_indicator(4186)
+run_one_indicator(2029)
