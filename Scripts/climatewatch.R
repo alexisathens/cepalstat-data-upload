@@ -23,34 +23,12 @@ data_3387 <- read_csv(paste0(cw_path, "/3387_raw.csv"))
 
 # ---- shared functions ----
 
-# Regional strategy factory for "ratio" indicators (emissions per capita, emissions per GDP):
-# recomputes num/denom for both countries and the LAC total, scaled by `multiplier`.
-# Sample usage: calculate_regional = calculate_regional_ratio(1e6) # tonnes CO2eq per capita
-calculate_regional_ratio <- function(multiplier) {
-  function(df) {
-    df <- df %>%
-      filter(!Country %in% c("South America", "Central America", "Caribbean",
-                             "Latin America and the Caribbean", "Latin America"))
-    
-    lac_total <- df %>%
-      filter(Country != "World") %>%
-      group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
-      summarise(num = sum_or_na(num), denom = sum_or_na(denom), .groups = "drop") %>%
-      mutate(Country = "Latin America and the Caribbean")
-    
-    df %>%
-      bind_rows(lac_total) %>%
-      mutate(value = num / denom * multiplier) %>%
-      select(-num, -denom)
-  }
-}
+# Shared empty function since many Climate Watch indicators don't need additional manipulation
+transform_none <- function(df) df
 
 # Define shared multipliers/scales
 units_percapita <- 1e6 # tonnes of CO2eq per capita
 units_pergdp <- 1e12 # tonnes of CO2eq per million USD GDP
-
-# Shared empty function since many Climate Watch indicators don't need additional manipulation
-transform_none <- function(df) df
 
 
 ## ---- indicator 3387 - share of global greenhouse gas (GHG) emissions ----

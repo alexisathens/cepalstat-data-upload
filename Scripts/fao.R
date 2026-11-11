@@ -110,23 +110,23 @@ result_cropland <- use %>%
 
 # Regional strategy for "intensity" indicators (value per unit of cropland area): same shape as
 # calculate_regional_wgt_avg, but without the *100 -- these are per-hectare rates, not percentages
-calculate_regional_intensity <- function(df) {
-  df <- df %>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean",
-                           "Latin America and the Caribbean", "Latin America"))
-  
-  lac_total <- df %>%
-    filter(Country != "World") %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
-    summarise(value = sum(value, na.rm = TRUE),
-              area = sum(area, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-  
-  df %>%
-    bind_rows(lac_total) %>%
-    mutate(value = value / area) %>%
-    select(-area)
-}
+# calculate_regional_intensity <- function(df) {
+#   df <- df %>%
+#     filter(!Country %in% c("South America", "Central America", "Caribbean",
+#                            "Latin America and the Caribbean", "Latin America"))
+#   
+#   lac_total <- df %>%
+#     filter(Country != "World") %>%
+#     group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
+#     summarise(value = sum(value, na.rm = TRUE),
+#               area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   df %>%
+#     bind_rows(lac_total) %>%
+#     mutate(value = value / area) %>%
+#     select(-area)
+# }
 
 define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
   df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
@@ -339,7 +339,7 @@ spec_2021 <- indicator_spec(
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
-  calculate_regional = calculate_regional_wgt_avg,
+  calculate_regional = calculate_regional_ratio_pct,
   define_source = define_source_fao_w_cepal_calcs
 )
 
@@ -371,7 +371,7 @@ spec_2530 <- indicator_spec(
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
-  calculate_regional = calculate_regional_wgt_avg,
+  calculate_regional = calculate_regional_ratio_pct,
   define_source = define_source_fao_w_cepal_calcs
 )
 
@@ -405,7 +405,7 @@ spec_2531 <- indicator_spec(
   dim_config = dim_config_2531,
   filter_data = filter_forest,
   transform_data = transform_2531,
-  calculate_regional = calculate_regional_wgt_avg
+  calculate_regional = calculate_regional_ratio_pct
 )
 
 ## ---- indicator 1739 - irrigated area ----

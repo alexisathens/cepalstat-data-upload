@@ -389,29 +389,6 @@ calculate_regional_sum <- function(df) {
     bind_rows(lac_total)
 }
 
-# Regional strategy: recalculate the LAC total as a weighted average (e.g. sum(num)/sum(denom) across countries).
-# Sample usage: df %>% calculate_regional_wgt_avg() # with "num" and "denom" col names
-# calculate_regional_wgt_avg <- function(df) {
-#   # remove all LAC sub/regional totals
-#   df %<>%
-#     filter(!Country %in% c("South America", "Central America", "Caribbean",
-#                            "Latin America and the Caribbean", "Latin America"))
-#   
-#   # calculate LAC region sum
-#   lac_total <- df %>%
-#     filter(Country != "World") %>%
-#     group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
-#     summarise(num = sum_or_na(num),
-#               denom = sum_or_na(denom), .groups = "drop") %>%
-#     mutate(Country = "Latin America and the Caribbean")
-#   
-#   df %>% 
-#     bind_rows(lac_total) %>% 
-#     mutate(value = round((num / denom) * 100, 1)) %>%
-#     select(-num, -denom)
-# }
-
-
 # Regional strategy for ratio indicators (num / denom): percentages, per-capita and per-GDP rates.
 # Recomputes the value for each country and for the LAC total from the summed num and denom
 # (i.e., a weighted average), multiplied by `multiplier` and optionally rounded to `digits`.
