@@ -13,15 +13,23 @@ input_path <- here("Data/Raw/other")
 
 data_irena <- read_xlsx(paste0(input_path, "/irena_raw.xlsx"))
 
-data_iso_2024 <- read_xlsx(paste0(input_path, "/iso_2024_raw.xlsx"), sheet = "ISO 14001", skip = 1) # in future years, we'll only need to download one year at a time
-data_iso_2023 <- read_xlsx(paste0(input_path, "/iso_2023_raw.xlsx"), sheet = "ISO 14001", skip = 1)
-data_iso_2022 <- read_xlsx(paste0(input_path, "/iso_2022_raw.xlsx"), sheet = "ISO 14001", skip = 1)
-data_iso_2021 <- read_xlsx(paste0(input_path, "/iso_2021_raw.xlsx"), sheet = "ISO 14001", skip = 1)
-
 data_ramsar <- read_xlsx(paste0(input_path, "/ramsar_raw.xlsx"))
 
 data_mea <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
 data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
+
+## ISO manual download
+# get ISO data from CEPALSTAT, and append latest survey year
+# this is because more historical ISO data used to be available (and is still available on CEPALSTAT), but now there's only recent annual information on the ISO website.
+data_iso_historic <- tibble(call.data(1763)) %>% select(Country, Years, Value) %>% rename(value = Value)
+
+# download latest year of ISO survey data
+data_iso_latest <- read_xlsx(glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), sheet = "ISO 14001", skip = 1)
+data_iso_latest %<>% mutate(Years = as.character(max_year_other)) %>% select(Country, Years, value = certificates)
+
+# combine together
+data_iso <- data_iso_historic %>% bind_rows(data_iso_latest)
+data_iso %<>% arrange(Country, Years) %>% filter(!str_detect(Country, "Compared")) # order and remove footnote
 
 # ---- shared functions ----
 
@@ -88,102 +96,68 @@ spec_4244 <- indicator_spec(
 )
 
 # ---- indicator 1763 - ISO 14001-certified enterprises ----
-# need to update code with 2025 data **
-# 
-# dim_config_1763 <- tibble(
-#   data_col = c("Country", "Years"),
-#   dim_id = c("208", "29117"),
-#   pub_col = c("208_name", "29117_name")
-# )
-# 
-# # --- data compilation for ISO surveys
-# # note that this data source is a bit different since it's an annual survey
-# # we want to take the pre-existing data from CEPALSTAT and just append the new year's survey to it
-# hist_1763 <- tibble(call.data(1763))
-# hist_1763 %<>% select(Country, Years, value)
-# 
-# # add new year of data
-# data_iso_2024 %<>% mutate(Years = 2024) %>% select(Country, Years, value = certificates)
-# data_iso_2023 %<>% mutate(Years = 2023) %>% select(Country, Years, value = certificates)
-# data_iso_2022 %<>% mutate(Years = 2022) %>% select(Country, Years, value = certificates)
-# data_iso_2021 %<>% mutate(Years = 2021) %>% select(Country, Years, value = certificates)
-# 
-# # combine together
-# data_iso <- hist_1763 %>% bind_rows(data_iso_2024, data_iso_2023, data_iso_2022, data_iso_2021)
-# data_iso %<>% arrange(Country, Years) %>% filter(!str_detect(Country, "Compared")) # order and remove footnote
-# # ---
-# 
-# filter_1763 <- function(data) {
-#   data %>%
-#     filter(!is.na(value))
-# }
-# 
-# transform_1763 <- function(data) {
-#   data %>% remove_zero_countries()
-# }
-# 
-# spec_1763 <- indicator_spec(
-#   indicator_id = 1763,
-#   data = data_iso,
-#   max_year = max_year_other,
-#   dim_config = dim_config_1763,
-#   filter_data = filter_1763,
-#   transform_data = transform_1763,
-#   calculate_regional = calculate_regional_sum
-# )
+
+dim_config_1763 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_1763 <- function(data) {
+  data %>%
+    filter(!is.na(value))
+}
+
+transform_1763 <- function(data) {
+  data %>% remove_zero_countries()
+}
+
+spec_1763 <- indicator_spec(
+  indicator_id = 1763,
+  data = data_iso,
+  max_year = max_year_other,
+  dim_config = dim_config_1763,
+  filter_data = filter_1763,
+  transform_data = transform_1763,
+  calculate_regional = calculate_regional_sum
+)
 
 # ---- indicator 2029 - ISO 14001-certified enterprises per GDP ----
-# need to update code with 2025 data **
 
-# dim_config_2029 <- tibble(
-#   data_col = c("Country", "Years"),
-#   dim_id = c("208", "29117"),
-#   pub_col = c("208_name", "29117_name")
-# )
-# 
-# # --- data compilation for ISO surveys
-# # NEED TO update 1763 data on CEPALSTAT before processing this indicator
-# # because it takes the raw values from the published 1763
-# base_1763 <- tibble(call.data(1763)) %>% select(Country, Years, value)
-# data_iso <- base_1763
-# # ---
-# 
-# # Bundles filtering + a GDP join + the regional calc together (matching the old regional_2029
-# # exactly) rather than splitting across filter_data/transform_data, since the zero-country removal
-# # and GDP join both need to happen before the LAC total can be computed correctly.
-# calculate_regional_2029 <- function(data) {
-#   data %<>% remove_zero_countries()
-#   
-#   gdp <- tibble(call.data(2204)) %>%
-#     select(Country, Years, gdp = value) %>%
-#     mutate(Years = as.numeric(Years))
-#   
-#   data %<>%
-#     left_join(gdp, by = c("Country", "Years")) %>%
-#     filter(!is.na(value) & !is.na(gdp))
-#   
-#   lac <- data %>%
-#     group_by(Years) %>%
-#     summarize(value = sum(value),
-#               gdp = sum(gdp), .groups = "drop") %>%
-#     mutate(Country = "Latin America and the Caribbean")
-#   
-#   data %>%
-#     bind_rows(lac) %>%
-#     mutate(value = round(value / gdp * 1000, 1)) %>%
-#     select(Country, Years, value) %>%
-#     arrange(Country, Years)
-# }
-# 
-# spec_2029 <- indicator_spec(
-#   indicator_id = 2029,
-#   data = data_iso,
-#   max_year = max_year_other,
-#   dim_config = dim_config_2029,
-#   filter_data = filter_none,
-#   transform_data = transform_none,
-#   calculate_regional = calculate_regional_2029
-# )
+dim_config_2029 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_2029 <- function(data) {
+  data %>%
+    filter(!is.na(value))
+}
+
+transform_2029 <- function(data) {
+  # get data for: Total Annual Gross Domestic Product (GDP) at constant prices in dolllars
+  gdp <- tibble(call.data(2204)) %>%
+    select(Country, Years, gdp = Value) %>%
+    mutate(Years = as.character(Years))
+  
+  data %>% 
+    remove_zero_countries() %>% 
+    left_join(gdp, by = c("Country", "Years")) %>%
+    filter(!is.na(value) & !is.na(gdp)) %>% 
+    rename(num = value, denom = gdp) %>% 
+    mutate(num = num * 1000) # convert to number of enterprises per billion dollars of GDP
+}
+
+spec_2029 <- indicator_spec(
+  indicator_id = 2029,
+  data = data_iso,
+  max_year = max_year_other,
+  dim_config = dim_config_2029,
+  filter_data = filter_2029,
+  transform_data = transform_2029,
+  calculate_regional = calculate_regional_ratio()
+)
 
 
 # ---- indicator 2037 - Consumption of ozone depleting substances (ODS) ----
