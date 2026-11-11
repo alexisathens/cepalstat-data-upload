@@ -70,7 +70,10 @@ aqua <- aqua %>%
 ## aquastat manual download
 # follow instructions in manual_download.qmd for bulk file
 aquastat_folder <- here("Data/Raw/fao/aquastat")
-aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
+#aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
+# AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")
+aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"),
+                     locale = locale(encoding = "latin1"))
 
 aquastat %<>% 
   rename(Country = AREA, Years = timePointYears...5, Variable = aquastatElement...2, value = Value) %>% 
@@ -972,25 +975,27 @@ dim_config_4186 <- tibble(
 filter_4186 <- function(data) {
   data %>% 
     filter(Variable == "Agricultural water withdrawal [10^9 m3/year]") %>% 
+    mutate(value = value * 10^9) %>% # convert to normal scale (m3)
     filter(Years >= 1990) %>% 
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, value)
 }
 
 transform_4186 <- function(data) {
-  # get annual GDP by economic activity from CEPALSTAT, in constant 2018 dollars
+  # get annual GDP by economic activity from CEPALSTAT, in millions of constant 2018 dollars
   gdp <- CepalStatR::call.data(2216) %>% as_tibble()
   
   gdp %<>% 
     rename(Sector = Rubro__Sector_Cuentas_nacionales_anuales) %>% 
     filter(Sector %in% c("Agriculture, hunting, forestry and fishing")) %>% 
+    mutate(Value = Value * 10^6) %>% # convert to normal scale ($)
     mutate(Years = as.numeric(Years)) %>% 
     select(Country, Years, gdp = Value)
   
   data %>% 
     left_join(gdp, by = c("Country", "Years")) %>% 
     filter(!is.na(gdp)) %>%
-    mutate(intensity = value / gdp * 1e3) %>% 
+    mutate(intensity = (value / gdp) * 10^3) %>% # convert units to m3 per thousands of $ (to optimize scale for visualization)
     select(Country, Years, value = intensity)
 }
 
@@ -1001,5 +1006,5 @@ spec_4186 <- indicator_spec(
   dim_config = dim_config_4186,
   filter_data = filter_4186,
   transform_data = transform_4186,
-  calculate_regional = maintain_regional # no ECLAC average **
+  calculate_regional = maintain_regional # previously, there was no LAC average, but it's available in the data source so include it
 )
