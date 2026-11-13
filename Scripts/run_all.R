@@ -15,9 +15,11 @@ global_spec <- list(diagnostics = TRUE, export = TRUE) # for export
 
 # define run_list and run many
 run_list <- meta %>% filter(source == "CAIT - WRI") %>% pull(id)
+water <- c(4185, 4186, 5805)
+new_cw <- c(5806, 5807)
 
-run_many_indicators(run_list)
+run_many_indicators(water)
 #beepr::beep(1) # notify when done running
 
 # run single indicator
-run_one_indicator(2029)
+run_one_indicator(5806)
