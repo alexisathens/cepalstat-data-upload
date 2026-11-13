@@ -217,6 +217,11 @@ sector_id_total_no_lucf <- sectors %>%
   filter(name == "Total excluding LULUCF") %>% 
   pull(id)
 
+sector_id_total_with_lucf <- sectors %>% 
+  filter(data_source_id == source_id_climate_watch) %>% 
+  filter(name == "Total including LULUCF") %>% 
+  pull(id)
+
 # Create output directory if it doesn't exist
 output_dir <- "Data/Raw/climate watch"
 if (!dir.exists(output_dir)) {
@@ -625,3 +630,53 @@ write.csv(indicator_3387,
           file = file.path(output_dir, "3387_raw.csv"),
           row.names = FALSE)
 
+
+## ---- indicator 5806 - total greenhouse gas (ghg) emissions without LULUCF ----
+
+indicator_5806_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_no_lucf,
+  gas_ids = gas_id_all_ghg
+)
+
+# Reshape and clean output
+indicator_5806 <- format_indicator_output(indicator_5806_raw)
+
+write.csv(indicator_5806, 
+          file = file.path(output_dir, "5806_raw.csv"),
+          row.names = FALSE)
+
+
+## ---- indicator 5807 - total greenhouse gas (ghg) emissions with LULUCF ----
+
+indicator_5807_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_with_lucf,
+  gas_ids = gas_id_all_ghg
+)
+
+# Reshape and clean output
+indicator_5807 <- format_indicator_output(indicator_5807_raw)
+
+write.csv(indicator_5807, 
+          file = file.path(output_dir, "5807_raw.csv"),
+          row.names = FALSE)
+
+
+## ---- indicator 5808 - total carbon dioxide (co₂) emissions with LULUCF ----
+
+indicator_5808_raw <- cw_get_data(
+  source_ids = source_id_climate_watch,
+  regions = regions_iso,
+  sector_ids = sector_id_total_with_lucf,
+  gas_ids = gas_id_co2
+)
+
+# Reshape and clean output
+indicator_5808 <- format_indicator_output(indicator_5808_raw)
+
+write.csv(indicator_5808, 
+          file = file.path(output_dir, "5808_raw.csv"),
+          row.names = FALSE)
