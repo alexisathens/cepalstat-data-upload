@@ -132,6 +132,10 @@ define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
   df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
 }
 
+define_source_aquastat <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT) 
+}
+
 
 ## ---- indicator 3381 - mean annual temperature change ----
 
@@ -912,7 +916,55 @@ spec_2020 <- indicator_spec(
   footnotes = footnotes_2020
 )
 
-## ---- indicator 4185 - water withdrawal by sector ----
+
+## ---- indicator 5805 - water withdrawal by sector ----
+
+dim_config_5805 <- tibble(
+  data_col = c("Country", "Years", "Sector"),
+  dim_id = c("208", "29117", "59252"),
+  pub_col = c("208_name", "29117_name", "59252_name")
+)
+
+filter_5805 <- function(data) {
+  withdrawal_types <- c("Total water withdrawal [10^9 m3/year]", "Agricultural water withdrawal [10^9 m3/year]", 
+    "Municipal water withdrawal [10^9 m3/year]", "Industrial water withdrawal [10^9 m3/year]")
+  
+  data %>%
+    filter(Variable %in% withdrawal_types) %>% 
+    filter(Years >= 1990) %>%
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, Sector = Variable, value)
+}
+
+# ** check if bolivia issue still exists this year
+transform_5805 <- function(data) {
+  #bol_data <- data %>% filter(str_detect(Country, "Bolivia") & Years %in% c(2020, 2021))
+  # don't fix for this indicator since it's more difficult to understand what the correct values are here
+  
+  data %>% 
+    mutate(Sector = case_when(
+      str_detect(Sector, "Agricultural") ~ "Agricultural",
+      str_detect(Sector, "Industrial") ~ "Industrial",
+      str_detect(Sector, "Municipal") ~ "Municipal",
+      str_detect(Sector, "Total") ~ "Total",
+      TRUE ~ Sector
+    ))
+}
+
+spec_5805 <- indicator_spec(
+  indicator_id = 5805,
+  data = aquastat,
+  max_year = max_year_fao,
+  dim_config = dim_config_5805,
+  filter_data = filter_5805,
+  transform_data = transform_5805,
+  calculate_regional = maintain_regional,
+  define_source = define_source_aquastat,
+  new_indicator = TRUE
+)
+
+
+## ---- indicator 4185 - distribution of water withdrawal by sector ----
 
 dim_config_4185 <- tibble(
   data_col = c("Country", "Years", "Sector"),
@@ -923,7 +975,7 @@ dim_config_4185 <- tibble(
 filter_4185 <- function(data) {
   data %>%
     filter(str_detect(Variable, "as \\% of total w")) %>% 
-    filter(Years >= 1990) %>% 
+    filter(Years >= 1990) %>%
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, Sector = Variable, value)
 }
@@ -976,7 +1028,7 @@ filter_4186 <- function(data) {
   data %>% 
     filter(Variable == "Agricultural water withdrawal [10^9 m3/year]") %>% 
     mutate(value = value * 10^9) %>% # convert to normal scale (m3)
-    filter(Years >= 1990) %>% 
+    filter(Years >= 1990) %>%
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, value)
 }
