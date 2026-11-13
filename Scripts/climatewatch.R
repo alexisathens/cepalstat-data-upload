@@ -20,6 +20,9 @@ data_4463 <- read_csv(paste0(cw_path, "/4463_raw.csv"))
 data_4461 <- read_csv(paste0(cw_path, "/4461_raw.csv"))
 data_4462 <- read_csv(paste0(cw_path, "/4462_raw.csv"))
 data_3387 <- read_csv(paste0(cw_path, "/3387_raw.csv"))
+data_5806 <- read_csv(paste0(cw_path, "/5806_raw.csv"))
+data_5807 <- read_csv(paste0(cw_path, "/5807_raw.csv"))
+data_5808 <- read_csv(paste0(cw_path, "/5808_raw.csv"))
 
 # ---- shared functions ----
 
@@ -297,4 +300,54 @@ spec_5649 <- indicator_spec(
   filter_data = filter_5649,
   transform_data = transform_none,
   calculate_regional = calculate_regional_ratio(units_percapita) # tonnes of CO2eq per capita
+)
+
+
+## ---- indicator 5806 — total greenhouse gas (ghg) emissions without LULUCF ----
+
+dim_config_5806 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5806 <- function(data) {
+  data %>%
+    rename(Country = country, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_5806 <- indicator_spec(
+  indicator_id = 5806,
+  data = data_5806,
+  max_year = max_year_cw,
+  dim_config = dim_config_5806,
+  filter_data = filter_5806,
+  transform_data = transform_none,
+  calculate_regional = calculate_regional_sum
+)
+
+
+## ---- indicator 5807 — total greenhouse gas (ghg) emissions with LULUCF ----
+
+dim_config_5807 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5807 <- function(data) {
+  data %>%
+    rename(Country = country, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_5807 <- indicator_spec(
+  indicator_id = 5807,
+  data = data_5807,
+  max_year = max_year_cw,
+  dim_config = dim_config_5807,
+  filter_data = filter_5807,
+  transform_data = transform_none,
+  calculate_regional = calculate_regional_sum
 )
