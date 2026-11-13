@@ -32,3 +32,21 @@ walk(meta_ids, ~ tryCatch({
 ))
 
 # human intervention: update all indicator metadata publicly
+
+
+# ---- new indicators -----
+
+# New indicators have no published metadata to revise. The draft is written from the indicator's entry in
+# Data/indicator_metadata.xlsx (name, source, dimensions) by adapting the content of a closely related
+# published indicator, so choose a gold standard with the same data source and general context.
+new_id <- 5805
+gold_new <- 4185
+
+suggest_metadata_en(new_id, gold_standard_indicators = gold_new, new_indicator = TRUE)
+
+# human intervention: review and edit Metadata/Outputs/metadata_{new_id}_en.txt
+
+translate_metadata_es(new_id, gold_standard_indicators = gold_new, new_indicator = TRUE)
+export_metadata_admin(new_id)
+
+# human intervention: enter the metadata in the CEPALSTAT Admin area
