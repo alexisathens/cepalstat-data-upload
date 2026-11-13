@@ -5,7 +5,7 @@ This guide walks through adding a brand-new environmental indicator to CEPALSTAT
 ## Overview
 
 | Step | Where |
-|---------------------------------|-----------------------------|
+|----|----|
 | 1\. Create the indicator | CEPALSTAT Admin |
 | 2\. Define the dimensional structure | CEPALSTAT Admin |
 | 3\. Add the indicator to the metadata table | `Data/indicator_metadata.xlsx` |
@@ -110,7 +110,7 @@ An indicator appears in the CEPALSTAT tree only once it's **published** (done by
 Once the indicator is published and visible, the changes take a couple of hours to appear in CEPALSTAT. You can use this time to finish the technical sheet (the indicator's **Editar** page in the CEPALSTAT Admin area).
 
 | Field | Guidance |
-|------------------------------------|------------------------------------|
+|----|----|
 | **Orden de despliegue** | Should match the position you gave Andrés - this is for its internal ordering in the Admin area. |
 | **Unidad de medida** | The unit of the published values. Double-check it against the calculation in the R code. |
 | **Características** | Almost always: *Periodicity: Annual / Coverage: National* (EN) and *Periodicidad: Anual / Cobertura: Nacional* (ES). |
