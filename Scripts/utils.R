@@ -267,6 +267,17 @@ get_cepalstat_data <- function(indicator_id) {
   # Extract and flatten the data portion
   pub <- result$body$data %>%
     as_tibble()
+  
+  # Stop with instructions if CEPALSTAT has no published data for this indicator,
+  # which usually means it's a new indicator whose spec is missing the new-indicator settings
+  if (nrow(pub) == 0 || !"value" %in% names(pub)) {
+    stop(glue(
+      "❌ No published data found in CEPALSTAT for indicator {indicator_id}.\n",
+      "If this is a new indicator, add these two fields to spec_{indicator_id}:\n",
+      "  define_source = <your source function>, # e.g. define_source_aquastat (see Docs/new_indicator_guide.md)\n",
+      "  new_indicator = TRUE"
+    ))
+  }
 
   # Force dim_* columns to characters
   pub %<>%
