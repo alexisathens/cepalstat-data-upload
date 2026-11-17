@@ -1,5 +1,5 @@
 library(here)
-source(here("Scripts/technical_sheet.R"))
+source(here("Scripts/technical_sheet_md.R"))
 source(here("Scripts/utils.R"))
 
 # ---- export metadata -----
@@ -44,7 +44,7 @@ gold_new <- 3158
 
 suggest_metadata_en(new_id, gold_standard_indicators = gold_new, new_indicator = TRUE)
 
-# human intervention: review and edit Metadata/Outputs/metadata_{new_id}_en.txt
+# human intervention: review and edit Metadata/{new_id}_en.md
 
 translate_metadata_es(new_id, gold_standard_indicators = gold_new, new_indicator = TRUE)
 export_metadata_admin(new_id)
