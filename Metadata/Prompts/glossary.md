@@ -11,9 +11,9 @@ How to use:
 - **Notes** (optional) give the translator extra guidance, such as a variant to avoid.
 - Do not use the `|` character inside a cell.
 
-| English | Spanish | Notes |
-|---|---|---|
-| LULUCF | LULUCF | Keep the English acronym. Do not use UTCUTS. If the term is written out, use "uso de la tierra, cambio de uso de la tierra y silvicultura (LULUCF)". |
-| ECLAC | CEPAL | |
-| Latin America and the Caribbean | América Latina y el Caribe | |
-| GHG | GEI | |
+| English                         | Spanish                    | Notes                                                                                                                                                |
+| ------------------------------- | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| LULUCF                          | LULUCF                     | Keep the English acronym. Do not use UTCUTS. If the term is written out, use "uso de la tierra, cambio de uso de la tierra y silvicultura (LULUCF)". |
+| ECLAC                           | CEPAL                      |                                                                                                                                                      |
+| Latin America and the Caribbean | América Latina y el Caribe |                                                                                                                                                      |
+| GHG                             | GEI                        |                                                                                                                                                      |
