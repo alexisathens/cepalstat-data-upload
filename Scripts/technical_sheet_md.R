@@ -12,6 +12,11 @@
 # To regenerate a draft on purpose, pass overwrite = TRUE. Step 3 always overwrites, since the
 # admin file is generated output and is not edited by hand.
 #
+# The system prompts and the translation glossary are kept as editable files in Metadata/Prompts/:
+#   draft_en.md     - instructions for drafting the English metadata (step 1)
+#   translate_es.md - instructions for translating into Spanish (step 2)
+#   glossary.md     - required English to Spanish terms, added to the translation prompt (step 2)
+#
 # New indicators (new_indicator = TRUE) have no published metadata to revise. Instead, the draft is
 # written from the indicator's entry in Data/indicator_metadata.xlsx (name, source, dimensions) by
 # adapting the content of the gold standard indicator(s), so choose a closely related published
@@ -26,8 +31,9 @@
 
 # ---- settings ----
 
-METADATA_DIR    <- here::here("Metadata")   # all .md files for every indicator are written here
-ANTHROPIC_MODEL <- "claude-sonnet-4-6"      # model used for both drafting and translation
+METADATA_DIR    <- here::here("Metadata")           # all .md files for every indicator are written here
+PROMPTS_DIR     <- file.path(METADATA_DIR, "Prompts") # system prompts and glossary
+ANTHROPIC_MODEL <- "claude-sonnet-4-6"              # model used for both drafting and translation
 
 
 # ---- shared helpers ----
@@ -154,6 +160,59 @@ parse_fields <- function(text, source_label) {
   out
 }
 
+# Reads a system prompt from Metadata/Prompts/ (without its front matter).
+# Sample usage: read_prompt("draft_en")
+read_prompt <- function(name) {
+  path <- file.path(PROMPTS_DIR, glue("{name}.md"))
+  assert_that(file.exists(path), msg = glue("Prompt file not found: {path}"))
+  read_md_body(path)
+}
+
+# Reads the glossary table in Metadata/Prompts/glossary.md into a tibble (english, spanish, notes).
+# Only rows of the Markdown table are read; any other text in the file is ignored.
+read_glossary <- function() {
+  path <- file.path(PROMPTS_DIR, "glossary.md")
+  if (!file.exists(path)) return(tibble(english = character(), spanish = character(), notes = character()))
+
+  cells <- read_md_body(path) %>%
+    str_split("\n") %>%
+    pluck(1) %>%
+    str_trim() %>%
+    keep(~ str_starts(.x, fixed("|"))) %>%              # table rows only
+    discard(~ str_detect(.x, "^\\|[\\s|:-]+\\|$")) %>%  # drop the |---|---| separator line
+    str_remove_all("^\\||\\|$") %>%                     # drop the outer pipes
+    str_split_fixed(fixed("|"), 3)                      # one column per cell
+
+  tibble(english = cells[, 1], spanish = cells[, 2], notes = cells[, 3]) %>%
+    mutate(across(everything(), str_trim)) %>%
+    slice(-1) %>%                                       # drop the header row
+    filter(english != "", spanish != "")
+}
+
+# Formats the glossary as a list for the translation prompt, e.g.
+# "- LULUCF -> LULUCF (Keep the English acronym. Do not use UTCUTS.)"
+format_glossary <- function(glossary) {
+  if (nrow(glossary) == 0) return("")
+  lines <- glossary %>%
+    mutate(line = if_else(
+      notes == "",
+      glue("- {english} -> {spanish}"),
+      glue("- {english} -> {spanish} ({notes})")
+    )) %>%
+    pull(line)
+  paste0("GLOSSARY (required terminology, English -> Spanish):\n", paste(lines, collapse = "\n"))
+}
+
+# Lists glossary terms that appear in the English text but whose Spanish term is missing from the
+# translation, so they can be checked by hand. Matching ignores case and uses whole words.
+check_glossary <- function(english_text, spanish_text, glossary) {
+  has_term <- function(text, term) str_detect(text, regex(paste0("\\b", str_escape(term), "\\b"), ignore_case = TRUE))
+
+  glossary %>%
+    filter(map_lgl(english, ~ has_term(english_text, .x))) %>%
+    filter(!map_lgl(spanish, ~ has_term(spanish_text, .x)))
+}
+
 # Calls the Anthropic API and returns the response text, starting at the first ### DEFINITION header.
 call_claude <- function(system_prompt, user_prompt) {
   api_key <- Sys.getenv("ANTHROPIC_API_KEY")
@@ -199,61 +258,10 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
   message(glue("Processing metadata for indicator {indicator_id}..."))
 
   ## system prompt
-  # Edit SYSTEM_PROMPT and the user prompts below to refine what the model generates.
-
-  SYSTEM_PROMPT <- "
-You are an expert in statistical metadata standards for international development indicators.
-Your task is to draft metadata for CEPALSTAT environmental indicators following UNSD best
-practices, as illustrated in the reference documents provided.
-
-For each indicator, you will revise or draft the following three fields only:
-  1. Definition
-  2. Methodology
-  3. Comments / additional information
-
-The Definition should be more general and clarify terms and concepts. Sometimes the indicator
-can be a calculation with values in both the numerator and denominator. If so, define both elements
-with a clear and technical definition. Depending on the complexity of the indicator, this can be anywhere
-from 3-6 sentences (or 2-4 short paragraphs).
-
-The Methodology is where details are included that gives the user sufficient information to recreate
-the indicator themselves. Generally, this includes notes on the data source, key groupings or
-filterings of the data (that aren't apparent from the indicator name), and any formulas or calculations.
-
-The Comments are where general comments are made about the use of the data (if applicable), and
-more importantly, includes links to relevant resources for further reading.
-
-Keep in mind that the fields Data Source, Units, and Data Frequency are defined elsewhere in the
-metadata and do not need to be explicitly outlined in the three fields above.
-
-Also note that most of the metadata sheets were written originally in Spanish and translated. If there is an
-internationally (UN) used and approved phrasing or terminology, use that.
-
-Write with precision and professional tone appropriate for a UN statistical system.
-Avoid vague language. Cite units, data sources, and methodological steps explicitly.
-
-STYLE REQUIREMENTS:
-- NEVER use em dashes (—) or en dashes (–) under any circumstances.
-- Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
-  Write formulas in plain text only, for example: VR_t = ((M_t - M_(t-1)) / M_(t-1)) x 100
-
-OUTPUT FORMAT (required — the output is parsed programmatically downstream):
-Format your entire response using exactly these three section headers, each alone on its own line,
-with the field's content immediately below it. Do not add any other headers, preamble, or commentary
-outside these three sections.
-
-### DEFINITION
-<definition text>
-
-### METHODOLOGY
-<methodology text>
-
-### COMMENTS
-<comments text>
-"
+  # Edit Metadata/Prompts/draft_en.md and the user prompts below to refine what the model generates.
 
   system_prompt <- paste(
-    SYSTEM_PROMPT,
+    read_prompt("draft_en"),
     "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
     get_formatted_metadata(gold_standard_indicators),
     sep = "\n\n"
@@ -356,37 +364,13 @@ translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(248
   message(glue("Processing metadata translation for indicator {indicator_id}..."))
 
   ## system prompt
+  # Edit Metadata/Prompts/translate_es.md and glossary.md to refine the translation.
 
-  SYSTEM_PROMPT <- "
-You are a professional translator specializing in UN statistical documentation for Latin America.
-Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
-maintained by ECLAC (Comision Economica para America Latina y el Caribe).
-
-This indicator's existing Spanish metadata (provided below, except for new indicators, which have none)
-was written by a human, so it is not an authoritative source of terminology — but prefer its established
-phrasing over a fresh translation.
-The exception: if there is a more internationally (UN) used and approved Spanish term or phrasing,
-use that instead. This is the same standard used when drafting the English metadata.
-
-Translation requirements:
-- Prefer this indicator's existing Spanish terminology, deferring to internationally accepted
-  terminology where it differs (see above).
-- Use formal, precise language appropriate for a UN statistical system.
-- Translate faithfully — do not add, remove, or summarize content.
-
-STYLE REQUIREMENTS:
-- NEVER use em dashes (—) or en dashes (–) under any circumstances.
-- Do not use HTML tags, special characters, or unicode subscripts/superscripts in formulas.
-  Write formulas in plain text only.
-
-OUTPUT FORMAT (required — the output is parsed programmatically downstream):
-The English text uses ### DEFINITION / ### METHODOLOGY / ### COMMENTS as section headers. Preserve
-these exact headers unchanged (do not translate them) and translate only the content beneath each
-one. Do not add any other headers, preamble, or commentary outside these three sections.
-"
+  glossary <- read_glossary()
 
   system_prompt <- paste(
-    SYSTEM_PROMPT,
+    read_prompt("translate_es"),
+    format_glossary(glossary),
     "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style, structure, and terminology:\n\n",
     get_formatted_metadata(gold_standard_indicators, lang = "es"),
     sep = "\n\n"
@@ -401,9 +385,9 @@ one. Do not add any other headers, preamble, or commentary outside these three s
     user_prompt <- paste0(
       "ENGLISH TEXT TO TRANSLATE:\n", english_text,
       "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (written by a human, not authoritative — prefer ",
-      "its phrasing unless a more internationally accepted Spanish term exists):\n",
+      "its phrasing unless the glossary or a more internationally accepted Spanish term says otherwise):\n",
       format_existing_metadata(indicator_id, lang = "es"),
-      "\n\nTranslate the English text above into Spanish, following the terminology guidance above.",
+      "\n\nTranslate the English text above into Spanish, following the glossary and terminology guidance above.",
       "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
       "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
       "sections (headers left untranslated), nothing else."
@@ -413,8 +397,9 @@ one. Do not add any other headers, preamble, or commentary outside these three s
     # New indicator: no existing Spanish metadata, so rely on the Spanish reference examples
     user_prompt <- paste0(
       "ENGLISH TEXT TO TRANSLATE:\n", english_text,
-      "\n\nThis is a new indicator with no existing Spanish metadata. Use the Spanish reference examples ",
-      "above for terminology, preferring internationally (UN) accepted Spanish terms where they differ.",
+      "\n\nThis is a new indicator with no existing Spanish metadata. Always use the glossary terms above. ",
+      "Otherwise, use the Spanish reference examples for terminology, preferring internationally (UN) ",
+      "accepted Spanish terms where they differ.",
       "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
       "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
       "sections (headers left untranslated), nothing else."
@@ -423,6 +408,13 @@ one. Do not add any other headers, preamble, or commentary outside these three s
 
   ## generate Spanish translation
   spanish_text <- call_claude(system_prompt, user_prompt)
+
+  ## flag any glossary terms that were not followed, for manual review
+  missed <- check_glossary(english_text, spanish_text, glossary)
+  if (nrow(missed) > 0) {
+    message(glue("⚠️ Glossary check for {indicator_id}: expected Spanish term(s) not found. Please review {basename(es_path)}:"))
+    message(paste0("   ", missed$english, " -> ", missed$spanish, collapse = "\n"))
+  }
 
   front_matter <- make_front_matter(
     indicator_id,
