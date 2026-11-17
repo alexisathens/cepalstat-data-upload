@@ -1,6 +1,11 @@
 # Generates a draft metadata template for a given CEPALSTAT indicator.
 # Fetches existing metadata from the CEPALSTAT API and calls the Anthropic API to produce 
 # an updated draft in English. Translates to Spanish and exports in a CEPALSTAT Admin-friendly format.
+#
+# New indicators (new_indicator = TRUE) have no published metadata to revise. Instead, the draft is
+# written from the indicator's entry in Data/indicator_metadata.xlsx (name, source, dimensions) by
+# adapting the content of the gold standard indicator(s), so choose a closely related published
+# indicator (e.g., same data source) as the gold standard.
 
 # Development note: I experimented with attaching relevant UN and domain-specific methodological documents
 # and pointing to the indicator's R code. In the end I found the greatest success with the least amount 
@@ -23,7 +28,7 @@ strip_html_breaks <- function(text) {
   str_remove_all(text, "<br\\s*/?>")
 }
 
-suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)) {
+suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487), new_indicator = FALSE) {
   
   ## setup
   
@@ -178,25 +183,54 @@ outside these three sections.
     sep = "\n\n"
   )
   
-  ## specify user prompt with current metadata text
+  ## specify user prompt
   
-  existing_metadata <- get_indicator_metadata(indicator_id) %>%
-    mutate(value = strip_html_breaks(value)) %>%
-    mutate(line = paste0(variable, ": ", value)) %>%
-    pull(line) %>%
-    paste(collapse = "\n")
-  
-  user_prompt <- paste0(
-    "CURRENT METADATA FOR THIS INDICATOR (indicator_id ", indicator_id, "):\n", existing_metadata,
-    "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
-    "based on the available inputs. Keep other metadata elements exactly as-is.",
-    "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
-    "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
-    "Respond with only the three ### sections, nothing else."
-  )
-  
-  ## store existing (pre-AI) metadata locally
-  save_legacy_metadata(indicator_id)
+  if (!new_indicator) {
+    # Existing indicator: revise its published metadata
+    existing_metadata <- get_indicator_metadata(indicator_id) %>%
+      mutate(value = strip_html_breaks(value)) %>%
+      mutate(line = paste0(variable, ": ", value)) %>%
+      pull(line) %>%
+      paste(collapse = "\n")
+    
+    user_prompt <- paste0(
+      "CURRENT METADATA FOR THIS INDICATOR (indicator_id ", indicator_id, "):\n", existing_metadata,
+      "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
+      "based on the available inputs. Keep other metadata elements exactly as-is.",
+      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+      "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
+      "Respond with only the three ### sections, nothing else."
+    )
+    
+    ## store existing (pre-AI) metadata locally
+    save_legacy_metadata(indicator_id)
+    
+  } else {
+    # New indicator: no published metadata yet, so draft from its entry in the metadata table
+    # and adapt the content of the closely related gold standard indicator(s)
+    meta_row <- meta %>% filter(id == indicator_id)
+    assert_that(
+      nrow(meta_row) == 1,
+      msg = glue("Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Add it before drafting metadata.")
+    )
+    
+    user_prompt <- paste0(
+      "NEW INDICATOR (no published metadata yet):\n",
+      "indicator_id: ", indicator_id, "\n",
+      "indicator_name: ", meta_row$indicator, "\n",
+      "source: ", meta_row$source, "\n",
+      "dimensions: ", coalesce(meta_row$dimensions, "none beyond country and year"), "\n", # blank = country x year only
+      "classification: ", paste(na.omit(c(meta_row$cat1, meta_row$cat2, meta_row$cat3)), collapse = " > "),
+      "\n\nThe reference indicator(s) above are closely related to this new indicator and share its data ",
+      "source and general context. Draft the metadata fields (definition, calculation_methodology, comments) ",
+      "for the new indicator by adapting their content: keep what applies (source description, coverage, ",
+      "context, links) and change what differs, as indicated by the new indicator's name and dimensions. ",
+      "Do not carry over details that are specific to the reference indicator(s).",
+      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+      "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
+      "Respond with only the three ### sections, nothing else."
+    )
+  }
   
   ## generate English draft
   # Review and edit Metadata/Outputs/metadata_{indicator_id}_en.txt before translating.
@@ -209,7 +243,7 @@ outside these three sections.
 
 
 
-translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(2487)) {
+translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(2487), new_indicator = FALSE) {
   # Reads the reviewed English draft (written by suggest_metadata_en) and translates it to Spanish,
   # using this indicator's own existing Spanish metadata as a terminology reference.
 
@@ -227,8 +261,9 @@ You are a professional translator specializing in UN statistical documentation f
 Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,
 maintained by ECLAC (Comision Economica para America Latina y el Caribe).
 
-This indicator's existing Spanish metadata (provided below) was written by a human, so it is not an
-authoritative source of terminology — but prefer its established phrasing over a fresh translation.
+This indicator's existing Spanish metadata (provided below, except for new indicators, which have none)
+was written by a human, so it is not an authoritative source of terminology — but prefer its established
+phrasing over a fresh translation.
 The exception: if there is a more internationally (UN) used and approved Spanish term or phrasing,
 use that instead. This is the same standard used when drafting the English metadata.
 
@@ -326,22 +361,35 @@ one. Do not add any other headers, preamble, or commentary outside these three s
   )
   english_text <- paste(readLines(draft_path, warn = FALSE), collapse = "\n")
 
-  ## fetch this indicator's own existing Spanish metadata, for terminology grounding
-  existing_es_metadata <- get_indicator_metadata(indicator_id, lang = "es") %>%
-    mutate(value = strip_html_breaks(value)) %>%
-    mutate(line = paste0(variable, ": ", value)) %>%
-    pull(line) %>%
-    paste(collapse = "\n")
+  if (!new_indicator) {
+    ## fetch this indicator's own existing Spanish metadata, for terminology grounding
+    existing_es_metadata <- get_indicator_metadata(indicator_id, lang = "es") %>%
+      mutate(value = strip_html_breaks(value)) %>%
+      mutate(line = paste0(variable, ": ", value)) %>%
+      pull(line) %>%
+      paste(collapse = "\n")
 
-  user_prompt <- paste0(
-    "ENGLISH TEXT TO TRANSLATE:\n", english_text,
-    "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (written by a human, not authoritative — prefer ",
-    "its phrasing unless a more internationally accepted Spanish term exists):\n", existing_es_metadata,
-    "\n\nTranslate the English text above into Spanish, following the terminology guidance above.",
-    "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
-    "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
-    "sections (headers left untranslated), nothing else."
-  )
+    user_prompt <- paste0(
+      "ENGLISH TEXT TO TRANSLATE:\n", english_text,
+      "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (written by a human, not authoritative — prefer ",
+      "its phrasing unless a more internationally accepted Spanish term exists):\n", existing_es_metadata,
+      "\n\nTranslate the English text above into Spanish, following the terminology guidance above.",
+      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+      "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
+      "sections (headers left untranslated), nothing else."
+    )
+
+  } else {
+    ## new indicator: no existing Spanish metadata, so rely on the Spanish reference examples
+    user_prompt <- paste0(
+      "ENGLISH TEXT TO TRANSLATE:\n", english_text,
+      "\n\nThis is a new indicator with no existing Spanish metadata. Use the Spanish reference examples ",
+      "above for terminology, preferring internationally (UN) accepted Spanish terms where they differ.",
+      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+      "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
+      "sections (headers left untranslated), nothing else."
+    )
+  }
 
   ## generate Spanish translation
   spanish_text <- generate_translation(indicator_id, system_prompt, user_prompt)

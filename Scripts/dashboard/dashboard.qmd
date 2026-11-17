@@ -196,10 +196,16 @@ blend_colors <- function(from, to, t) {
 # is barely tinted, 40% is a clear mid-red, and 60%+ is the full, most-alarming red. Anything
 # below threshold isn't flagged at all, so it gets the neutral "fine" color instead of a gradient
 # position - there's no such thing as a "very light green," just "not red."
+# Blends only the finite values at or above the threshold. An ifelse() version would evaluate
+# blend_colors() on every element (ifelse computes both branches in full), and a NaN from a 0/0
+# percent difference (internal and public both 0) makes grDevices::rgb() error, which stops
+# the whole chart from rendering.
 threshold_gradient_color <- function(x, threshold, base_color = pal$flag) {
   light <- tint_color(base_color, amount = 0.8)
-  frac <- (x - threshold) / (threshold * 2)
-  ifelse(is.na(x) | x < threshold, pal$neutral, blend_colors(light, base_color, frac))
+  out <- rep(pal$neutral, length(x))
+  above <- is.finite(x) & x >= threshold
+  out[above] <- blend_colors(light, base_color, (x[above] - threshold) / (threshold * 2))
+  out
 }
 
 # Wraps a tall plot output in a fixed-height, scrollable container. Keeps the card's own
@@ -1429,6 +1435,7 @@ output$scatter_plot <- renderPlotly({
   df2 <- fd$comp %>%
     filter(status == "Present in Both") %>%
     mutate(point_color = threshold_gradient_color(abs_perc_diff, input$threshold))
+  if (nrow(df2) == 0) return(empty_plotly("No country-year has both an internal and public value."))
   p <- ggplot(df2, aes(
     x = value_data_matched, y = value_pub_matched, color = point_color,
     text = paste0(
@@ -1471,7 +1478,10 @@ output$pctdiff_plot <- renderPlotly({
   if (!d$has_public_data) return(empty_plotly(no_pub_msg))
   fd <- filtered_data()
   yr <- range(as.numeric(fd$comp$dim_29117_label), na.rm = TRUE)
+  threshold <- input$threshold
+  # Flag points against the sidebar's Threshold (not a fixed 20%)
   df2 <- fd$comp %>% filter(status == "Present in Both")
+  if (nrow(df2) == 0) return(empty_plotly("No country-year has both an internal and public value."))
   p <- ggplot(df2, aes(
     x = as.numeric(dim_29117_label), y = perc_diff,
     text = paste0(
@@ -1479,12 +1489,12 @@ output$pctdiff_plot <- renderPlotly({
       "<br>Internal (matched): ", round(value_data_matched, 1), "<br>Public (matched): ", round(value_pub_matched, 1)
     )
   )) +
-    annotate("rect", xmin = yr[1] - 0.5, xmax = yr[2] + 0.5, ymin = -20, ymax = 20, fill = pal$good, alpha = 0.08) +
+    annotate("rect", xmin = yr[1] - 0.5, xmax = yr[2] + 0.5, ymin = -threshold, ymax = threshold, fill = pal$good, alpha = 0.08) +
     # Connects each country's own points across years at their true (unjittered) year position -
     # a separate layer from the jittered points below, so the line traces the real year-by-year
     # path even though the points themselves are nudged sideways to reduce overplotting.
     geom_line(aes(group = dim_208_label), color = pal$neutral, linewidth = 0.3, alpha = 0.45) +
-    geom_jitter(aes(color = abs_perc_diff > 20), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
+    geom_jitter(aes(color = !is.na(abs_perc_diff) & abs_perc_diff > threshold), width = 0.2, height = 0, size = 1.4, alpha = 0.8) +
     scale_color_manual(values = c("FALSE" = pal$neutral, "TRUE" = pal$flag), guide = "none") +
     labs(x = "Year", y = "Percent Difference") +
     theme_qc()

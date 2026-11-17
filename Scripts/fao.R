@@ -38,7 +38,7 @@ fert <- get_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip")
 # download pesticide use (RP) data
 pest <- get_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip")
 
-## fishstat & aquastat downloads
+## fishstat downloads
 # imports from the fishstat package. See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
 fish <- capture %>%
   inner_join(country, by = "country") %>%
@@ -67,7 +67,17 @@ aqua <- aqua %>%
     Area = inlandmarine
   )
 
-## **note: still need to download aquastat (water resources) manually? or is there an API now?
+## aquastat manual download
+# follow instructions in manual_download.qmd for bulk file
+aquastat_folder <- here("Data/Raw/fao/aquastat")
+#aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
+# AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")
+aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"),
+                     locale = locale(encoding = "latin1"))
+
+aquastat %<>% 
+  rename(Country = AREA, Years = timePointYears...5, Variable = aquastatElement...2, value = Value) %>% 
+  select(Country, Years, Variable, value)
 
 
 # ---- shared functions ----
@@ -100,26 +110,30 @@ result_cropland <- use %>%
 
 # Regional strategy for "intensity" indicators (value per unit of cropland area): same shape as
 # calculate_regional_wgt_avg, but without the *100 -- these are per-hectare rates, not percentages
-calculate_regional_intensity <- function(df) {
-  df <- df %>%
-    filter(!Country %in% c("South America", "Central America", "Caribbean",
-                           "Latin America and the Caribbean", "Latin America"))
-  
-  lac_total <- df %>%
-    filter(Country != "World") %>%
-    group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
-    summarise(value = sum(value, na.rm = TRUE),
-              area = sum(area, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Country = "Latin America and the Caribbean")
-  
-  df %>%
-    bind_rows(lac_total) %>%
-    mutate(value = value / area) %>%
-    select(-area)
-}
+# calculate_regional_intensity <- function(df) {
+#   df <- df %>%
+#     filter(!Country %in% c("South America", "Central America", "Caribbean",
+#                            "Latin America and the Caribbean", "Latin America"))
+#   
+#   lac_total <- df %>%
+#     filter(Country != "World") %>%
+#     group_by(across(all_of(setdiff(names(df), c("Country", "value", "area"))))) %>%
+#     summarise(value = sum(value, na.rm = TRUE),
+#               area = sum(area, na.rm = TRUE), .groups = "drop") %>%
+#     mutate(Country = "Latin America and the Caribbean")
+#   
+#   df %>%
+#     bind_rows(lac_total) %>%
+#     mutate(value = value / area) %>%
+#     select(-area)
+# }
 
 define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
   df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
+}
+
+define_source_aquastat <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT) 
 }
 
 
@@ -329,7 +343,7 @@ spec_2021 <- indicator_spec(
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
-  calculate_regional = calculate_regional_wgt_avg,
+  calculate_regional = calculate_regional_ratio_pct,
   define_source = define_source_fao_w_cepal_calcs
 )
 
@@ -361,7 +375,7 @@ spec_2530 <- indicator_spec(
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
-  calculate_regional = calculate_regional_wgt_avg,
+  calculate_regional = calculate_regional_ratio_pct,
   define_source = define_source_fao_w_cepal_calcs
 )
 
@@ -395,7 +409,7 @@ spec_2531 <- indicator_spec(
   dim_config = dim_config_2531,
   filter_data = filter_forest,
   transform_data = transform_2531,
-  calculate_regional = calculate_regional_wgt_avg
+  calculate_regional = calculate_regional_ratio_pct
 )
 
 ## ---- indicator 1739 - irrigated area ----
@@ -902,7 +916,55 @@ spec_2020 <- indicator_spec(
   footnotes = footnotes_2020
 )
 
-## ---- indicator 4185 - water withdrawal by sector ----
+
+## ---- indicator 5805 - water withdrawal by sector ----
+
+dim_config_5805 <- tibble(
+  data_col = c("Country", "Years", "Sector"),
+  dim_id = c("208", "29117", "59252"),
+  pub_col = c("208_name", "29117_name", "59252_name")
+)
+
+filter_5805 <- function(data) {
+  withdrawal_types <- c("Total water withdrawal [10^9 m3/year]", "Agricultural water withdrawal [10^9 m3/year]", 
+    "Municipal water withdrawal [10^9 m3/year]", "Industrial water withdrawal [10^9 m3/year]")
+  
+  data %>%
+    filter(Variable %in% withdrawal_types) %>% 
+    filter(Years >= 1990) %>%
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, Sector = Variable, value)
+}
+
+# ** check if bolivia issue still exists this year
+transform_5805 <- function(data) {
+  #bol_data <- data %>% filter(str_detect(Country, "Bolivia") & Years %in% c(2020, 2021))
+  # don't fix for this indicator since it's more difficult to understand what the correct values are here
+  
+  data %>% 
+    mutate(Sector = case_when(
+      str_detect(Sector, "Agricultural") ~ "Agricultural",
+      str_detect(Sector, "Industrial") ~ "Industrial",
+      str_detect(Sector, "Municipal") ~ "Municipal",
+      str_detect(Sector, "Total") ~ "Total",
+      TRUE ~ Sector
+    ))
+}
+
+spec_5805 <- indicator_spec(
+  indicator_id = 5805,
+  data = aquastat,
+  max_year = max_year_fao,
+  dim_config = dim_config_5805,
+  filter_data = filter_5805,
+  transform_data = transform_5805,
+  calculate_regional = maintain_regional,
+  define_source = define_source_aquastat,
+  new_indicator = TRUE
+)
+
+
+## ---- indicator 4185 - distribution of water withdrawal by sector ----
 
 dim_config_4185 <- tibble(
   data_col = c("Country", "Years", "Sector"),
@@ -912,9 +974,10 @@ dim_config_4185 <- tibble(
 
 filter_4185 <- function(data) {
   data %>%
-    filter(str_detect(Variable, "as \\% of total")) %>% 
-    filter(!Area %in% c("Sint Maarten (Dutch part)")) %>% 
-    select(Country = Area, Years = Year, Sector = Variable, value = Value)
+    filter(str_detect(Variable, "as \\% of total w")) %>% 
+    filter(Years >= 1990) %>%
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, Sector = Variable, value)
 }
 
 # ** check if bolivia issue still exists this year
@@ -942,16 +1005,15 @@ transform_4185 <- function(data) {
     ))
 }
 
-# ** double check maintain regional calc
-# spec_4185 <- indicator_spec(
-#   indicator_id = 4185,
-#   data = aquastat, # check **
-#   max_year = max_year_fao,
-#   dim_config = dim_config_4185,
-#   filter_data = filter_4185,
-#   transform_data = transform_4185,
-#   calculate_regional = maintain_regional
-# )
+spec_4185 <- indicator_spec(
+  indicator_id = 4185,
+  data = aquastat,
+  max_year = max_year_fao,
+  dim_config = dim_config_4185,
+  filter_data = filter_4185,
+  transform_data = transform_4185,
+  calculate_regional = maintain_regional
+)
 
 
 ## ---- indicator 4186 - water intensity of agriculture value added ----
@@ -964,33 +1026,37 @@ dim_config_4186 <- tibble(
 
 filter_4186 <- function(data) {
   data %>% 
-    filter(Variable == "Agricultural water withdrawal") %>% 
-    filter(!Area %in% c("Sint Maarten (Dutch part)")) %>% 
-    select(Country = Area, Years = Year, value = Value)
+    filter(Variable == "Agricultural water withdrawal [10^9 m3/year]") %>% 
+    mutate(value = value * 10^9) %>% # convert to normal scale (m3)
+    filter(Years >= 1990) %>%
+    filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
+    select(Country, Years, value)
 }
 
 transform_4186 <- function(data) {
-  # get annual GDP by economic activity from CEPALSTAT, in constant 2018 dollars
+  # get annual GDP by economic activity from CEPALSTAT, in millions of constant 2018 dollars
   gdp <- CepalStatR::call.data(2216) %>% as_tibble()
   
   gdp %<>% 
     rename(Sector = Rubro__Sector_Cuentas_nacionales_anuales) %>% 
     filter(Sector %in% c("Agriculture, hunting, forestry and fishing")) %>% 
-    select(Country, Years, gdp = value)
+    mutate(Value = Value * 10^6) %>% # convert to normal scale ($)
+    mutate(Years = as.numeric(Years)) %>% 
+    select(Country, Years, gdp = Value)
   
   data %>% 
     left_join(gdp, by = c("Country", "Years")) %>% 
     filter(!is.na(gdp)) %>%
-    mutate(intensity = value / gdp * 1e3) %>% 
+    mutate(intensity = (value / gdp) * 10^3) %>% # convert units to m3 per thousands of $ (to optimize scale for visualization)
     select(Country, Years, value = intensity)
 }
 
-# spec_4186 <- indicator_spec(
-#   indicator_id = 4186,
-#   data = aquastat,
-#   max_year = max_year_fao,
-#   dim_config = dim_config_4186,
-#   filter_data = filter_4186,
-#   transform_data = transform_4186,
-#   calculate_regional = maintain_regional # no ECLAC average **
-# )
+spec_4186 <- indicator_spec(
+  indicator_id = 4186,
+  data = aquastat,
+  max_year = max_year_fao,
+  dim_config = dim_config_4186,
+  filter_data = filter_4186,
+  transform_data = transform_4186,
+  calculate_regional = maintain_regional # previously, there was no LAC average, but it's available in the data source so include it
+)

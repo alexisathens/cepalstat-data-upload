@@ -20,37 +20,22 @@ data_4463 <- read_csv(paste0(cw_path, "/4463_raw.csv"))
 data_4461 <- read_csv(paste0(cw_path, "/4461_raw.csv"))
 data_4462 <- read_csv(paste0(cw_path, "/4462_raw.csv"))
 data_3387 <- read_csv(paste0(cw_path, "/3387_raw.csv"))
+data_5806 <- read_csv(paste0(cw_path, "/5806_raw.csv"))
+data_5807 <- read_csv(paste0(cw_path, "/5807_raw.csv"))
+data_5808 <- read_csv(paste0(cw_path, "/5808_raw.csv"))
 
 # ---- shared functions ----
 
-# Regional strategy factory for "ratio" indicators (emissions per capita, emissions per GDP):
-# recomputes num/denom for both countries and the LAC total, scaled by `multiplier`.
-# Sample usage: calculate_regional = calculate_regional_ratio(1e6) # tonnes CO2eq per capita
-calculate_regional_ratio <- function(multiplier) {
-  function(df) {
-    df <- df %>%
-      filter(!Country %in% c("South America", "Central America", "Caribbean",
-                             "Latin America and the Caribbean", "Latin America"))
-    
-    lac_total <- df %>%
-      filter(Country != "World") %>%
-      group_by(across(all_of(setdiff(names(df), c("Country", "num", "denom"))))) %>%
-      summarise(num = sum_or_na(num), denom = sum_or_na(denom), .groups = "drop") %>%
-      mutate(Country = "Latin America and the Caribbean")
-    
-    df %>%
-      bind_rows(lac_total) %>%
-      mutate(value = num / denom * multiplier) %>%
-      select(-num, -denom)
-  }
-}
+# Shared empty function since many Climate Watch indicators don't need additional manipulation
+transform_none <- function(df) df
 
 # Define shared multipliers/scales
 units_percapita <- 1e6 # tonnes of CO2eq per capita
 units_pergdp <- 1e12 # tonnes of CO2eq per million USD GDP
 
-# Shared empty function since many Climate Watch indicators don't need additional manipulation
-transform_none <- function(df) df
+define_source_cw <- function(df, indicator_id) {
+  df %>% mutate(source_id = 1742)
+}
 
 
 ## ---- indicator 3387 - share of global greenhouse gas (GHG) emissions ----
@@ -319,4 +304,84 @@ spec_5649 <- indicator_spec(
   filter_data = filter_5649,
   transform_data = transform_none,
   calculate_regional = calculate_regional_ratio(units_percapita) # tonnes of CO2eq per capita
+)
+
+
+## ---- indicator 5806 — total greenhouse gas (GHG) emissions without LULUCF ----
+
+dim_config_5806 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5806 <- function(data) {
+  data %>%
+    rename(Country = country, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_5806 <- indicator_spec(
+  indicator_id = 5806,
+  data = data_5806,
+  max_year = max_year_cw,
+  dim_config = dim_config_5806,
+  filter_data = filter_5806,
+  transform_data = transform_none,
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_cw,
+  new_indicator = TRUE
+)
+
+## ---- indicator 5807 — total greenhouse gas (GHG) emissions with LULUCF ----
+
+dim_config_5807 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5807 <- function(data) {
+  data %>%
+    rename(Country = country, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_5807 <- indicator_spec(
+  indicator_id = 5807,
+  data = data_5807,
+  max_year = max_year_cw,
+  dim_config = dim_config_5807,
+  filter_data = filter_5807,
+  transform_data = transform_none,
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_cw,
+  new_indicator = TRUE
+)
+
+
+## ---- indicator 5808 — total carbon dioxide (CO2) emissions with LULUCF ----
+
+dim_config_5808 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5808 <- function(data) {
+  data %>%
+    rename(Country = country, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_5808 <- indicator_spec(
+  indicator_id = 5808,
+  data = data_5808,
+  max_year = max_year_cw,
+  dim_config = dim_config_5808,
+  filter_data = filter_5808,
+  transform_data = transform_none,
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_cw,
+  new_indicator = TRUE
 )

@@ -8,14 +8,14 @@ indicator_spec <- function(
 }
 
 # debugging
-# spec <- spec_5647
-# global <- list(diagnostics = TRUE, export = FALSE, metadata = FALSE)
+# spec <- spec_4185
+# global <- list(diagnostics = TRUE, export = FALSE)
 
 # generic CEPALSTAT indicator processing function
 process_indicator <- function(spec = indicator_spec, global = global_spec) {
   # get indicator-specific and global variables and functions
   indicator_id   <- spec$indicator_id
-  indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
+  #indicator_name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
   data           <- spec$data
   max_year       <- spec$max_year
   dim_config     <- spec$dim_config
@@ -28,6 +28,18 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   diagnostics <- global$diagnostics
   export <- global$export
   
+  # Check whether metadata row exists and throw error if it hasn't been created yet
+  meta_row <- meta %>% filter(id == indicator_id)
+  if (nrow(meta_row) == 0) {
+    stop(glue(
+      "❌ Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Re-run build_metadata_table.R (if the indicator exists in CEPALSTAT) ",
+      "or add a row manually with at least id, indicator, and source. Then reload utils.R so `meta` is refreshed."
+    ))
+  }
+  indicator_name <- meta_row %>% pull(indicator)
+  
+  ## Begin indicator processing
+  message(glue("=================================================================="))
   message(glue("▶ Processing indicator {indicator_id} - {indicator_name}:"))
   
   # get clean indicator df
@@ -76,8 +88,11 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))
     message(glue("✅ Exported cleaned and comparison files for {indicator_id}"))
+    message(glue("✅ Indicator {indicator_id} processing complete"))
+  } else {
+    message(glue("✅ Indicator {indicator_id} processing complete (but not exported)"))
   }
+  message(glue("=================================================================="))
 
-  message(glue("✅ Indicator {indicator_id} processing complete"))
   return(list(data = df, labeled = df_l, formatted = df_f, comp = comp))
 }
