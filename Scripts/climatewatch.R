@@ -33,6 +33,10 @@ transform_none <- function(df) df
 units_percapita <- 1e6 # tonnes of CO2eq per capita
 units_pergdp <- 1e12 # tonnes of CO2eq per million USD GDP
 
+define_source_cw <- function(df, indicator_id) {
+  df %>% mutate(source_id = 1742)
+}
+
 
 ## ---- indicator 3387 - share of global greenhouse gas (GHG) emissions ----
 
@@ -303,7 +307,7 @@ spec_5649 <- indicator_spec(
 )
 
 
-## ---- indicator 5806 — total greenhouse gas (ghg) emissions without LULUCF ----
+## ---- indicator 5806 — total greenhouse gas (GHG) emissions without LULUCF ----
 
 dim_config_5806 <- tibble(
   data_col = c("Country", "Years"),
@@ -324,11 +328,12 @@ spec_5806 <- indicator_spec(
   dim_config = dim_config_5806,
   filter_data = filter_5806,
   transform_data = transform_none,
-  calculate_regional = calculate_regional_sum
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_cw,
+  new_indicator = TRUE
 )
 
-
-## ---- indicator 5807 — total greenhouse gas (ghg) emissions with LULUCF ----
+## ---- indicator 5807 — total greenhouse gas (GHG) emissions with LULUCF ----
 
 dim_config_5807 <- tibble(
   data_col = c("Country", "Years"),
@@ -349,5 +354,34 @@ spec_5807 <- indicator_spec(
   dim_config = dim_config_5807,
   filter_data = filter_5807,
   transform_data = transform_none,
-  calculate_regional = calculate_regional_sum
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_cw,
+  new_indicator = TRUE
+)
+
+
+## ---- indicator 5808 — total carbon dioxide (CO2) emissions with LULUCF ----
+
+dim_config_5808 <- tibble(
+  data_col = c("Country", "Years"),
+  dim_id = c("208", "29117"),
+  pub_col = c("208_name", "29117_name")
+)
+
+filter_5808 <- function(data) {
+  data %>%
+    rename(Country = country, Years = year) %>%
+    select(Country, Years, value)
+}
+
+spec_5808 <- indicator_spec(
+  indicator_id = 5808,
+  data = data_5808,
+  max_year = max_year_cw,
+  dim_config = dim_config_5808,
+  filter_data = filter_5808,
+  transform_data = transform_none,
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_cw,
+  new_indicator = TRUE
 )
