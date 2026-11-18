@@ -630,6 +630,7 @@ transform_2022 <- function(data) {
     select(Country, Years, value) %>% 
     mutate(Years = as.character(Years)) %>% 
     left_join(result_cropland, by = c("Country", "Years")) %>% 
+    rename(num = value, denom = area) %>% 
     arrange(Country, Years)
 }
 
@@ -706,7 +707,9 @@ transform_3382 <- function(data) {
     rename(Country = area, Years = year) %>% 
     select(Country, Years, value) %>% 
     mutate(Years = as.character(Years)) %>% 
-    left_join(result_cropland, by = c("Country", "Years"))
+    left_join(result_cropland, by = c("Country", "Years")) %>% 
+    rename(num = value, denom = area) %>% 
+    arrange(Country, Years)
 }
 
 spec_3382 <- indicator_spec(
@@ -849,7 +852,7 @@ transform_2019 <- function(data) {
   total <- data %>%
     group_by(Country, Years) %>%
     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Species = "TOTAL")
+    mutate(Species = "Total")
   
   data %>% 
     bind_rows(total)
@@ -857,7 +860,7 @@ transform_2019 <- function(data) {
 
 footnotes_2019 <- list(
   "6545" = function(df) rep(TRUE, nrow(df)), # Incluye la captura en áreas marinas y en aguas continentales. [applies to everyone]
-  "7777" = function(df) df$Species == "TOTAL", # El total no incluye ballenas, focas y otros mamíferos acuáticos
+  "7777" = function(df) df$Species == "Total", # El total no incluye ballenas, focas y otros mamíferos acuáticos
   "5518" = function(df) df$Species == "Other" # Incluye peces diádromos, varios animales acuáticos y varios productos de animales acuáticos.
 )
 
