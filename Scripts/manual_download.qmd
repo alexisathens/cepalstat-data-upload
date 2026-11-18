@@ -47,7 +47,7 @@ For the report, select the latest year of data:
 
 - Download the file with the title "1. ISO Survey 202X results - number of certificates and sites per country and the number of sectors overall"
 
-Save as: Data/Raw/other/**iso_raw_202X.xlsx** (replace with year #)
+Save as: Data/Raw/other/**iso_202X_raw.xlsx** (replace X with the most recent year, matching `max_year_other` in utils.R)
 
 ## UNEP
 
@@ -69,9 +69,9 @@ For the report, select:
 - More filters: leave these un-selected
 - Group by: select radio button "Group output by Annex group"
 - Download the Excel file for EACH annex group (substance). The result should be 9 xlsx files.
-- Rename each xlsx file in the format as follows: ods_cfc_raw.xlsx or ods_mb_raw.xlsx
+- Rename each xlsx file in the format as follows: odp_cfc_raw.xlsx, odp_halons_raw.xlsx, odp_halcfc_raw.xlsx, odp_ctc_raw.xlsx, odp_tca_raw.xlsx, odp_hcfc_raw.xlsx, odp_hbfc_raw.xlsx, odp_bcm_raw.xlsx, odp_mb_raw.xlsx
 
-Save as: Data/Raw/other/**ods_hcfc_raw.xlsx** (in this pattern, x9 files)
+Save as: Data/Raw/other/**odp_hcfc_raw.xlsx** (in this pattern, x9 files)
 
 ## Ramsar
 
@@ -105,4 +105,4 @@ For the report:
 
 - Click the "Bulk Download" carrot and select "AQUASTAT Statistics Bulk Download - English"
 
-Save as: Data/Raw/fao/aquastat/**bulk_aquastat_raw.xlsx**
+Save as: Data/Raw/fao/aquastat/**bulk_aquastat_raw.csv**

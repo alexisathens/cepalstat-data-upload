@@ -816,7 +816,7 @@ run_many_indicators <- function(run_list, global = global_spec) {
     id <- run_list[i]
     
     outcome <- tryCatch({
-      run_one_indicator(id)
+      run_one_indicator(id, global)
       list(status = "ok", message = NA_character_)
     }, error = function(e) {
       message(glue("❌ Indicator {id} failed: {conditionMessage(e)}"))
