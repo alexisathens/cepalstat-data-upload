@@ -274,8 +274,9 @@ call_claude <- function(system_prompt, user_prompt) {
 
 # ---- step 1: English draft ----
 
-suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487),
+suggest_metadata_en <- function(indicator_id, gold = c(2487),
                                 new_indicator = NULL, overwrite = FALSE) {
+  # gold: ID(s) of published indicators used as examples, e.g. gold = c(2487, 4174).
   # new_indicator = NULL (default) detects new indicators automatically; TRUE or FALSE overrides it.
 
   ## skip if a draft already exists, to protect reviewed edits
@@ -294,7 +295,7 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
   system_prompt <- paste(
     read_prompt("draft_en"),
     "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
-    get_formatted_metadata(gold_standard_indicators),
+    get_formatted_metadata(gold),
     sep = "\n\n"
   )
 
@@ -360,7 +361,7 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
     indicator_id,
     related_types = "legacy",
     extra = list(
-      gold_standard = paste0("[", paste(gold_standard_indicators, collapse = ", "), "]"),
+      gold_standard = paste0("[", paste(gold, collapse = ", "), "]"),
       generated     = format(Sys.Date())
     )
   )
@@ -373,10 +374,11 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
 
 # ---- step 2: Spanish translation ----
 
-translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(2487),
+translate_metadata_es <- function(indicator_id, gold = c(2487),
                                   new_indicator = NULL, overwrite = FALSE) {
   # Reads the reviewed English draft and translates it to Spanish, using this indicator's own
   # existing Spanish metadata as a terminology reference.
+  # gold: ID(s) of published indicators used as examples, e.g. gold = c(2487, 4174).
   # new_indicator = NULL (default) detects new indicators automatically; TRUE or FALSE overrides it.
 
   ## check inputs, and skip if a translation already exists
@@ -405,7 +407,7 @@ translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(248
     read_prompt("translate_es"),
     format_glossary(glossary),
     "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style, structure, and terminology:\n\n",
-    get_formatted_metadata(gold_standard_indicators, lang = "es"),
+    get_formatted_metadata(gold, lang = "es"),
     sep = "\n\n"
   )
 
