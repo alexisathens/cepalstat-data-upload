@@ -4,6 +4,11 @@ source(here("Scripts/utils.R"))
 
 # ---- export metadata -----
 
+# Existing and new indicators use the same calls. New indicators (no published Definition, Methodology
+# or Comments in CEPALSTAT) are detected automatically and drafted from their entry in
+# Data/indicator_metadata.xlsx by adapting the gold standard, so for new indicators choose a gold
+# standard with the same data source and general context.
+
 # run one "pilot" for indicator group, then update the metadata publicly
 pilot <- 3158
 suggest_metadata_en(pilot, gold_standard_indicators = 2487) # default: 2487
@@ -31,21 +36,3 @@ walk(meta_ids, ~ tryCatch({
 ))
 
 # human intervention: update all indicator metadata publicly
-
-
-# ---- new indicators -----
-
-# New indicators have no published metadata to revise. The draft is written from the indicator's entry in
-# Data/indicator_metadata.xlsx (name, source, dimensions) by adapting the content of a closely related
-# published indicator, so choose a gold standard with the same data source and general context.
-new_id <- 5808
-gold_new <- 5807
-
-suggest_metadata_en(new_id, gold_standard_indicators = gold_new, new_indicator = TRUE)
-
-# human intervention: review and edit Metadata/{new_id}_en.md
-
-translate_metadata_es(new_id, gold_standard_indicators = gold_new, new_indicator = TRUE)
-export_metadata_admin(new_id)
-
-# human intervention: enter the metadata in the CEPALSTAT Admin area

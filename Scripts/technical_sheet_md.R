@@ -17,10 +17,11 @@
 #   translate_es.md - instructions for translating into Spanish (step 2)
 #   glossary.md     - required English to Spanish terms, added to the translation prompt (step 2)
 #
-# New indicators (new_indicator = TRUE) have no published metadata to revise. Instead, the draft is
-# written from the indicator's entry in Data/indicator_metadata.xlsx (name, source, dimensions) by
-# adapting the content of the gold standard indicator(s), so choose a closely related published
-# indicator (e.g., same data source) as the gold standard.
+# New indicators have no published metadata to revise. They are detected automatically (no published
+# Definition, Methodology or Comments in CEPALSTAT), and the draft is instead written from the
+# indicator's entry in Data/indicator_metadata.xlsx (name, source, dimensions) by adapting the content
+# of the gold standard indicator(s). For these, choose a closely related published indicator (e.g.,
+# same data source) as the gold standard. To override the detection, pass new_indicator = TRUE or FALSE.
 
 # Development note: I experimented with attaching relevant UN and domain-specific methodological documents
 # and pointing to the indicator's R code. In the end I found the greatest success with the least amount
@@ -213,6 +214,34 @@ check_glossary <- function(english_text, spanish_text, glossary) {
     filter(!map_lgl(spanish, ~ has_term(spanish_text, .x)))
 }
 
+# TRUE if the indicator has no published Definition, Methodology or Comments in CEPALSTAT, i.e. it is a
+# new indicator. An indicator that CEPALSTAT does not recognize yet (HTTP 404) also counts as new.
+# Any other API error stops the script, so a connection problem is never mistaken for a new indicator.
+# Sample usage: is_new_indicator(5808)
+is_new_indicator <- function(indicator_id) {
+  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang=en&format=json")
+  result <- tryCatch(fetch_cepalstat_json(url), httr2_http_404 = function(e) NULL)
+  if (is.null(result)) return(TRUE)
+
+  # A field counts as empty if it is missing, null or only whitespace/<br> tags
+  is_blank <- function(x) {
+    is.null(x) || length(x) == 0 || is.na(x[1]) || str_trim(strip_html_breaks(as.character(x[1]))) == ""
+  }
+
+  metadata <- result$body$metadata
+  c("definition", "calculation_methodology", "comments") %>%
+    map_lgl(~ is_blank(metadata[[.x]])) %>%
+    all()
+}
+
+# Uses new_indicator if it was given; otherwise detects it and reports when an indicator is treated as new.
+resolve_new_indicator <- function(indicator_id, new_indicator) {
+  if (!is.null(new_indicator)) return(new_indicator)
+  detected <- is_new_indicator(indicator_id)
+  if (detected) message(glue("🆕 No published metadata found for {indicator_id}: drafting as a new indicator."))
+  detected
+}
+
 # Calls the Anthropic API and returns the response text, starting at the first ### DEFINITION header.
 call_claude <- function(system_prompt, user_prompt) {
   api_key <- Sys.getenv("ANTHROPIC_API_KEY")
@@ -246,7 +275,8 @@ call_claude <- function(system_prompt, user_prompt) {
 # ---- step 1: English draft ----
 
 suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487),
-                                new_indicator = FALSE, overwrite = FALSE) {
+                                new_indicator = NULL, overwrite = FALSE) {
+  # new_indicator = NULL (default) detects new indicators automatically; TRUE or FALSE overrides it.
 
   ## skip if a draft already exists, to protect reviewed edits
   draft_path <- md_path(indicator_id, "en")
@@ -256,6 +286,7 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
   }
 
   message(glue("Processing metadata for indicator {indicator_id}..."))
+  new_indicator <- resolve_new_indicator(indicator_id, new_indicator)
 
   ## system prompt
   # Edit Metadata/Prompts/draft_en.md and the user prompts below to refine what the model generates.
@@ -343,9 +374,10 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
 # ---- step 2: Spanish translation ----
 
 translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(2487),
-                                  new_indicator = FALSE, overwrite = FALSE) {
+                                  new_indicator = NULL, overwrite = FALSE) {
   # Reads the reviewed English draft and translates it to Spanish, using this indicator's own
   # existing Spanish metadata as a terminology reference.
+  # new_indicator = NULL (default) detects new indicators automatically; TRUE or FALSE overrides it.
 
   ## check inputs, and skip if a translation already exists
   en_path <- md_path(indicator_id, "en")
@@ -362,6 +394,7 @@ translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(248
   }
 
   message(glue("Processing metadata translation for indicator {indicator_id}..."))
+  new_indicator <- resolve_new_indicator(indicator_id, new_indicator)
 
   ## system prompt
   # Edit Metadata/Prompts/translate_es.md and glossary.md to refine the translation.
