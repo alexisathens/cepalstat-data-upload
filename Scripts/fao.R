@@ -640,7 +640,8 @@ spec_2022 <- indicator_spec(
   dim_config = dim_config_2022,
   filter_data = filter_2022,
   transform_data = transform_2022,
-  calculate_regional = calculate_regional_intensity
+  calculate_regional = calculate_regional_ratio(),
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 ## ---- indicator 2039 - pesticide consumption ----
@@ -679,7 +680,8 @@ spec_2039 <- indicator_spec(
   dim_config = dim_config_2039,
   filter_data = filter_2039,
   transform_data = transform_2039,
-  calculate_regional = calculate_regional_sum
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 ## ---- indicator 3382 - pesticide use intensity ----
@@ -714,7 +716,8 @@ spec_3382 <- indicator_spec(
   dim_config = dim_config_3382,
   filter_data = filter_3382,
   transform_data = transform_3382,
-  calculate_regional = calculate_regional_intensity
+  calculate_regional = calculate_regional_ratio(),
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 
