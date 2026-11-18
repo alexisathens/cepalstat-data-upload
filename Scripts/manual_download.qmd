@@ -15,7 +15,7 @@ For the report:
 - Visit the website and create a user account
 - Navigate to "Access Data"
 - The fields 'Classification' and 'Countries' can be left blank, as the code will filter them.
-- Check the acknowledgement to include historical, pre-2000 events. Set 'Time period' to start in 1970.
+- Check the acknowledgement to include historical, pre-2000 events. Include the full Time period.
 - Save resulting spreadsheet in the Data\>Raw\>emdat folder, keeping the default file name (with the pattern of "public_emdat_incl_hist_202X-XX-XX.xlsx"). The cleaning code will select the most recent dataset matching this pattern.
 
 ## IRENA

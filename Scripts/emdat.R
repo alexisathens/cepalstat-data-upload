@@ -132,7 +132,7 @@ calculate_regional_5647 <- function(df) {
     distinct(Dis, Years, Group, Type) %>% # keep single Dis event across countries
     group_by(Years, Group, Type) %>%
     summarize(value = n(), .groups = "drop") %>%
-    mutate(Years = as.character(Years), Country = "Latin America and the Caribbean") %>%
+    mutate(Years = as.numeric(Years), Country = "Latin America and the Caribbean") %>%
     add_type_rollups()
   
   bind_rows(df, lac_counts)
