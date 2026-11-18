@@ -10,7 +10,11 @@ source(here("Scripts/process_indicator_fn.R"))
 
 # Read in the most recently downloaded emdat data file (auto-detects latest by file date)
 emdat_files <- list.files(ensure_dir(here("Data/Raw/emdat")), pattern = "^public_emdat_incl_hist_.*\\.xlsx$", full.names = TRUE)
-assert_that(length(emdat_files) > 0, msg = "No EM-DAT file found in Data/Raw/emdat/ matching public_emdat_incl_hist_*.xlsx")
+assert_that(length(emdat_files) > 0, msg = paste0(
+  "❌ Missing raw data for EM-DAT: no file in Data/Raw/emdat/ matching public_emdat_incl_hist_*.xlsx.\n",
+  "   Download it manually following the steps under 'EM-DAT/CRED - Disaster Indicators' in Scripts/manual_download.qmd, ",
+  "keeping the default file name."
+))
 
 emdat_path <- emdat_files[which.max(file.info(emdat_files)$mtime)]
 emdat <- read_xlsx(emdat_path)

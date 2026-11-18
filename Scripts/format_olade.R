@@ -17,6 +17,18 @@ output_path <- here("Data/Raw/olade")
 # create the folder if it doesn't exist (Data/Raw is not tracked by git)
 dir.create(input_path, recursive = TRUE, showWarnings = FALSE)
 
+# stop with instructions if any raw OLADE file hasn't been downloaded yet
+olade_raw_files <- c("energy_production_raw.xlsx", "energy_supply_raw.xlsx", "energy_consumption_raw.xlsx",
+                     "energy_consumption_sector_raw.xlsx", "electricity_losses_raw.xlsx", "electricity_infra_raw.xlsx")
+missing_files <- olade_raw_files[!file.exists(file.path(input_path, olade_raw_files))]
+if (length(missing_files) > 0) {
+  stop(glue(
+    "❌ Missing raw data for OLADE: {paste(missing_files, collapse = ', ')}\n",
+    "   Expected folder: {input_path}\n",
+    "   Download the files manually following the steps in Scripts/manual_olade.qmd, then re-run this script."
+  ), call. = FALSE)
+}
+
 # read in ISO with cepalstat ids
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 

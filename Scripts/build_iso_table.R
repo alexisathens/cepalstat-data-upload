@@ -21,6 +21,8 @@ cs_std <- cs_country %>%
 # Create another file with standard country names and iso codes
 # Maria Paz’s file from World Data has iso codes
 ensure_dir(here("Data/Misc"))
+check_raw_file(here("Data/Misc", c("code_iso_mp.csv", "lac_countries.xlsx")), source = "the ISO reference table",
+               how = "These reference files are not stored in git. Ask the project maintainer for a copy of the Data/Misc folder.")
 mp_iso <- read_csv(here("Data/Misc/code_iso_mp.csv")) %>%
   rename(name = `...1`) %>%
   rename(iso2 = alpha2, iso3 = alpha3) %>%

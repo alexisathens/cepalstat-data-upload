@@ -9,6 +9,16 @@ source(here("Scripts/process_indicator_fn.R"))
 
 # read energy type dimension mappings
 input_path <- ensure_dir(here("Data/Raw/olade"))
+
+# stop with instructions if the mapping file or cleaned OLADE files are missing
+check_raw_file(paste0(input_path, "/Mappings/energy_dimensions_crosswalk.xlsx"), source = "OLADE (dimension mappings)",
+               how = "This mapping file is not stored in git. Ask the project maintainer for a copy of the Data/Raw/olade/Mappings folder.")
+check_raw_file(
+  paste0(input_path, "/", c("energy_production_clean.csv", "energy_supply_clean.csv", "energy_consumption_clean.csv",
+                            "energy_consumption_sector_clean.csv", "electricity_losses_clean.csv", "electricity_infra_clean.csv")),
+  source = "OLADE",
+  how = "Download the raw OLADE files following Scripts/manual_olade.qmd, then run Scripts/format_olade.R to create these cleaned files."
+)
 energy_types <- read_excel(paste0(input_path, "/Mappings/energy_dimensions_crosswalk.xlsx"))
 
 # get mappings from olade energy sectors to cepalstat energy sectors

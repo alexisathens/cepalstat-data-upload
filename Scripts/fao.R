@@ -72,7 +72,7 @@ aqua <- aqua %>%
 aquastat_folder <- ensure_dir(here("Data/Raw/fao/aquastat"))
 #aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
 # AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")
-aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"),
+aquastat <- read_csv(check_raw_file(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"), source = "AQUASTAT"),
                      locale = locale(encoding = "latin1"))
 
 aquastat %<>% 

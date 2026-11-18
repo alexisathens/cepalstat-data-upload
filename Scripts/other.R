@@ -11,11 +11,13 @@ input_path <- ensure_dir(here("Data/Raw/other"))
 
 # ---- read downloaded files ----
 
-data_irena <- read_xlsx(paste0(input_path, "/irena_raw.xlsx"))
+data_irena <- read_xlsx(check_raw_file(paste0(input_path, "/irena_raw.xlsx"), source = "IRENA"))
 
-data_ramsar <- read_xlsx(paste0(input_path, "/ramsar_raw.xlsx"))
+data_ramsar <- read_xlsx(check_raw_file(paste0(input_path, "/ramsar_raw.xlsx"), source = "Ramsar"))
 
 ensure_dir(here("Data/Raw/informea"))
+check_raw_file(here("Data/Raw/informea", c("parties_raw.csv", "treaties_raw.csv")), source = "InforMEA",
+               how = "Run Scripts/download_informea.qmd to download these files.")
 data_mea <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
 data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
 
@@ -25,7 +27,11 @@ data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
 data_iso_historic <- tibble(call.data(1763)) %>% select(Country, Years, Value) %>% rename(value = Value)
 
 # download latest year of ISO survey data
-data_iso_latest <- read_xlsx(glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), sheet = "ISO 14001", skip = 1)
+iso_survey_file <- check_raw_file(
+  glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), source = "ISO Survey",
+  how = "Download it manually following the steps under 'International Accreditation Forum (IAF) - ISO Survey' in Scripts/manual_download.qmd."
+)
+data_iso_latest <- read_xlsx(iso_survey_file, sheet = "ISO 14001", skip = 1)
 data_iso_latest %<>% mutate(Years = as.character(max_year_other)) %>% select(Country, Years, value = certificates)
 
 # combine together
@@ -199,6 +205,9 @@ clean_ods_data <- function(data, substance) {
     ) %>% 
     select(Country, Years, Type, value)
 }
+
+# stop with instructions if any of the UNEP files is missing
+check_raw_file(file.path(input_path, ods_files), source = "UNEP")
 
 data_ods <- imap_dfr(
   ods_files,
