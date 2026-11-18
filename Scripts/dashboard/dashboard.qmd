@@ -284,7 +284,7 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
   yearbook_val <- if (isTRUE(meta_field("yearbook") == "Y")) "Yes" else "No"
   profile_val <- if (isTRUE(meta_field("profile") == "Y")) "Yes" else "No"
 
-  files <- dir_ls(here("Data/Cleaned"), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
+  files <- dir_ls(ensure_dir(here("Data/Cleaned")), regexp = paste0("id", indicator_id, "_\\d{4}-\\d{2}-\\d{2}T\\d{6}"))
   data_date <- if (length(files) > 0) {
     latest_file <- tibble(
       file = files,

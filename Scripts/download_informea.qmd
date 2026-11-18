@@ -371,6 +371,9 @@ treaties %<>%
 
 ## Export flat files
 ```{r}
+# create the folder if it doesn't exist (Data/Raw is not tracked by git)
+dir.create(here("Data/Raw/informea"), recursive = TRUE, showWarnings = FALSE)
+
 write_csv(parties, here("Data/Raw/informea/parties_raw.csv"))
 write_csv(treaties, here("Data/Raw/informea/treaties_raw.csv"))
 ```

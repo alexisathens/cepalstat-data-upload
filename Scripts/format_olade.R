@@ -14,6 +14,9 @@ library(CepalStatR)
 input_path <- here("Data/Raw/olade")
 output_path <- here("Data/Raw/olade")
 
+# create the folder if it doesn't exist (Data/Raw is not tracked by git)
+dir.create(input_path, recursive = TRUE, showWarnings = FALSE)
+
 # read in ISO with cepalstat ids
 iso <- read_xlsx(here("Data/iso_codes.xlsx"))
 

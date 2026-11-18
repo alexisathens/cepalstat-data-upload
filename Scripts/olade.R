@@ -8,7 +8,7 @@ source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
 # read energy type dimension mappings
-input_path <- here("Data/Raw/olade")
+input_path <- ensure_dir(here("Data/Raw/olade"))
 energy_types <- read_excel(paste0(input_path, "/Mappings/energy_dimensions_crosswalk.xlsx"))
 
 # get mappings from olade energy sectors to cepalstat energy sectors

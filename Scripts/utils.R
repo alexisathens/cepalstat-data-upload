@@ -45,6 +45,18 @@ sum_or_na <- function(x) {
   if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
 }
 
+# Helper: create a local folder (and any parent folders) if it doesn't exist yet, then return its path.
+# Data/Raw and other data folders are not tracked by git, so they are missing on a fresh copy of the repository.
+# Sample usage: input_path <- ensure_dir(here("Data/Raw/olade"))
+ensure_dir <- function(path) {
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE)
+    message(glue("📁 Created missing folder: {path}"))
+    message("   If this folder holds manually downloaded files, see Scripts/manual_download.qmd before continuing.")
+  }
+  invisible(path)
+}
+
 # Helper: fetch and parse a JSON response from a CEPALSTAT API endpoint
 # Sample usage: fetch_cepalstat_json(glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang=en&format=json"))
 fetch_cepalstat_json <- function(url) {
@@ -419,11 +431,23 @@ calculate_regional_ratio <- function(multiplier = 1, digits = NULL) {
   force(digits)
   
   function(df) {
+    # Catch data that lacks the expected columns. Without this check, R finds an unrelated
+    # function named `num()` and fails with the unclear error "invalid 'type' (closure)"
+    missing_cols <- setdiff(c("num", "denom"), names(df))
+    if (length(missing_cols) > 0) {
+      stop(glue(
+        "calculate_regional_ratio() expects columns `num` and `denom`. ",
+        "Missing: {paste(missing_cols, collapse = ', ')}. ",
+        "Columns received: {paste(names(df), collapse = ', ')}. ",
+        "Rename the numerator and denominator at the end of transform_data, e.g. rename(num = value, denom = area)."
+      ))
+    }
+
     # remove all LAC sub/regional totals
     df <- df %>%
       filter(!Country %in% c("South America", "Central America", "Caribbean",
                              "Latin America and the Caribbean", "Latin America"))
-    
+
     # calculate LAC totals of num and denom
     lac_total <- df %>%
       filter(Country != "World") %>%

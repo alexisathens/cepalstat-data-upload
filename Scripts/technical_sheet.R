@@ -35,6 +35,8 @@ suggest_metadata_en <- function(indicator_id, gold_standard_indicators = c(2487)
   PROJECT_ROOT  <- here::here()
   OUTPUT_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
   LEGACY_DIR    <- file.path(PROJECT_ROOT, "Metadata", "Legacy")
+  dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE) # create folders if they don't exist
+  dir.create(LEGACY_DIR, recursive = TRUE, showWarnings = FALSE)
   
   CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{id}/metadata?lang={lang}&format=json"
   ANTHROPIC_MODEL   <- "claude-sonnet-4-6"
@@ -251,6 +253,7 @@ translate_metadata_es <- function(indicator_id, gold_standard_indicators = c(248
 
   PROJECT_ROOT <- here::here()
   OUTPUT_DIR   <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+  dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE) # create folder if it doesn't exist
 
   ANTHROPIC_MODEL <- "claude-sonnet-4-6"
 
@@ -406,6 +409,7 @@ export_metadata_admin <- function(indicator_id) {
 
   PROJECT_ROOT <- here::here()
   OUTPUT_DIR   <- file.path(PROJECT_ROOT, "Metadata", "Outputs")
+  dir.create(OUTPUT_DIR, recursive = TRUE, showWarnings = FALSE) # create folder if it doesn't exist
 
   ## functions
 

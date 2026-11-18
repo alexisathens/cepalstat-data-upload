@@ -9,7 +9,7 @@ source(here("Scripts/process_indicator_fn.R"))
 # ---- data ----
 
 # Read in the most recently downloaded emdat data file (auto-detects latest by file date)
-emdat_files <- list.files(here("Data/Raw/emdat"), pattern = "^public_emdat_incl_hist_.*\\.xlsx$", full.names = TRUE)
+emdat_files <- list.files(ensure_dir(here("Data/Raw/emdat")), pattern = "^public_emdat_incl_hist_.*\\.xlsx$", full.names = TRUE)
 assert_that(length(emdat_files) > 0, msg = "No EM-DAT file found in Data/Raw/emdat/ matching public_emdat_incl_hist_*.xlsx")
 
 emdat_path <- emdat_files[which.max(file.info(emdat_files)$mtime)]

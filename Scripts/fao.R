@@ -14,7 +14,7 @@ fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
 
 ## create custom bulk download function
 get_fao_bulk <- function(filename) {
-  data_folder <- here("Data/Raw/fao")
+  data_folder <- ensure_dir(here("Data/Raw/fao"))
   download_faostat_bulk(url_bulk = paste0("https://bulks-faostat.fao.org/production/", filename), 
                         data_folder = data_folder)
   read_faostat_bulk(file.path(data_folder, filename)) %>% as_tibble() %>% filter(!is.na(value))
@@ -69,7 +69,7 @@ aqua <- aqua %>%
 
 ## aquastat manual download
 # follow instructions in manual_download.qmd for bulk file
-aquastat_folder <- here("Data/Raw/fao/aquastat")
+aquastat_folder <- ensure_dir(here("Data/Raw/fao/aquastat"))
 #aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
 # AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")
 aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"),

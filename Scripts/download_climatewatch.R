@@ -223,7 +223,7 @@ sector_id_total_with_lucf <- sectors %>%
   pull(id)
 
 # Create output directory if it doesn't exist
-output_dir <- "Data/Raw/climate watch"
+output_dir <- here("Data/Raw/climate watch")
 if (!dir.exists(output_dir)) {
   dir.create(output_dir, recursive = TRUE)
 }

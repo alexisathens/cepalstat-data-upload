@@ -7,7 +7,7 @@ library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-input_path <- here("Data/Raw/other")
+input_path <- ensure_dir(here("Data/Raw/other"))
 
 # ---- read downloaded files ----
 
@@ -15,6 +15,7 @@ data_irena <- read_xlsx(paste0(input_path, "/irena_raw.xlsx"))
 
 data_ramsar <- read_xlsx(paste0(input_path, "/ramsar_raw.xlsx"))
 
+ensure_dir(here("Data/Raw/informea"))
 data_mea <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
 data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
 

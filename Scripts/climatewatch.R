@@ -9,7 +9,7 @@ source(here("Scripts/process_indicator_fn.R"))
 
 # ---- read downloaded files ----
 
-cw_path <- here("Data/Raw/climate watch")
+cw_path <- ensure_dir(here("Data/Raw/climate watch"))
 
 data_3158 <- read_csv(paste0(cw_path, "/3158_raw.csv"))
 data_3159 <- read_csv(paste0(cw_path, "/3159_raw.csv"))
