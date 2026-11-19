@@ -979,8 +979,8 @@ dim_config_4185 <- tibble(
 )
 
 filter_4185 <- function(data) {
-  data %>%
-    filter(str_detect(Variable, "as \\% of total w")) %>% 
+  data %<>%
+    filter(str_detect(Variable, "as \\% of total w") | Variable == "Total water withdrawal [10^9 m3/year]") %>% 
     filter(Years >= 1990) %>%
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, Sector = Variable, value)
@@ -1002,13 +1002,31 @@ transform_4185 <- function(data) {
       bind_rows(bol_data)
   }
   
-  data %>% 
+  data %<>% 
     mutate(Sector = case_when(
       str_detect(Sector, "Agricultural") ~ "Agricultural",
       str_detect(Sector, "Industrial") ~ "Industrial",
       str_detect(Sector, "Municipal") ~ "Municipal",
+      str_detect(Sector, "Total") ~ "Total",
       TRUE ~ Sector
     ))
+  
+  # only keep observations where all 3 categories are present
+  data %<>% 
+    group_by(Country, Years) %>% 
+    mutate(n = n()) %>% 
+    ungroup() %>%
+    filter(n==4) %>% 
+    select(-n)
+  
+  # manually create denominator to be able to recalculate LAC average
+  data %>% 
+    group_by(Country, Years) %>% 
+    mutate(denom = value[Sector == "Total"]) %>% 
+    filter(Sector != "Total") %>% 
+    mutate(num = value / 100 * denom) %>% 
+    ungroup() %>% 
+    select(-value)
 }
 
 spec_4185 <- indicator_spec(
@@ -1018,7 +1036,7 @@ spec_4185 <- indicator_spec(
   dim_config = dim_config_4185,
   filter_data = filter_4185,
   transform_data = transform_4185,
-  calculate_regional = maintain_regional
+  calculate_regional = calculate_regional_ratio_pct
 )
 
 
