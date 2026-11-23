@@ -1,5 +1,5 @@
 library(here)
-source(here("Scripts/technical_sheet_md.R"))
+source(here("Scripts/technical_sheet.R"))
 source(here("Scripts/utils.R"))
 
 # ---- export metadata -----
