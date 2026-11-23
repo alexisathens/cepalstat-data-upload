@@ -45,6 +45,35 @@ sum_or_na <- function(x) {
   if (all(is.na(x))) NA_real_ else sum(x, na.rm = TRUE)
 }
 
+# Helper: create a local folder (and any parent folders) if it doesn't exist yet, then return its path.
+# Data/Raw and other data folders are not tracked by git, so they are missing on a fresh copy of the repository.
+# Sample usage: input_path <- ensure_dir(here("Data/Raw/olade"))
+ensure_dir <- function(path) {
+  if (!dir.exists(path)) {
+    dir.create(path, recursive = TRUE)
+    message(glue("📁 Created missing folder: {path}"))
+  }
+  invisible(path)
+}
+
+# Helper: stop with clear instructions if any raw data file that must be obtained separately is missing.
+# `how` explains how to get the file(s); by default it points to the source's section in manual_download.qmd.
+# Returns the path(s) unchanged, so it can wrap a read call directly.
+# Sample usage: read_xlsx(check_raw_file(here("Data/Raw/other/irena_raw.xlsx"), source = "IRENA"))
+check_raw_file <- function(paths, source,
+                           how = glue("Download it manually following the steps under '{source}' in Scripts/manual_download.qmd.")) {
+  missing_files <- paths[!file.exists(paths)]
+  if (length(missing_files) > 0) {
+    stop(glue(
+      "❌ Missing raw data for {source}. Expected file(s):\n",
+      "{paste0('   - ', missing_files, collapse = '\n')}\n",
+      "   {how}\n",
+      "   Save each file with exactly the name and location shown above, then re-run the script."
+    ), call. = FALSE)
+  }
+  invisible(paths)
+}
+
 # Helper: fetch and parse a JSON response from a CEPALSTAT API endpoint
 # Sample usage: fetch_cepalstat_json(glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang=en&format=json"))
 fetch_cepalstat_json <- function(url) {
@@ -94,7 +123,9 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
       "❌ Duplicate keys found in ", data_name, ":\n",
       " - Expected ", n_keys, " unique rows\n",
       " - Found ", n_rows, " rows\n",
-      " - Duplicates: ", n_rows - n_keys
+      " - Duplicates: ", n_rows - n_keys, "\n",
+      "Common causes: transform_data() didn't summarise across a category that isn't in dim_config, ",
+      "or two source names were standardized to the same country name."
     )
     stop(msg)
   }
@@ -120,8 +151,15 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
     filter(is.na(value))
 
   if (nrow(na_vals) > 0) {
+    na_examples <- na_vals %>%
+      select(-value) %>%
+      head(5) %>%
+      pmap_chr(function(...) paste(c(...), collapse = " | "))
     msg <- glue(
-      "❌ {nrow(na_vals)} NA values found in 'value'"
+      "❌ {nrow(na_vals)} NA values found in 'value'. First rows affected:\n",
+      "{paste0('   - ', na_examples, collapse = '\n')}\n",
+      "Drop them in filter_data() or transform_data() (e.g. filter(!is.na(value))), ",
+      "or check that a join or calculation in transform_data() isn't creating them."
     )
     stop(msg)
   }
@@ -133,7 +171,10 @@ assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
   if(!is_empty(extra_cols)) {
     msg <- paste0(
       "❌ extra columns found: ",
-      paste0(extra_cols, collapse = ", ")
+      paste0(extra_cols, collapse = ", "), "\n",
+      "Only the columns listed in dim_config$data_col (", paste0(dim_config$data_col, collapse = ", "),
+      ") plus 'value' are allowed. Drop or rename the extra columns in transform_data(), ",
+      "or add them to dim_config if they are a real dimension."
     )
     stop(msg)
   }
@@ -312,6 +353,20 @@ get_cepalstat_ids <- function(df, dim_config) {
 
     df_l %<>%
       left_join(this_dim_table, by = setNames("name", this_data_col))
+
+    # Stop with the unmatched labels, rather than a generic NA error later on
+    unmatched <- df_l %>%
+      filter(is.na(.data[[this_dim_col]])) %>%
+      distinct(.data[[this_data_col]]) %>%
+      pull()
+    if (length(unmatched) > 0) {
+      stop(glue(
+        "❌ {length(unmatched)} label(s) in column '{this_data_col}' don't match CEPALSTAT dimension {this_dim_id}: ",
+        "{paste(unmatched, collapse = ', ')}\n",
+        "Recode them in transform_data() to the exact CEPALSTAT spelling. ",
+        "See the valid labels with get_dimension_table({this_dim_id})."
+      ), call. = FALSE)
+    }
   }
 
   df_l %>%
@@ -419,11 +474,23 @@ calculate_regional_ratio <- function(multiplier = 1, digits = NULL) {
   force(digits)
   
   function(df) {
+    # Catch data that lacks the expected columns. Without this check, R finds an unrelated
+    # function named `num()` and fails with the unclear error "invalid 'type' (closure)"
+    missing_cols <- setdiff(c("num", "denom"), names(df))
+    if (length(missing_cols) > 0) {
+      stop(glue(
+        "calculate_regional_ratio() expects columns `num` and `denom`. ",
+        "Missing: {paste(missing_cols, collapse = ', ')}. ",
+        "Columns received: {paste(names(df), collapse = ', ')}. ",
+        "Rename the numerator and denominator at the end of transform_data, e.g. rename(num = value, denom = area)."
+      ))
+    }
+
     # remove all LAC sub/regional totals
     df <- df %>%
       filter(!Country %in% c("South America", "Central America", "Caribbean",
                              "Latin America and the Caribbean", "Latin America"))
-    
+
     # calculate LAC totals of num and denom
     lac_total <- df %>%
       filter(Country != "World") %>%
@@ -726,6 +793,14 @@ format_for_wasabi <- function(data, indicator_id){
 # Run one indicator: look up its spec, process it, and store the result as result_<id>.
 # Sample usage: run_one_indicator(4046)
 run_one_indicator <- function(id, global = global_spec) {
+  # Stop with instructions if the spec hasn't been loaded into the session yet
+  if (!exists(paste0("spec_", id))) {
+    stop(glue(
+      "❌ No spec found for indicator {id} (object `spec_{id}`). ",
+      "Source the script that defines it first (e.g. source(here('Scripts/fao.R'))), ",
+      "or run the source() lines at the top of run_all.R."
+    ), call. = FALSE)
+  }
   spec <- get(paste0("spec_", id))
   result <- process_indicator(spec, global)
   assign(paste0("result_", id), result, envir = .GlobalEnv)
@@ -741,7 +816,7 @@ run_many_indicators <- function(run_list, global = global_spec) {
     id <- run_list[i]
     
     outcome <- tryCatch({
-      run_one_indicator(id)
+      run_one_indicator(id, global)
       list(status = "ok", message = NA_character_)
     }, error = function(e) {
       message(glue("❌ Indicator {id} failed: {conditionMessage(e)}"))

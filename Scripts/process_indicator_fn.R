@@ -84,6 +84,10 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   if (export) {
     dt_stamp <- format(Sys.time(), "%Y-%m-%dT%H%M%S")
 
+    # Create the output folders if they don't exist
+    ensure_dir(here("Data/Cleaned"))
+    ensure_dir(here("Data/Checks"))
+
     # Write excel files
     write_xlsx(df_f, glue(here("Data/Cleaned/id{indicator_id}_{dt_stamp}.xlsx")))
     write_xlsx(comp_table, glue(here("Data/Checks/comp_id{indicator_id}.xlsx")))

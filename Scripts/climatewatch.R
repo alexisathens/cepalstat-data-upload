@@ -9,7 +9,12 @@ source(here("Scripts/process_indicator_fn.R"))
 
 # ---- read downloaded files ----
 
-cw_path <- here("Data/Raw/climate watch")
+cw_path <- ensure_dir(here("Data/Raw/climate watch"))
+
+# stop with instructions if the Climate Watch files haven't been downloaded yet
+cw_ids <- c(3158, 3159, 3351, 5649, 5650, 4463, 4461, 4462, 3387, 5806, 5807, 5808)
+check_raw_file(paste0(cw_path, "/", cw_ids, "_raw.csv"), source = "Climate Watch",
+               how = "Run Scripts/download_climatewatch.R to download these files.")
 
 data_3158 <- read_csv(paste0(cw_path, "/3158_raw.csv"))
 data_3159 <- read_csv(paste0(cw_path, "/3159_raw.csv"))

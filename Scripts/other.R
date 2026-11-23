@@ -7,14 +7,17 @@ library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
 
-input_path <- here("Data/Raw/other")
+input_path <- ensure_dir(here("Data/Raw/other"))
 
 # ---- read downloaded files ----
 
-data_irena <- read_xlsx(paste0(input_path, "/irena_raw.xlsx"))
+data_irena <- read_xlsx(check_raw_file(paste0(input_path, "/irena_raw.xlsx"), source = "IRENA"))
 
-data_ramsar <- read_xlsx(paste0(input_path, "/ramsar_raw.xlsx"))
+data_ramsar <- read_xlsx(check_raw_file(paste0(input_path, "/ramsar_raw.xlsx"), source = "Ramsar"))
 
+ensure_dir(here("Data/Raw/informea"))
+check_raw_file(here("Data/Raw/informea", c("parties_raw.csv", "treaties_raw.csv")), source = "InforMEA",
+               how = "Run Scripts/download_informea.qmd to download these files.")
 data_mea <- read_csv(here("Data/Raw/informea/parties_raw.csv"))
 data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
 
@@ -24,7 +27,11 @@ data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
 data_iso_historic <- tibble(call.data(1763)) %>% select(Country, Years, Value) %>% rename(value = Value)
 
 # download latest year of ISO survey data
-data_iso_latest <- read_xlsx(glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), sheet = "ISO 14001", skip = 1)
+iso_survey_file <- check_raw_file(
+  glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), source = "ISO Survey",
+  how = "Download it manually following the steps under 'International Accreditation Forum (IAF) - ISO Survey' in Scripts/manual_download.qmd."
+)
+data_iso_latest <- read_xlsx(iso_survey_file, sheet = "ISO 14001", skip = 1)
 data_iso_latest %<>% mutate(Years = as.character(max_year_other)) %>% select(Country, Years, value = certificates)
 
 # combine together
@@ -199,6 +206,9 @@ clean_ods_data <- function(data, substance) {
     select(Country, Years, Type, value)
 }
 
+# stop with instructions if any of the UNEP files is missing
+check_raw_file(file.path(input_path, ods_files), source = "UNEP")
+
 data_ods <- imap_dfr(
   ods_files,
   ~ read_xlsx(file.path(input_path, .x), skip = 1) %>%
@@ -345,41 +355,19 @@ spec_2031 <- indicator_spec(
 )
 
 ### manual checks for 2031 ---
-# since this formatting doesn't work with the qc_reports.rmd
 
-# export csv to do self checks against manual uploads (conform to that structure)
-# self <- result_2031$clean
+# comp <- result_2031$comp %>% 
+#   select(Country, MEA, Phase, new = value, pub = value.pub)
 # 
-# self %<>%
-#   mutate(Phase = factor(Phase, levels = c(
-#     "Year of signature",
-#     "Year of ratification, acceptance, approval or adhesion",
-#     "Year of entry into force"
-#   ))) %>%
-#   pivot_wider(
-#     names_from = c(MEA, Phase),
-#     values_from = value,
-#     names_sep = "_"
-#   )
+# # entries in pub but not in new (could indicate data issue)
+# comp %>% filter(!is.na(pub) & is.na(new))
 # 
-# # write_csv(self, here("QC Reports/qc_table_2031.csv"))  
+# # entries in new but not in pub (i.e., new ratifications)
+# comp %>% filter(is.na(pub) & !is.na(new))
 # 
-# check <- result_2031$clean
-# 
-# # cross check against country totals in regional profile
-# check %>% 
-#   filter(str_detect(Phase, "ratification")) %>% 
-#   group_by(MEA) %>% 
-#   count()
-# 
-# # check how many have force field filled out
-# check %>% 
-#   mutate(Phase = ifelse(str_detect(Phase, "sig"), "Signature", 
-#                         ifelse(str_detect(Phase, "rat"), "Ratification", "Force"))) %>% 
-#   group_by(MEA, Phase) %>% 
-#   summarize(value = mean(value, na.rm = TRUE)) %>% 
-#   pivot_wider(names_from = "Phase")
-# 
-# rm(self, check)
+# # check for changes in values
+# comp %>% mutate(diff = new - pub) %>% #View()
+#   filter(diff != 0)
+
 #### ---
 

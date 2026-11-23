@@ -14,7 +14,7 @@ fao_metadata <- FAOmetaTable$domainTable %>% as_tibble()
 
 ## create custom bulk download function
 get_fao_bulk <- function(filename) {
-  data_folder <- here("Data/Raw/fao")
+  data_folder <- ensure_dir(here("Data/Raw/fao"))
   download_faostat_bulk(url_bulk = paste0("https://bulks-faostat.fao.org/production/", filename), 
                         data_folder = data_folder)
   read_faostat_bulk(file.path(data_folder, filename)) %>% as_tibble() %>% filter(!is.na(value))
@@ -69,10 +69,10 @@ aqua <- aqua %>%
 
 ## aquastat manual download
 # follow instructions in manual_download.qmd for bulk file
-aquastat_folder <- here("Data/Raw/fao/aquastat")
+aquastat_folder <- ensure_dir(here("Data/Raw/fao/aquastat"))
 #aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
 # AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")
-aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"),
+aquastat <- read_csv(check_raw_file(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"), source = "AQUASTAT"),
                      locale = locale(encoding = "latin1"))
 
 aquastat %<>% 
@@ -134,6 +134,10 @@ define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
 
 define_source_aquastat <- function(df, indicator_id) {
   df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT) 
+}
+
+define_source_fao <- function(df, indicator_id) {
+  df %>% mutate(source_id = 651) # Online Statistical Database (FAOSTAT) 
 }
 
 
@@ -630,6 +634,7 @@ transform_2022 <- function(data) {
     select(Country, Years, value) %>% 
     mutate(Years = as.character(Years)) %>% 
     left_join(result_cropland, by = c("Country", "Years")) %>% 
+    rename(num = value, denom = area) %>% 
     arrange(Country, Years)
 }
 
@@ -640,7 +645,8 @@ spec_2022 <- indicator_spec(
   dim_config = dim_config_2022,
   filter_data = filter_2022,
   transform_data = transform_2022,
-  calculate_regional = calculate_regional_intensity
+  calculate_regional = calculate_regional_ratio(),
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 ## ---- indicator 2039 - pesticide consumption ----
@@ -679,7 +685,8 @@ spec_2039 <- indicator_spec(
   dim_config = dim_config_2039,
   filter_data = filter_2039,
   transform_data = transform_2039,
-  calculate_regional = calculate_regional_sum
+  calculate_regional = calculate_regional_sum,
+  define_source = define_source_fao
 )
 
 ## ---- indicator 3382 - pesticide use intensity ----
@@ -704,7 +711,9 @@ transform_3382 <- function(data) {
     rename(Country = area, Years = year) %>% 
     select(Country, Years, value) %>% 
     mutate(Years = as.character(Years)) %>% 
-    left_join(result_cropland, by = c("Country", "Years"))
+    left_join(result_cropland, by = c("Country", "Years")) %>% 
+    rename(num = value, denom = area) %>% 
+    arrange(Country, Years)
 }
 
 spec_3382 <- indicator_spec(
@@ -714,7 +723,8 @@ spec_3382 <- indicator_spec(
   dim_config = dim_config_3382,
   filter_data = filter_3382,
   transform_data = transform_3382,
-  calculate_regional = calculate_regional_intensity
+  calculate_regional = calculate_regional_ratio(),
+  define_source = define_source_fao_w_cepal_calcs
 )
 
 
@@ -846,7 +856,7 @@ transform_2019 <- function(data) {
   total <- data %>%
     group_by(Country, Years) %>%
     summarize(value = sum(value, na.rm = TRUE), .groups = "drop") %>%
-    mutate(Species = "TOTAL")
+    mutate(Species = "Total")
   
   data %>% 
     bind_rows(total)
@@ -854,7 +864,7 @@ transform_2019 <- function(data) {
 
 footnotes_2019 <- list(
   "6545" = function(df) rep(TRUE, nrow(df)), # Incluye la captura en áreas marinas y en aguas continentales. [applies to everyone]
-  "7777" = function(df) df$Species == "TOTAL", # El total no incluye ballenas, focas y otros mamíferos acuáticos
+  "7777" = function(df) df$Species == "Total", # El total no incluye ballenas, focas y otros mamíferos acuáticos
   "5518" = function(df) df$Species == "Other" # Incluye peces diádromos, varios animales acuáticos y varios productos de animales acuáticos.
 )
 
@@ -931,7 +941,7 @@ filter_5805 <- function(data) {
   
   data %>%
     filter(Variable %in% withdrawal_types) %>% 
-    filter(Years >= 1990) %>%
+    filter(Years >= 1990) %>% # note the LAC series starts in 2000 despite many countries having older series
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, Sector = Variable, value)
 }
@@ -973,9 +983,9 @@ dim_config_4185 <- tibble(
 )
 
 filter_4185 <- function(data) {
-  data %>%
-    filter(str_detect(Variable, "as \\% of total w")) %>% 
-    filter(Years >= 1990) %>%
+  data %<>%
+    filter(str_detect(Variable, "as \\% of total w") | Variable == "Total water withdrawal [10^9 m3/year]") %>% 
+    filter(Years >= 2000) %>% # start series when the majority of countries have records, so that the underlying country composition is consistent across years
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, Sector = Variable, value)
 }
@@ -996,13 +1006,31 @@ transform_4185 <- function(data) {
       bind_rows(bol_data)
   }
   
-  data %>% 
+  data %<>% 
     mutate(Sector = case_when(
       str_detect(Sector, "Agricultural") ~ "Agricultural",
       str_detect(Sector, "Industrial") ~ "Industrial",
       str_detect(Sector, "Municipal") ~ "Municipal",
+      str_detect(Sector, "Total") ~ "Total",
       TRUE ~ Sector
     ))
+  
+  # only keep observations where all 3 categories are present
+  data %<>% 
+    group_by(Country, Years) %>% 
+    mutate(n = n()) %>% 
+    ungroup() %>%
+    filter(n==4) %>% 
+    select(-n)
+  
+  # manually create denominator to be able to recalculate LAC average
+  data %>% 
+    group_by(Country, Years) %>% 
+    mutate(denom = value[Sector == "Total"]) %>% 
+    filter(Sector != "Total") %>% 
+    mutate(num = value / 100 * denom) %>% 
+    ungroup() %>% 
+    select(-value)
 }
 
 spec_4185 <- indicator_spec(
@@ -1012,7 +1040,7 @@ spec_4185 <- indicator_spec(
   dim_config = dim_config_4185,
   filter_data = filter_4185,
   transform_data = transform_4185,
-  calculate_regional = maintain_regional
+  calculate_regional = calculate_regional_ratio_pct
 )
 
 

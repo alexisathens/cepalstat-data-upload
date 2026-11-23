@@ -14,4 +14,6 @@ Data/Cleaned/*
 Data/Misc/
 Data/Raw/
 Pilot/
-CEPALSTAT Review/
+CEPALSTAT Review/# Metadata: indicator drafts (e.g. 2487_en.md) stay local; only the prompts and glossary are tracked
+Metadata/*
+!Metadata/Prompts/
