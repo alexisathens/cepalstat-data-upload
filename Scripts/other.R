@@ -355,41 +355,19 @@ spec_2031 <- indicator_spec(
 )
 
 ### manual checks for 2031 ---
-# since this formatting doesn't work with the qc_reports.rmd
 
-# export csv to do self checks against manual uploads (conform to that structure)
-# self <- result_2031$clean
+# comp <- result_2031$comp %>% 
+#   select(Country, MEA, Phase, new = value, pub = value.pub)
 # 
-# self %<>%
-#   mutate(Phase = factor(Phase, levels = c(
-#     "Year of signature",
-#     "Year of ratification, acceptance, approval or adhesion",
-#     "Year of entry into force"
-#   ))) %>%
-#   pivot_wider(
-#     names_from = c(MEA, Phase),
-#     values_from = value,
-#     names_sep = "_"
-#   )
+# # entries in pub but not in new (could indicate data issue)
+# comp %>% filter(!is.na(pub) & is.na(new))
 # 
-# # write_csv(self, here("QC Reports/qc_table_2031.csv"))  
+# # entries in new but not in pub (i.e., new ratifications)
+# comp %>% filter(is.na(pub) & !is.na(new))
 # 
-# check <- result_2031$clean
-# 
-# # cross check against country totals in regional profile
-# check %>% 
-#   filter(str_detect(Phase, "ratification")) %>% 
-#   group_by(MEA) %>% 
-#   count()
-# 
-# # check how many have force field filled out
-# check %>% 
-#   mutate(Phase = ifelse(str_detect(Phase, "sig"), "Signature", 
-#                         ifelse(str_detect(Phase, "rat"), "Ratification", "Force"))) %>% 
-#   group_by(MEA, Phase) %>% 
-#   summarize(value = mean(value, na.rm = TRUE)) %>% 
-#   pivot_wider(names_from = "Phase")
-# 
-# rm(self, check)
+# # check for changes in values
+# comp %>% mutate(diff = new - pub) %>% #View()
+#   filter(diff != 0)
+
 #### ---
 
