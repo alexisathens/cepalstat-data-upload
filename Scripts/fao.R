@@ -136,6 +136,10 @@ define_source_aquastat <- function(df, indicator_id) {
   df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT) 
 }
 
+define_source_fao <- function(df, indicator_id) {
+  df %>% mutate(source_id = 651) # Online Statistical Database (FAOSTAT) 
+}
+
 
 ## ---- indicator 3381 - mean annual temperature change ----
 
@@ -682,7 +686,7 @@ spec_2039 <- indicator_spec(
   filter_data = filter_2039,
   transform_data = transform_2039,
   calculate_regional = calculate_regional_sum,
-  define_source = define_source_fao_w_cepal_calcs
+  define_source = define_source_fao
 )
 
 ## ---- indicator 3382 - pesticide use intensity ----
@@ -937,7 +941,7 @@ filter_5805 <- function(data) {
   
   data %>%
     filter(Variable %in% withdrawal_types) %>% 
-    filter(Years >= 1990) %>%
+    filter(Years >= 1990) %>% # note the LAC series starts in 2000 despite many countries having older series
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, Sector = Variable, value)
 }
@@ -981,7 +985,7 @@ dim_config_4185 <- tibble(
 filter_4185 <- function(data) {
   data %<>%
     filter(str_detect(Variable, "as \\% of total w") | Variable == "Total water withdrawal [10^9 m3/year]") %>% 
-    filter(Years >= 1990) %>%
+    filter(Years >= 2000) %>% # start series when the majority of countries have records, so that the underlying country composition is consistent across years
     filter(!Country %in% c("Sint Maarten (Dutch part)")) %>% 
     select(Country, Years, Sector = Variable, value)
 }
