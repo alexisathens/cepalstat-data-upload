@@ -224,11 +224,11 @@ review <- list(
 
 # Other changes, listed for information
 info <- list(
-  "Indicators whose main source changed" =
-    glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
-  "Indicators with no source in CEPALSTAT" = label_ind(no_source$id, no_source$indicator),
   "New indicators" = label_ind(added$id, added$indicator),
   "Renamed indicators" = glue("{label_ind(renamed$id, renamed$old_name)} -> {renamed$indicator}"),
+  "Indicators with no source in CEPALSTAT" = label_ind(no_source$id, no_source$indicator),
+  "Indicators whose main source changed" =
+    glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
   "Indicators listed in more than one place in the tree" = label_ind(duplicated$id, duplicated$indicator),
   "Profile indicators not in the environmental tree" = label_ind(unmatched_profile$id, unmatched_profile$indicator),
   "Changes to the tables in Data/Tables/" = summarize_changes(table_changes)
