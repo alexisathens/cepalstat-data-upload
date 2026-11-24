@@ -11,8 +11,8 @@
 #   B. Compare with the files currently saved
 #   C. Print a summary of the changes
 #   D. Save the files. The Data/Tables/ files are always updated. Data/indicator_metadata.xlsx is
-#      updated only after you confirm, if any changes need review (e.g. indicators removed from
-#      CEPALSTAT or a changed main source), since the cleaning code depends on it.
+#      updated only after you confirm, if any indicators are no longer in the CEPALSTAT tree (they
+#      would be dropped from it), since the cleaning code depends on it.
 #
 # Requests run in parallel, so a full download takes a few minutes. Helper functions are in utils.R
 # (sections "CEPALSTAT bulk downloads" and "Comparing and reviewing table updates").
@@ -216,17 +216,17 @@ table_changes <- bind_rows(
 
 # ==== C. Summary ====
 
-# Changes that could affect the cleaning code; the metadata table is only updated after confirmation
+# Missing indicators; the metadata table is only updated after confirmation
 review <- list(
   "Indicators no longer in the CEPALSTAT tree (will be dropped from the metadata table)" =
-    label_ind(removed$id, removed$indicator),
-  "Indicators whose main source changed" =
-    glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
-  "Indicators with no source in CEPALSTAT" = label_ind(no_source$id, no_source$indicator)
+    label_ind(removed$id, removed$indicator)
 )
 
-# Expected changes, listed for information
+# Other changes, listed for information
 info <- list(
+  "Indicators whose main source changed" =
+    glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
+  "Indicators with no source in CEPALSTAT" = label_ind(no_source$id, no_source$indicator),
   "New indicators" = label_ind(added$id, added$indicator),
   "Renamed indicators" = glue("{label_ind(renamed$id, renamed$old_name)} -> {renamed$indicator}"),
   "Indicators listed in more than one place in the tree" = label_ind(duplicated$id, duplicated$indicator),
@@ -247,12 +247,12 @@ write_xlsx(list(notes = notes, by_indicator = indicator_note), paths$notes)
 write_xlsx(list(dimensions = dimensions, by_indicator = indicator_dimension), paths$dimensions)
 message("✅ Tables saved to Data/Tables/")
 
-## Metadata table: updated without asking only if nothing needs review ----
+## Metadata table: updated without asking unless indicators are missing ----
 needs_review <- any(lengths(review) > 0)
 
 if (needs_review) {
   beep()  # sound alert, in case you've switched windows during the download
-  update_meta <- ask_yes_no("⚠️ Changes above need review. Update Data/indicator_metadata.xlsx?")
+  update_meta <- ask_yes_no("⚠️ Indicators above are missing from CEPALSTAT. Update Data/indicator_metadata.xlsx?")
 } else {
   update_meta <- TRUE
 }
