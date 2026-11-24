@@ -174,10 +174,10 @@ meta_new <- env %>%
 
 # `meta` is the current Data/indicator_metadata.xlsx, loaded by utils.R
 
-# Formats indicators as "id: name" lines for the summary (none if the table is empty)
-label_ids <- function(df) {
-  if (nrow(df) == 0) return(character())
-  paste0(df$id, ": ", df$indicator)
+# Formats indicators as "id - name" for the summary, shortening long names (e.g. "5417 - Mean sea
+# surface temperature..."). Returns nothing for empty input.
+label_ind <- function(id, name, width = 45) {
+  glue("{id} - {str_trunc(coalesce(name, 'name unknown'), width)}")
 }
 
 # Indicators no longer in the CEPALSTAT tree (e.g. archived); they are dropped from the new table
@@ -194,8 +194,11 @@ source_changed <- meta_new %>%
   filter(coalesce(source, "") != coalesce(old_source, ""))
 
 no_source  <- meta_new %>% filter(is.na(source_id))
-dup_ids    <- env %>% count(id) %>% filter(n > 1) %>% pull(id)
-unmatched_profile <- setdiff(profile_ids, env$id)
+duplicated <- env %>% filter(n() > 1, .by = id) %>% distinct(id, .keep_all = TRUE)
+
+# Profile indicators missing from the tree; names are taken from the current table, where available
+unmatched_profile <- tibble(id = setdiff(profile_ids, env$id)) %>%
+  left_join(meta %>% select(id, indicator), by = "id")
 
 # Changes to the reference tables in Data/Tables/, summarized as counts
 table_changes <- bind_rows(
@@ -213,18 +216,19 @@ table_changes <- bind_rows(
 
 # Changes that could affect the cleaning code; the metadata table is only updated after confirmation
 review <- list(
-  "Indicators no longer in the CEPALSTAT tree (will be dropped from the metadata table)" = label_ids(removed),
+  "Indicators no longer in the CEPALSTAT tree (will be dropped from the metadata table)" =
+    label_ind(removed$id, removed$indicator),
   "Indicators whose main source changed" =
-    glue("{source_changed$id}: {source_changed$old_source} -> {source_changed$source}"),
-  "Indicators with no source in CEPALSTAT" = label_ids(no_source)
+    glue("{label_ind(source_changed$id, source_changed$indicator)}: {source_changed$old_source} -> {source_changed$source}"),
+  "Indicators with no source in CEPALSTAT" = label_ind(no_source$id, no_source$indicator)
 )
 
 # Expected changes, listed for information
 info <- list(
-  "New indicators" = label_ids(added),
-  "Renamed indicators" = glue("{renamed$id}: {renamed$old_name} -> {renamed$indicator}"),
-  "Indicators listed in more than one place in the tree" = as.character(dup_ids),
-  "Profile indicators not in the environmental tree" = as.character(unmatched_profile),
+  "New indicators" = label_ind(added$id, added$indicator),
+  "Renamed indicators" = glue("{label_ind(renamed$id, renamed$old_name)} -> {str_trunc(renamed$indicator, 45)}"),
+  "Indicators listed in more than one place in the tree" = label_ind(duplicated$id, duplicated$indicator),
+  "Profile indicators not in the environmental tree" = label_ind(unmatched_profile$id, unmatched_profile$indicator),
   "Changes to the tables in Data/Tables/" = summarize_changes(table_changes)
 )
 
