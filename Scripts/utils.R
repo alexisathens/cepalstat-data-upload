@@ -405,6 +405,111 @@ get_cepalstat_labels <- function(pub, dim_config) {
 }
 
 
+# ---- CEPALSTAT bulk downloads (used by build_tables.R) ----
+
+CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1"
+
+# Walks one node of the CEPALSTAT thematic tree; returns one row per indicator beneath it, with the
+# categories above each indicator as a path (e.g. "Environmental > Environmental conditions > ...").
+flatten_tree <- function(node, path = character()) {
+  if (!is.null(node$indicator_id)) {
+    return(tibble(id = node$indicator_id, indicator = node$name,
+                  path = paste(path, collapse = " > ")))
+  }
+  map_dfr(node$children, flatten_tree, path = c(path, node$name))
+}
+
+# Pulls the environmental area (area_id = 493) of the CEPALSTAT thematic tree in one language
+# and returns one row per indicator, with the categories above it as a path.
+# Sample usage: get_env_indicators("es")
+get_env_indicators <- function(lang) {
+  url  <- glue("{CEPALSTAT_API_URL}/thematic-tree?lang={lang}&format=json&area_id=493")
+  tree <- request(url) %>% req_perform() %>% resp_body_json()
+  
+  out <- tree$body$children %>% map_dfr(flatten_tree)
+  assert_that(nrow(out) > 0, msg = glue("No indicators found in the thematic tree (lang = {lang})"))
+  out
+}
+
+# Fetches many URLs in parallel (up to max_active at a time) and parses each response as JSON.
+# Failed requests return NULL, so one failure doesn't stop the whole batch.
+# Sample usage: fetch_cepalstat_json_many(c(url1, url2))
+fetch_cepalstat_json_many <- function(urls, max_active = 8) {
+  assert_that(
+    packageVersion("httr2") >= "1.1.0",
+    msg = "fetch_cepalstat_json_many() requires httr2 1.1.0 or later. Update it with install.packages(\"httr2\")."
+  )
+  
+  reqs  <- map(urls, function(url) request(url) %>% req_retry(max_tries = 3))
+  resps <- req_perform_parallel(reqs, on_error = "continue", max_active = max_active, progress = TRUE)
+  
+  map(resps, function(resp) {
+    if (!inherits(resp, "httr2_response")) return(NULL)
+    fromJSON(resp_body_string(resp), flatten = TRUE)
+  })
+}
+
+# Converts an API table to a tibble of text columns, so tables from different indicators can be
+# combined even when a field comes back as a different type (e.g. NA in one, text in another).
+# List fields are collapsed into one string, e.g. "a; b".
+as_character_tibble <- function(x) {
+  if (is.null(x) || length(x) == 0) return(tibble())
+  
+  # Converts one column to text; list columns are collapsed into one string per row
+  to_text <- function(col) {
+    if (is.list(col)) {
+      map_chr(col, function(item) paste(unlist(item), collapse = "; "))
+    } else {
+      as.character(col)
+    }
+  }
+  
+  as_tibble(x) %>%
+    mutate(across(everything(), to_text))
+}
+
+# Fetches one indicator endpoint (e.g. "sources", "footnotes") for every indicator in English and
+# Spanish, in parallel, and returns one row per indicator, language and item. Columns named in
+# `drop` are removed before processing (e.g. large member lists). Stops if any request fails, so
+# incomplete tables are never saved.
+# Sample usage: fetch_indicator_tables(inds, endpoint = "footnotes")
+fetch_indicator_tables <- function(inds, endpoint, field = endpoint, extra_query = "", drop = character()) {
+  calls <- expand_grid(indicator_id = inds, lang = c("en", "es")) %>%
+    mutate(url = glue("{CEPALSTAT_API_URL}/indicator/{indicator_id}/{endpoint}?lang={lang}&format=json{extra_query}"))
+  
+  calls$json <- fetch_cepalstat_json_many(calls$url)
+  
+  failed <- calls %>% filter(map_lgl(json, is.null))
+  if (nrow(failed) > 0) {
+    stop(glue(
+      "{nrow(failed)} {endpoint} request(s) failed: ",
+      "{paste(failed$indicator_id, failed$lang, collapse = ', ')}. Please re-run."
+    ))
+  }
+  
+  calls %>%
+    mutate(items = map(json, function(j) {
+      j$body[[field]] %>%
+        as_tibble() %>%
+        select(-any_of(drop)) %>%
+        as_character_tibble()
+    })) %>%
+    select(indicator_id, lang, items) %>%
+    unnest(items)
+}
+
+# Turns a long table (one row per item and language) into one row per item, with English columns
+# unsuffixed and Spanish columns ending in _es (e.g. name, name_es). If an item appears for several
+# indicators, the first version is kept.
+# Sample usage: to_wide_by_lang(note_long, "note_id")
+to_wide_by_lang <- function(long, id_col) {
+  long %>%
+    distinct(.data[[id_col]], lang, .keep_all = TRUE) %>%
+    mutate(lang = if_else(lang == "en", "", "_es")) %>%
+    pivot_wider(names_from = lang, values_from = -all_of(c(id_col, "lang")), names_glue = "{.value}{lang}")
+}
+
+
 # ---- Country / regional handling ----
 
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
