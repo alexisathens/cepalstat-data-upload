@@ -583,16 +583,14 @@ summarize_changes <- function(changes) {
 }
 
 # Prints the end-of-run summary. `review` and `info` are named lists: each name is a heading and
-# each element a character vector of lines (empty elements are skipped). Long lists are shortened.
-print_review_summary <- function(review, info, max_lines = 15) {
+# each element a character vector of lines (empty elements are skipped). Every line is printed.
+print_review_summary <- function(review, info) {
   print_section <- function(items, icon) {
     for (title in names(items)) {
       lines <- items[[title]]
       if (length(lines) == 0) next
       message(glue("{icon} {title} ({length(lines)}):"))
-      shown <- head(lines, max_lines)
-      message(paste0("   ", shown, collapse = "\n"))
-      if (length(lines) > max_lines) message(glue("   ... and {length(lines) - max_lines} more"))
+      message(paste0("   ", lines, collapse = "\n"))
     }
   }
 
