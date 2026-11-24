@@ -510,6 +510,110 @@ to_wide_by_lang <- function(long, id_col) {
 }
 
 
+# ---- Comparing and reviewing table updates (used by build_tables.R) ----
+
+# Reads one sheet of a previously saved table, or returns NULL if the file doesn't exist yet
+# (e.g. on the first run). Sample usage: read_previous(here("Data/Tables/source_table.xlsx"), "sources")
+read_previous <- function(path, sheet = 1) {
+  if (!file.exists(path)) return(NULL)
+  read_xlsx(path, sheet = sheet)
+}
+
+# Compares two versions of a table with one row per item (e.g. sources) and returns one row per
+# change: items added or removed, and each field whose value changed. For added and removed items,
+# the label column (e.g. the name) is recorded too, so it's clear what each id was.
+# Sample usage: compare_tables(old_sources, sources, key = "source_id", table = "sources", label = "name")
+compare_tables <- function(old, new, key, table, label = NULL) {
+  if (is.null(old)) return(tibble())
+
+  # Compare everything as text, so 3158 and 3158.0 (as read back from Excel) count as equal.
+  # Items listed more than once (e.g. an indicator in two places in the tree) are compared once.
+  old <- old %>% mutate(across(everything(), as.character)) %>% distinct(across(all_of(key)), .keep_all = TRUE)
+  new <- new %>% mutate(across(everything(), as.character)) %>% distinct(across(all_of(key)), .keep_all = TRUE)
+
+  get_label <- function(df) if (is.null(label) || !label %in% names(df)) NA_character_ else df[[label]]
+
+  added <- anti_join(new, old, by = key) %>%
+    transmute(id = .data[[key]], change = "added", field = label, new_value = get_label(.))
+
+  removed <- anti_join(old, new, by = key) %>%
+    transmute(id = .data[[key]], change = "removed", field = label, old_value = get_label(.))
+
+  # Fields present in both versions, compared item by item (a blank and a missing value count as equal)
+  shared_fields <- setdiff(intersect(names(old), names(new)), key)
+  changed <- inner_join(
+      old %>% pivot_longer(all_of(shared_fields), names_to = "field", values_to = "old_value"),
+      new %>% pivot_longer(all_of(shared_fields), names_to = "field", values_to = "new_value"),
+      by = c(key, "field")
+    ) %>%
+    filter(coalesce(old_value, "") != coalesce(new_value, "")) %>%
+    transmute(id = .data[[key]], change = "changed", field, old_value, new_value)
+
+  bind_rows(added, removed, changed) %>%
+    mutate(table = table, .before = 1)
+}
+
+# Compares two versions of a link table (e.g. indicator_id x source_id) and returns one row per
+# link added or removed.
+# Sample usage: compare_links(old_links, indicator_source, item_col = "source_id", table = "sources by indicator")
+compare_links <- function(old, new, item_col, table) {
+  if (is.null(old)) return(tibble())
+
+  old <- old %>% select(indicator_id, all_of(item_col)) %>% mutate(across(everything(), as.character))
+  new <- new %>% select(indicator_id, all_of(item_col)) %>% mutate(across(everything(), as.character))
+  keys <- c("indicator_id", item_col)
+
+  bind_rows(
+    anti_join(new, old, by = keys) %>% transmute(id = indicator_id, change = "added",   field = item_col, new_value = .data[[item_col]]),
+    anti_join(old, new, by = keys) %>% transmute(id = indicator_id, change = "removed", field = item_col, old_value = .data[[item_col]])
+  ) %>%
+    mutate(table = table, .before = 1)
+}
+
+# Summarizes compare_tables()/compare_links() output as one line per table,
+# e.g. "sources: 1 added, 2 changed". Changed items are counted once, however many fields changed.
+summarize_changes <- function(changes) {
+  if (nrow(changes) == 0) return(character())
+  changes %>%
+    distinct(table, id, change) %>%
+    count(table, change) %>%
+    summarise(text = paste(n, change, collapse = ", "), .by = table) %>%
+    mutate(line = paste0(table, ": ", text)) %>%
+    pull(line)
+}
+
+# Prints the end-of-run summary. `review` and `info` are named lists: each name is a heading and
+# each element a character vector of lines (empty elements are skipped). Long lists are shortened.
+print_review_summary <- function(review, info, max_lines = 15) {
+  print_section <- function(items, icon) {
+    for (title in names(items)) {
+      lines <- items[[title]]
+      if (length(lines) == 0) next
+      message(glue("{icon} {title} ({length(lines)}):"))
+      shown <- head(lines, max_lines)
+      message(paste0("   ", shown, collapse = "\n"))
+      if (length(lines) > max_lines) message(glue("   ... and {length(lines) - max_lines} more"))
+    }
+  }
+
+  rule <- strrep("═", 70)
+  message("\n", rule)
+  message("  SUMMARY OF CHANGES FROM CEPALSTAT")
+  message(rule)
+  if (all(lengths(review) == 0) && all(lengths(info) == 0)) message("✅ No changes since the last download")
+  print_section(review, "⚠️ REVIEW:")
+  print_section(info, "ℹ️")
+  message(rule, "\n")
+}
+
+# Asks a yes/no question in the console and returns TRUE for "y" or "yes". Returns FALSE when the
+# script isn't run interactively (e.g. with Rscript), since there's no one to answer.
+ask_yes_no <- function(question) {
+  if (!interactive()) return(FALSE)
+  answer <- readline(glue("{question} (y/n): "))
+  tolower(trimws(answer)) %in% c("y", "yes")
+}
+
 # ---- Country / regional handling ----
 
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
