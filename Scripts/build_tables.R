@@ -174,10 +174,12 @@ meta_new <- env %>%
 
 # `meta` is the current Data/indicator_metadata.xlsx, loaded by utils.R
 
-# Formats indicators as "id - name" for the summary, shortening long names (e.g. "5417 - Mean sea
-# surface temperature..."). Returns nothing for empty input.
-label_ind <- function(id, name, width = 45) {
-  glue("{id} - {str_trunc(coalesce(name, 'name unknown'), width)}")
+# Formats indicators as "id - name" for the summary, or just the id if the name isn't known.
+# Names are shown in full unless a width is given (e.g. width = 45 gives "5417 - Mean sea surface
+# temperature..."). Returns nothing for empty input.
+label_ind <- function(id, name, width = Inf) {
+  if (is.finite(width)) name <- str_trunc(name, width)
+  glue("{id}{if_else(is.na(name), '', paste0(' - ', name))}")
 }
 
 # Indicators no longer in the CEPALSTAT tree (e.g. archived); they are dropped from the new table
@@ -219,14 +221,14 @@ review <- list(
   "Indicators no longer in the CEPALSTAT tree (will be dropped from the metadata table)" =
     label_ind(removed$id, removed$indicator),
   "Indicators whose main source changed" =
-    glue("{label_ind(source_changed$id, source_changed$indicator)}: {source_changed$old_source} -> {source_changed$source}"),
+    glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
   "Indicators with no source in CEPALSTAT" = label_ind(no_source$id, no_source$indicator)
 )
 
 # Expected changes, listed for information
 info <- list(
   "New indicators" = label_ind(added$id, added$indicator),
-  "Renamed indicators" = glue("{label_ind(renamed$id, renamed$old_name)} -> {str_trunc(renamed$indicator, 45)}"),
+  "Renamed indicators" = glue("{label_ind(renamed$id, renamed$old_name)} -> {renamed$indicator}"),
   "Indicators listed in more than one place in the tree" = label_ind(duplicated$id, duplicated$indicator),
   "Profile indicators not in the environmental tree" = label_ind(unmatched_profile$id, unmatched_profile$indicator),
   "Changes to the tables in Data/Tables/" = summarize_changes(table_changes)
