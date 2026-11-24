@@ -75,7 +75,7 @@ write_xlsx(list(sources = sources, by_indicator = indicator_source),
            here("Data/Tables/source_table.xlsx"))
 
 
-## 3. Notes (footnotes) ----
+## 3. Footnotes ----
 
 note_long <- fetch_indicator_tables(inds, endpoint = "footnotes") %>%
   rename(note_id = id) %>%
@@ -116,3 +116,100 @@ write_xlsx(list(dimensions = dimensions, by_indicator = indicator_dimension),
            here("Data/Tables/dimension_table.xlsx"))
 
 message("✅ Tables saved to Data/Tables/")
+
+
+## 5. Indicator metadata table ----
+
+# store manual notes to retain
+manual_notes <- tribble(
+  ~id,  ~notes,
+  1755, "historical series that ends in 2015 and does not need to be maintained",
+  # 5730, "this used to be indicator 2041",
+  # 5672, "this used to be indicator 2040"
+)
+
+# Main source: the first source CEPALSTAT lists for each indicator
+main_source <- indicator_source %>%
+  slice_head(n = 1, by = indicator_id) %>%
+  left_join(sources, by = "source_id") %>% 
+  select(-ends_with("_es"), -ends_with("_url"))
+
+main_source %<>% 
+  mutate(source_short = case_when(
+    description == "Euroclima" ~ "Euroclima",
+    TRUE ~ organization_acronym
+  )) %>% rename(id = indicator_id)
+
+# Indicator-specific dimensions (excluding country, year and reporting type), in display order
+std_dims <- c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type")
+
+ind_dims <- indicator_dimension %>%
+  left_join(dimensions %>% select(dim_id, name), by = "dim_id") %>%
+  filter(!name %in% std_dims) %>%
+  arrange(indicator_id, position) %>%
+  summarise(dim_id = paste(dim_id, collapse = "; "),
+            dimensions = paste(name, collapse = "; "),
+            .by = indicator_id) %>%
+  rename(id = indicator_id)
+  
+# Yearbook and profile flags, from local files
+yearbook_ids <- read_xlsx(here("Data/AE2026-Indice-WEB-PDF.xlsx"), sheet = "AE2026-HTML&PDF_ID",
+                          .name_repair = "unique_quiet") %>%
+  pull(`ID INDICADOR CEPALSTAT`) %>%
+  as.numeric() %>%   # non-numeric cells (e.g. section headers) become NA and are dropped below
+  suppressWarnings() %>%
+  na.omit()
+
+profile_ids <- read_xlsx(here("Data/profile_data.xlsx")) %>% pull(Indicator)
+
+unmatched_profile <- setdiff(profile_ids, env$id)
+if (length(unmatched_profile) > 0) {
+  message(glue("ℹ️ Profile indicators not in the environmental tree: {paste(unmatched_profile, collapse = ', ')}"))
+}
+
+# One row per indicator (an indicator listed twice in the tree keeps its first placement)
+meta_new <- env %>%
+  distinct(id, .keep_all = TRUE) %>%
+  select(id, indicator, indicator_es, cat1, cat2, cat3) %>%
+  left_join(main_source %>% select(id, source_id, source_short), by = "id") %>%
+  left_join(ind_dims, by = "id") %>%
+  mutate(
+    yearbook = if_else(id %in% yearbook_ids, "Y", NA_character_),
+    profile  = if_else(id %in% profile_ids, "Y", NA_character_),
+    system   = case_when(
+      source_short == "SDG" ~ "sdg",
+      source_short == "Euroclima" ~ "geo",
+      TRUE ~ "env"           # managed in this repository
+    )
+  ) %>% left_join(manual_notes, by = "id")
+
+# Keep indicators from the current table that aren't in the CEPALSTAT tree yet (e.g. new indicators
+# not yet published), so the cleaning code can still find them. To drop one for good, delete its row
+# from Data/indicator_metadata.xlsx.
+not_in_tree <- meta %>% filter(!id %in% meta_new$id)
+if (nrow(not_in_tree) > 0) {
+  message(glue("ℹ️ Dropped from the current table (not in the CEPALSTAT tree): {paste(not_in_tree$id, '-', not_in_tree$indicator, collapse = ', ')}"))
+}
+
+# stopped here
+
+meta_new <- meta_new %>%
+  bind_rows(not_in_tree %>% mutate(id = as.integer(id))) %>%
+  select(id, indicator, cat1, cat2, cat3, source_id, source, dim_id, dimensions,
+         yearbook, profile, system, notes)
+
+# Report renamed indicators and new ones, compared with the current table
+renamed <- meta_new %>%
+  inner_join(meta %>% select(id, old_name = indicator), by = "id") %>%
+  filter(indicator != old_name)
+if (nrow(renamed) > 0) {
+  message("ℹ️ Renamed indicators:\n", paste0("   ", renamed$id, ": ", renamed$old_name, " -> ", renamed$indicator, collapse = "\n"))
+}
+
+added <- setdiff(meta_new$id, meta$id)
+if (length(added) > 0) message(glue("ℹ️ New indicators: {paste(added, collapse = ', ')}"))
+
+write_xlsx(list(metadata = meta_new), here("Data/indicator_metadata.xlsx"))
+meta <- meta_new  # refresh the copy loaded by utils.R for the rest of this session
+
+message("✅ Metadata table saved to Data/indicator_metadata.xlsx")
