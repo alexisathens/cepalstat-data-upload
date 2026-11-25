@@ -142,14 +142,26 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
 # Validate cleaned data before regional aggregation: no NA values in 'value', no unexpected columns beyond
 # dim_config + value/num/denom, and drop years beyond max_year. Stops on failure, else returns data.
 # Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = max_year_emdat)
-assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
-  
-  # filter out extra years and coerce type
-  if (indicator_id != 2031) { # exception for MEA indicator where Years is the value
-    data %<>%
-      filter(Years <= max_year) %>%
-      mutate(Years = as.character(Years)) %>%
-      arrange(Country, Years)
+assert_data_reqs <- function(data, dim_config, indicator_id, max_year = NULL) {
+
+  # Years: stored as whole numbers (integers) during processing; get_cepalstat_ids() converts them to
+  # text later, to match CEPALSTAT's labels. Skipped for indicators without a Years column (e.g. 2031,
+  # where the value itself is a year).
+  if ("Years" %in% names(data)) {
+    years <- suppressWarnings(as.integer(as.character(data$Years)))
+    invalid <- unique(data$Years[is.na(years) | years < 1900 | years > 2100])
+    if (length(invalid) > 0) {
+      stop(glue(
+        "❌ The Years column has values that aren't valid years: {paste(head(invalid, 5), collapse = ', ')}. ",
+        "Check how Years is created in filter_data() or transform_data()."
+      ))
+    }
+    data$Years <- years
+
+    # Optional cutoff, for sources whose latest year is incomplete (set as max_year in the spec)
+    if (!is.null(max_year)) data <- data %>% filter(Years <= max_year)
+
+    data <- data %>% arrange(Country, Years)
   }
   
   # check for NA values
@@ -356,6 +368,9 @@ get_cepalstat_ids <- function(df, dim_config) {
       select(id, all_of(this_name_col)) %>%
       rename(!!this_dim_col := id,
              name = !!sym(this_name_col))
+
+    # CEPALSTAT labels are text (e.g. Years "2020"), so the column is converted to text to match
+    df_l[[this_data_col]] <- as.character(df_l[[this_data_col]])
 
     df_l %<>%
       left_join(this_dim_table, by = setNames("name", this_data_col))
