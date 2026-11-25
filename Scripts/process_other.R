@@ -26,13 +26,17 @@ data_mea_meta <- read_csv(here("Data/Raw/informea/treaties_raw.csv"))
 # this is because more historical ISO data used to be available (and is still available on CEPALSTAT), but now there's only recent annual information on the ISO website.
 data_iso_historic <- tibble(call.data(1763)) %>% select(Country, Years, Value) %>% rename(value = Value)
 
-# download latest year of ISO survey data
-iso_survey_file <- check_raw_file(
-  glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), source = "ISO Survey",
-  how = "Download it manually following the steps under 'International Accreditation Forum (IAF) - ISO Survey' in Scripts/instructions_other.qmd."
-)
-data_iso_latest <- read_xlsx(iso_survey_file, sheet = "ISO 14001", skip = 1)
-data_iso_latest %<>% mutate(Years = as.character(max_year_other)) %>% select(Country, Years, value = certificates)
+# latest year of ISO survey data: reads the most recent iso_YYYY_raw.xlsx file in Data/Raw/other/
+iso_files <- list.files(input_path, pattern = "^iso_[0-9]{4}_raw\\.xlsx$")
+if (length(iso_files) == 0) {
+  check_raw_file(glue(input_path, "/iso_YYYY_raw.xlsx"), source = "ISO Survey",
+                 how = "Download it manually following the steps under 'International Accreditation Forum (IAF) - ISO Survey' in Scripts/instructions_other.qmd (replace YYYY with the survey year).")
+}
+iso_latest_year <- max(as.integer(str_extract(iso_files, "[0-9]{4}")))
+message(glue("ℹ️ ISO Survey: reading the {iso_latest_year} file (iso_{iso_latest_year}_raw.xlsx)"))
+
+data_iso_latest <- read_xlsx(file.path(input_path, glue("iso_{iso_latest_year}_raw.xlsx")), sheet = "ISO 14001", skip = 1)
+data_iso_latest %<>% mutate(Years = as.character(iso_latest_year)) %>% select(Country, Years, value = certificates)
 
 # combine together
 data_iso <- data_iso_historic %>% bind_rows(data_iso_latest)
@@ -95,7 +99,6 @@ transform_4244 <- function(data) {
 spec_4244 <- indicator_spec(
   indicator_id = 4244,
   data = data_irena,
-  max_year = max_year_other,
   dim_config = dim_config_4244,
   filter_data = filter_4244,
   transform_data = transform_4244,
@@ -122,7 +125,6 @@ transform_1763 <- function(data) {
 spec_1763 <- indicator_spec(
   indicator_id = 1763,
   data = data_iso,
-  max_year = max_year_other,
   dim_config = dim_config_1763,
   filter_data = filter_1763,
   transform_data = transform_1763,
@@ -159,7 +161,6 @@ transform_2029 <- function(data) {
 spec_2029 <- indicator_spec(
   indicator_id = 2029,
   data = data_iso,
-  max_year = max_year_other,
   dim_config = dim_config_2029,
   filter_data = filter_2029,
   transform_data = transform_2029,
@@ -240,7 +241,6 @@ footnotes_2037 <- list(
 spec_2037 <- indicator_spec(
   indicator_id = 2037,
   data = data_ods,
-  max_year = max_year_other,
   dim_config = dim_config_2037,
   filter_data = filter_2037,
   transform_data = transform_2037,
@@ -266,7 +266,7 @@ transform_2016 <- function(data) {
     # expend year data since data source only lists the start year it was designated
     mutate(start_year = year(Date)) %>% 
     rowwise() %>%
-    mutate(Years = list(seq(start_year, max_year_other))) %>%
+    mutate(Years = list(seq(start_year, last_complete_year))) %>%
     ungroup() %>%
     unnest(Years) %>% 
     group_by(Country, Years) %>% 
@@ -276,7 +276,6 @@ transform_2016 <- function(data) {
 spec_2016 <- indicator_spec(
   indicator_id = 2016,
   data = data_ramsar,
-  max_year = max_year_other,
   dim_config = dim_config_2016,
   filter_data = filter_2016,
   transform_data = transform_2016,
@@ -346,7 +345,6 @@ footnotes_2031 <- list(
 spec_2031 <- indicator_spec(
   indicator_id = 2031,
   data = data_mea,
-  max_year = max_year_other,
   dim_config = dim_config_2031,
   filter_data = filter_2031,
   transform_data = transform_2031,

@@ -66,7 +66,6 @@ transform_3387 <- function(data) {
 spec_3387 <- indicator_spec(
   indicator_id = 3387,
   data = data_3387,
-  max_year = max_year_cw,
   dim_config = dim_config_3387,
   filter_data = filter_3387,
   transform_data = transform_3387,
@@ -104,7 +103,6 @@ transform_3351 <- function(data) {
 spec_3351 <- indicator_spec(
   indicator_id = 3351,
   data = data_3351,
-  max_year = max_year_cw,
   dim_config = dim_config_3351,
   filter_data = filter_3351,
   transform_data = transform_3351,
@@ -142,7 +140,6 @@ transform_4462 <- function(data) {
 spec_4462 <- indicator_spec(
   indicator_id = 4462,
   data = data_4462,
-  max_year = max_year_cw,
   dim_config = dim_config_4462,
   filter_data = filter_4462,
   transform_data = transform_4462,
@@ -167,7 +164,6 @@ filter_4463 <- function(data) {
 spec_4463 <- indicator_spec(
   indicator_id = 4463,
   data = data_4463,
-  max_year = max_year_cw,
   dim_config = dim_config_4463,
   filter_data = filter_4463,
   transform_data = transform_none,
@@ -191,7 +187,6 @@ filter_4461 <- function(data) {
 spec_4461 <- indicator_spec(
   indicator_id = 4461,
   data = data_4461,
-  max_year = max_year_cw,
   dim_config = dim_config_4461,
   filter_data = filter_4461,
   transform_data = transform_none,
@@ -215,7 +210,6 @@ filter_3158 <- function(data) {
 spec_3158 <- indicator_spec(
   indicator_id = 3158,
   data = data_3158,
-  max_year = max_year_cw,
   dim_config = dim_config_3158,
   filter_data = filter_3158,
   transform_data = transform_none,
@@ -250,7 +244,6 @@ transform_3159 <- function(data) {
 spec_3159 <- indicator_spec(
   indicator_id = 3159,
   data = data_3159,
-  max_year = max_year_cw,
   dim_config = dim_config_3159,
   filter_data = filter_3159,
   transform_data = transform_3159,
@@ -275,7 +268,6 @@ filter_5650 <- function(data) {
 spec_5650 <- indicator_spec(
   indicator_id = 5650,
   data = data_5650,
-  max_year = max_year_cw,
   dim_config = dim_config_5650,
   filter_data = filter_5650,
   transform_data = transform_none,
@@ -299,7 +291,6 @@ filter_5649 <- function(data) {
 spec_5649 <- indicator_spec(
   indicator_id = 5649,
   data = data_5649,
-  max_year = max_year_cw,
   dim_config = dim_config_5649,
   filter_data = filter_5649,
   transform_data = transform_none,
@@ -324,7 +315,6 @@ filter_5806 <- function(data) {
 spec_5806 <- indicator_spec(
   indicator_id = 5806,
   data = data_5806,
-  max_year = max_year_cw,
   dim_config = dim_config_5806,
   filter_data = filter_5806,
   transform_data = transform_none,
@@ -350,7 +340,6 @@ filter_5807 <- function(data) {
 spec_5807 <- indicator_spec(
   indicator_id = 5807,
   data = data_5807,
-  max_year = max_year_cw,
   dim_config = dim_config_5807,
   filter_data = filter_5807,
   transform_data = transform_none,
@@ -377,7 +366,6 @@ filter_5808 <- function(data) {
 spec_5808 <- indicator_spec(
   indicator_id = 5808,
   data = data_5808,
-  max_year = max_year_cw,
   dim_config = dim_config_5808,
   filter_data = filter_5808,
   transform_data = transform_none,

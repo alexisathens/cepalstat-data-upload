@@ -47,7 +47,7 @@ For the report, select the latest year of data:
 
 - Download the file with the title "1. ISO Survey 202X results - number of certificates and sites per country and the number of sectors overall"
 
-Save as: Data/Raw/other/**iso_202X_raw.xlsx** (replace X with the most recent year, matching `max_year_other` in config.R)
+Save as: Data/Raw/other/**iso_YYYY_raw.xlsx** (replace YYYY with the survey year, e.g. iso_2025_raw.xlsx). The code reads the most recent file in the folder, so older files can stay.
 
 ## UNEP
 

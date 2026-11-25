@@ -1,6 +1,8 @@
 # define indicator specs
+# max_year is optional: by default all years in the data are kept. Set it only for a source whose
+# latest year is incomplete (e.g. EM-DAT uses last_complete_year).
 indicator_spec <- function(
-    indicator_id, data, max_year, dim_config, filter_data, transform_data, calculate_regional, 
+    indicator_id, data, dim_config, filter_data, transform_data, calculate_regional, max_year = NULL,
     footnotes = list(), define_source = existing_source, new_indicator = FALSE) {
   list(indicator_id = indicator_id, data = data, max_year = max_year, dim_config = dim_config,
        filter_data = filter_data, transform_data = transform_data, calculate_regional = calculate_regional,

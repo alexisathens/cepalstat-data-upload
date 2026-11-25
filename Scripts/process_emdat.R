@@ -89,7 +89,7 @@ transform_4046 <- function(data) {
 spec_4046 <- indicator_spec(
   indicator_id = 4046,
   data = emdat,
-  max_year = max_year_emdat,
+  max_year = last_complete_year, # the current year's disaster data is incomplete
   dim_config = dim_config_4046,
   filter_data = filter_4046,
   transform_data = transform_4046,
@@ -124,7 +124,7 @@ calculate_regional_5647 <- function(df) {
   lac_counts <- emdat %>%
     filter_emdat() %>%
     select(`DisNo.`, `Disaster Subgroup`, `Disaster Type`, Country, Years = `Start Year`) %>%
-    filter(Years <= max_year_emdat) %>% 
+    filter(Years <= last_complete_year) %>% 
     standardize_emdat() %>%
     standardize_countries(indicator_id = 5647) %>%
     #mutate(Dis = str_sub(DisNo., 1, 9)) %>% 
@@ -141,11 +141,11 @@ calculate_regional_5647 <- function(df) {
 spec_5647 <- indicator_spec(
   indicator_id = 5647,
   data = emdat,
-  max_year = max_year_emdat,
+  max_year = last_complete_year, # the current year's disaster data is incomplete
   dim_config = dim_config_5647,
   filter_data = filter_emdat,
   transform_data = transform_5647,
-  calculate_regional = calculate_regional_5647 # uses emdat, max_year_emdat df from environment
+  calculate_regional = calculate_regional_5647 # uses the emdat data and last_complete_year
 )
 
 
@@ -171,7 +171,7 @@ transform_5645 <- function(data) {
 spec_5645 <- indicator_spec(
   indicator_id = 5645,
   data = emdat,
-  max_year = max_year_emdat,
+  max_year = last_complete_year, # the current year's disaster data is incomplete
   dim_config = dim_config_5645,
   filter_data = filter_emdat,
   transform_data = transform_5645,
@@ -201,7 +201,7 @@ transform_5646 <- function(data) {
 spec_5646 <- indicator_spec(
   indicator_id = 5646,
   data = emdat,
-  max_year = max_year_emdat,
+  max_year = last_complete_year, # the current year's disaster data is incomplete
   dim_config = dim_config_5646,
   filter_data = filter_emdat,
   transform_data = transform_5646,

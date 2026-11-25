@@ -31,6 +31,10 @@ iso %<>%
 
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
+# Last full calendar year (current year minus 1). Used as the cutoff for sources whose current-year
+# data is incomplete, such as EM-DAT disasters.
+last_complete_year <- as.integer(format(Sys.Date(), "%Y")) - 1L
+
 # FAOSTAT bulk files: downloaded to Data/Raw/fao/ by download_fao.R and read by process_fao.R.
 # Each name is the object the data is loaded into in process_fao.R.
 fao_bulk_files <- c(
@@ -141,7 +145,7 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
 
 # Validate cleaned data before regional aggregation: no NA values in 'value', no unexpected columns beyond
 # dim_config + value/num/denom, and drop years beyond max_year. Stops on failure, else returns data.
-# Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = max_year_emdat)
+# Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = last_complete_year)
 assert_data_reqs <- function(data, dim_config, indicator_id, max_year = NULL) {
 
   # Years: stored as whole numbers (integers) during processing; get_cepalstat_ids() converts them to
@@ -868,27 +872,43 @@ compare_metadata <- function(df, indicator_id, new_indicator, diagnostics, note_
   df
 }
 
-# Print the latest year in the new data, next to the latest published year and the max year set for
-# the source in config.R. Flags new data that ends earlier than what's published, since uploading it
-# would remove years from CEPALSTAT.
-# Sample usage: report_latest_year(comp, max_year = max_year_fao)
-report_latest_year <- function(comp, max_year) {
-  latest <- function(values, years) {
-    years <- suppressWarnings(as.numeric(years[!is.na(values)]))
-    if (all(is.na(years))) NA_real_ else max(years, na.rm = TRUE)
+# Returns the latest year with a value in the new data and in the published data, from a comparison
+# file (create_comp_file()). Both are NA for indicators without a Years column (e.g. 2031).
+# Sample usage: latest_years(result_4046$comp)   # list(new = 2025, published = 2024)
+latest_years <- function(comp) {
+  latest <- function(values) {
+    years <- suppressWarnings(as.integer(comp$Years[!is.na(values)]))
+    if (all(is.na(years))) NA_integer_ else max(years, na.rm = TRUE)
   }
-  if (!"Years" %in% names(comp)) return(invisible(NULL))
+  if (!"Years" %in% names(comp)) return(list(new = NA_integer_, published = NA_integer_))
+  list(new = latest(comp$value), published = latest(comp$value.pub))
+}
 
-  new_year <- latest(comp$value, comp$Years)
-  pub_year <- latest(comp$value.pub, comp$Years)
-  pub_text <- if (is.na(pub_year)) "none" else pub_year
+# Describes how the new data's latest year compares with the published one, e.g. "+1 year",
+# "same as published", or a warning if the new data ends earlier (uploading it would remove years).
+describe_year_change <- function(new_year, pub_year) {
+  case_when(
+    is.na(new_year)       ~ "",
+    is.na(pub_year)       ~ "not published yet",
+    new_year == pub_year  ~ "same as published",
+    new_year > pub_year   ~ glue("+{new_year - pub_year} year(s)"),
+    TRUE                  ~ "⚠️ ends earlier than published"
+  )
+}
 
-  if (!is.na(new_year) && !is.na(pub_year) && new_year < pub_year) {
-    message(glue("⚠️ Latest year in the data: {new_year}, earlier than the latest published year ({pub_year}); ",
-                 "max year for this source: {max_year}"))
-  } else {
-    message(glue(" - Latest year in the data: {new_year} (published: {pub_text}; max year for this source: {max_year})"))
-  }
+# Prints the latest year in the new data, next to the latest published year (and the cutoff, if the
+# spec sets max_year). Flags new data that ends earlier than what's published.
+# Sample usage: report_latest_year(comp, max_year = NULL)
+report_latest_year <- function(comp, max_year = NULL) {
+  years <- latest_years(comp)
+  if (is.na(years$new)) return(invisible(NULL))
+
+  pub_text     <- if (is.na(years$published)) "none" else years$published
+  cutoff_text  <- if (is.null(max_year)) "" else glue("; data after {max_year} excluded")
+  ends_earlier <- !is.na(years$published) && years$new < years$published
+  icon         <- if (ends_earlier) "⚠️" else " -"
+
+  message(glue("{icon} Latest year in the data: {years$new} (published: {pub_text}{cutoff_text})"))
   invisible(NULL)
 }
 
@@ -1136,27 +1156,49 @@ run_one_indicator <- function(id, global = global_spec) {
 # Run many indicators and cache error messages
 # Sample usage: run_many_indicators(run_list) # where run_list is list of ids
 run_many_indicators <- function(run_list, global = global_spec) {
-  run_log <- tibble(id = numeric(), status = character(), message = character())
-  
+  run_log <- tibble(id = numeric(), status = character(), latest_year = integer(),
+                    published_year = integer(), message = character())
+
   for (i in seq_along(run_list)) {
     id <- run_list[i]
-    
+
     outcome <- tryCatch({
-      run_one_indicator(id, global)
-      list(status = "ok", message = NA_character_)
+      result <- run_one_indicator(id, global)
+      years <- latest_years(result$comp)
+      list(status = "ok", latest_year = years$new, published_year = years$published, message = NA_character_)
     }, error = function(e) {
       message(glue("❌ Indicator {id} failed: {conditionMessage(e)}"))
-      list(status = "error", message = conditionMessage(e))
+      list(status = "error", latest_year = NA_integer_, published_year = NA_integer_, message = conditionMessage(e))
     })
-    
-    run_log <- add_row(run_log, id = id, status = outcome$status, message = outcome$message)
+
+    run_log <- add_row(run_log, id = id, status = outcome$status, latest_year = outcome$latest_year,
+                       published_year = outcome$published_year, message = outcome$message)
   }
-  
+
+  # Summary table: one row per indicator, with its latest year next to the published one
+  run_log <- run_log %>%
+    left_join(meta %>% select(id, indicator), by = "id") %>%
+    mutate(year_change = describe_year_change(latest_year, published_year)) %>%
+    relocate(indicator, .after = id)
+
   message(glue("\n✅ {sum(run_log$status == 'ok')}/{nrow(run_log)} indicators processed successfully"))
   if (any(run_log$status == "error")) {
     message("❌ Failed: ", paste(run_log$id[run_log$status == "error"], collapse = ", "))
   }
-  return(run_log)
+
+  message("\nLatest year of data by indicator:")
+  run_log %>%
+    transmute(id, indicator = str_trunc(indicator, 50), status, latest_year, published_year, year_change) %>%
+    as.data.frame() %>%
+    print(row.names = FALSE)
+
+  # Save the summary alongside the comparison files, when exporting
+  if (isTRUE(global$export)) {
+    write_xlsx(run_log, ensure_dir(here("Data/Checks")) %>% file.path("run_summary.xlsx"))
+    message("✅ Summary saved to Data/Checks/run_summary.xlsx")
+  }
+
+  invisible(run_log)
 }
 
 

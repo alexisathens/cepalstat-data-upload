@@ -136,7 +136,6 @@ transform_3381 <- function(data) {
 spec_3381 <- indicator_spec(
   indicator_id = 3381,
   data = clim,
-  max_year = max_year_fao,
   dim_config = dim_config_3381,
   filter_data = filter_3381,
   transform_data = transform_3381,
@@ -168,7 +167,6 @@ transform_2035 <- function(data) {
 spec_2035 <- indicator_spec(
   indicator_id = 2035,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2035,
   filter_data = filter_2035,
   transform_data = transform_2035,
@@ -198,7 +196,6 @@ transform_2054 <- function(data) {
 spec_2054 <- indicator_spec(
   indicator_id = 2054,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2054,
   filter_data = filter_2054,
   transform_data = transform_2054,
@@ -229,7 +226,6 @@ transform_3355 <- function(data) {
 spec_3355 <- indicator_spec(
   indicator_id = 3355,
   data = cover,
-  max_year = max_year_fao,
   dim_config = dim_config_3355,
   filter_data = filter_3355,
   transform_data = transform_3355,
@@ -259,7 +255,6 @@ transform_4176 <- function(data) {
 spec_4176 <- indicator_spec(
   indicator_id = 4176,
   data = cover,
-  max_year = max_year_fao,
   dim_config = dim_config_4176,
   filter_data = filter_4176,
   transform_data = transform_4176,
@@ -282,7 +277,6 @@ transform_2036 <- function(data) {
 spec_2036 <- indicator_spec(
   indicator_id = 2036,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2036,
   filter_data = filter_forest,
   transform_data = transform_2036,
@@ -314,7 +308,6 @@ transform_2021 <- function(data) {
 spec_2021 <- indicator_spec(
   indicator_id = 2021,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2021,
   filter_data = filter_forest,
   transform_data = transform_2021,
@@ -346,7 +339,6 @@ transform_2530 <- function(data) {
 spec_2530 <- indicator_spec(
   indicator_id = 2530,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
@@ -380,7 +372,6 @@ transform_2531 <- function(data) {
 spec_2531 <- indicator_spec(
   indicator_id = 2531,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2531,
   filter_data = filter_forest,
   transform_data = transform_2531,
@@ -411,7 +402,6 @@ transform_1739 <- function(data) {
 spec_1739 <- indicator_spec(
   indicator_id = 1739,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_1739,
   filter_data = filter_1739,
   transform_data = transform_1739,
@@ -457,7 +447,6 @@ transform_1869 <- function(data) {
 spec_1869 <- indicator_spec(
   indicator_id = 1869,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_1869,
   filter_data = filter_1869,
   transform_data = transform_1869,
@@ -489,7 +478,6 @@ transform_4049 <- function(data) {
 spec_4049 <- indicator_spec(
   indicator_id = 4049,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_4049,
   filter_data = filter_4049,
   transform_data = transform_4049,
@@ -536,7 +524,6 @@ transform_1740 <- function(data) {
 spec_1740 <- indicator_spec(
   indicator_id = 1740,
   data = crop,
-  max_year = max_year_fao,
   dim_config = dim_config_1740,
   filter_data = filter_1740,
   transform_data = transform_1740,
@@ -573,7 +560,6 @@ footnotes_2038 <- list(
 spec_2038 <- indicator_spec(
   indicator_id = 2038,
   data = fert,
-  max_year = max_year_fao,
   dim_config = dim_config_2038,
   filter_data = filter_2038,
   transform_data = transform_2038,
@@ -612,7 +598,6 @@ transform_2022 <- function(data) {
 spec_2022 <- indicator_spec(
   indicator_id = 2022,
   data = fert,
-  max_year = max_year_fao,
   dim_config = dim_config_2022,
   filter_data = filter_2022,
   transform_data = transform_2022,
@@ -652,7 +637,6 @@ transform_2039 <- function(data) {
 spec_2039 <- indicator_spec(
   indicator_id = 2039,
   data = pest,
-  max_year = max_year_fao,
   dim_config = dim_config_2039,
   filter_data = filter_2039,
   transform_data = transform_2039,
@@ -690,7 +674,6 @@ transform_3382 <- function(data) {
 spec_3382 <- indicator_spec(
   indicator_id = 3382,
   data = pest,
-  max_year = max_year_fao,
   dim_config = dim_config_3382,
   filter_data = filter_3382,
   transform_data = transform_3382,
@@ -842,7 +825,6 @@ footnotes_2019 <- list(
 spec_2019 <- indicator_spec(
   indicator_id = 2019,
   data = fish,
-  max_year = max_year_fao,
   dim_config = dim_config_2019,
   filter_data = filter_2019,
   transform_data = transform_2019,
@@ -889,7 +871,6 @@ footnotes_2020 <- list(
 spec_2020 <- indicator_spec(
   indicator_id = 2020,
   data = aqua,
-  max_year = max_year_fao,
   dim_config = dim_config_2020,
   filter_data = filter_2020,
   transform_data = transform_2020,
@@ -935,7 +916,6 @@ transform_5805 <- function(data) {
 spec_5805 <- indicator_spec(
   indicator_id = 5805,
   data = aquastat,
-  max_year = max_year_fao,
   dim_config = dim_config_5805,
   filter_data = filter_5805,
   transform_data = transform_5805,
@@ -1007,7 +987,6 @@ transform_4185 <- function(data) {
 spec_4185 <- indicator_spec(
   indicator_id = 4185,
   data = aquastat,
-  max_year = max_year_fao,
   dim_config = dim_config_4185,
   filter_data = filter_4185,
   transform_data = transform_4185,
@@ -1053,7 +1032,6 @@ transform_4186 <- function(data) {
 spec_4186 <- indicator_spec(
   indicator_id = 4186,
   data = aquastat,
-  max_year = max_year_fao,
   dim_config = dim_config_4186,
   filter_data = filter_4186,
   transform_data = transform_4186,

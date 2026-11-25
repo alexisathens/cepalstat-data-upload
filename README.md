@@ -84,7 +84,6 @@ For example, indicator 2530 (Natural Forest Proportion of Total Forest from FAO)
 spec_2530 <- indicator_spec(
   indicator_id = 2530,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
@@ -156,7 +155,6 @@ To manage this two-step metadata revision easily, utilize the wrapper script `ru
 
 Settings that go out of date on a schedule are kept together in `Scripts/config.R`:
 
-- **Latest year of reliable data for each source** (`max_year_fao`, `max_year_olade`, etc.): update when a source publishes a new year of data.
 - **Statistical yearbook index** (`yearbook_file`, `yearbook_sheet`): update when a new yearbook comes out, and save the new index file in `Data/Tables/External/`.
 - **AI model** for metadata drafting (`ANTHROPIC_MODEL`): update when a newer model is available.
 

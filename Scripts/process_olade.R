@@ -65,7 +65,6 @@ transform_5672 <- function(data) {
 spec_5672 <- indicator_spec(
   indicator_id = 5672,
   data = data_prod,
-  max_year = max_year_olade,
   dim_config = dim_config_5672,
   filter_data = filter_none,
   transform_data = transform_5672,
@@ -103,7 +102,6 @@ footnotes_2487 <- list(
 spec_2487 <- indicator_spec(
   indicator_id = 2487,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_2487,
   filter_data = filter_none,
   transform_data = transform_2487,
@@ -137,7 +135,6 @@ transform_5730 <- function(data) {
 spec_5730 <- indicator_spec(
   indicator_id = 5730,
   data = data_cons,
-  max_year = max_year_olade,
   dim_config = dim_config_5730,
   filter_data = filter_none,
   transform_data = transform_5730,
@@ -185,7 +182,6 @@ transform_2486 <- function(data) {
 spec_2486 <- indicator_spec(
   indicator_id = 2486,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_2486,
   filter_data = filter_none,
   transform_data = transform_2486,
@@ -223,7 +219,6 @@ transform_3154 <- function(data) {
 spec_3154 <- indicator_spec(
   indicator_id = 3154,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_3154,
   filter_data = filter_none,
   transform_data = transform_3154,
@@ -259,7 +254,6 @@ transform_4236 <- function(data) {
 spec_4236 <- indicator_spec(
   indicator_id = 4236,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_4236,
   filter_data = filter_none,
   transform_data = transform_4236,
@@ -303,7 +297,6 @@ transform_4174 <- function(data) {
 spec_4174 <- indicator_spec(
   indicator_id = 4174,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_4174,
   filter_data = filter_4174,
   transform_data = transform_4174,
@@ -359,7 +352,6 @@ transform_4183 <- function(data) {
 spec_4183 <- indicator_spec(
   indicator_id = 4183,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_4183,
   filter_data = filter_4183,
   transform_data = transform_4183,
@@ -405,7 +397,6 @@ transform_2023 <- function(data) {
 spec_2023 <- indicator_spec(
   indicator_id = 2023,
   data = data_cons,
-  max_year = max_year_olade,
   dim_config = dim_config_2023,
   filter_data = filter_2023,
   transform_data = transform_2023,
@@ -461,7 +452,6 @@ transform_4184 <- function(data) {
 spec_4184 <- indicator_spec(
   indicator_id = 4184,
   data = data_cons,
-  max_year = max_year_olade,
   dim_config = dim_config_4184,
   filter_data = filter_4184,
   transform_data = transform_4184,
@@ -513,7 +503,6 @@ transform_4243 <- function(data) {
 spec_4243 <- indicator_spec(
   indicator_id = 4243,
   data = data_cons_sec,
-  max_year = max_year_olade,
   dim_config = dim_config_4243,
   filter_data = filter_4243,
   transform_data = transform_4243,
@@ -557,7 +546,6 @@ transform_4150 <- function(data) {
 spec_4150 <- indicator_spec(
   indicator_id = 4150,
   data = data_infra,
-  max_year = max_year_olade,
   dim_config = dim_config_4150,
   filter_data = filter_4150,
   transform_data = transform_4150,
@@ -591,7 +579,6 @@ transform_1754 <- function(data) {
 spec_1754 <- indicator_spec(
   indicator_id = 1754,
   data = data_cons,
-  max_year = max_year_olade,
   dim_config = dim_config_1754,
   filter_data = filter_1754,
   transform_data = transform_1754,
@@ -620,7 +607,6 @@ transform_4234 <- function(data) {
 spec_4234 <- indicator_spec(
   indicator_id = 4234,
   data = data_losses,
-  max_year = max_year_olade,
   dim_config = dim_config_4234,
   filter_data = filter_4234,
   transform_data = transform_4234,
@@ -649,7 +635,6 @@ transform_4235 <- function(data) {
   losses <- data_losses
   
   losses %<>% 
-    filter(Years <= max_year_olade) %>% 
     filter(Type == "Electricity") %>% 
     select(-Type) %>% 
     rename(losses = value)
@@ -664,7 +649,6 @@ transform_4235 <- function(data) {
 spec_4235 <- indicator_spec(
   indicator_id = 4235,
   data = data_supply,
-  max_year = max_year_olade,
   dim_config = dim_config_4235,
   filter_data = filter_4235,
   transform_data = transform_4235,

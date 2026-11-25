@@ -60,7 +60,6 @@ Save and close the file, then restart R (or re-source `Scripts/utils.R`) so the 
 spec_5805 <- indicator_spec(
   indicator_id = 5805,
   data = aquastat,
-  max_year = max_year_fao,
   dim_config = dim_config_5805,
   filter_data = filter_5805,
   transform_data = transform_5805,
