@@ -17,12 +17,16 @@ source(here("Scripts/process_indicator_fn.R"))
 # Set a source to TRUE to download (or prepare) new data for it in this run. With FALSE, the files
 # already saved in Data/Raw/ are used, so nothing is downloaded again.
 download_new <- c(
-  fao          = FALSE,  # download_fao.R: FAOSTAT bulk files (takes several minutes)
+  tables       = FALSE,  # build_tables.R: CEPALSTAT table downloads to refresh Data/indicator_metadata.xlsx
+  fao          = FALSE,  # download_fao.R: FAOSTAT bulk files
   climatewatch = FALSE,  # download_climatewatch.R: Climate Watch and World Bank APIs
   olade        = FALSE   # format_olade.R: restructures the OLADE files downloaded by hand
 )
 
 # ---- 2. download and load each source ----
+
+## tables: download fresh indicator/dimension/source info from CEPALSTAT API
+if (download_new[["tables"]]) source(here("Scripts/build_tables.R"))
 
 ## OLADE: download by hand first (Scripts/instructions_olade.qmd)
 if (download_new[["olade"]]) source(here("Scripts/format_olade.R"))
