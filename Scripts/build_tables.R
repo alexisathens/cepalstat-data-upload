@@ -460,18 +460,6 @@ if (!is.null(old_members)) {
     select(line)
 }
 
-# HTML tags other than <br> in the metadata text: kept as they are in the snapshots, and listed so
-# they can be reviewed
-other_html_tags <- sheet_long %>%
-  select(any_of(metadata_fields$field)) %>%
-  unlist() %>%
-  str_extract_all("<[A-Za-z][^>]*>") %>%    # opening tags only, so each link or tag is counted once
-  unlist() %>%
-  str_extract("(?<=<)[A-Za-z]+") %>%
-  tolower() %>%
-  discard(~ .x == "br") %>%
-  table()
-
 # Country (ISO) table: compared with the saved version. Changes are rare, so each one is listed in full.
 old_iso <- (read_previous(paths$iso) %||% iso_new) %>%
   filter(!is.na(cepalstat))
@@ -529,8 +517,6 @@ info <- list(
   "Metadata text changes" =
     glue("{label_ind(text_changes$indicator_id, text_changes$indicator_name, width = 45)}: {text_changes$header}, {text_changes$change}"),
   "Dimension member changes" = member_changes$line,
-  "HTML tags other than <br> in the metadata text (kept as they are in the snapshots)" =
-    glue("<{names(other_html_tags)}>: {as.integer(other_html_tags)} occurrence(s)"),
   "Changes to the tables in Data/Tables/" = summarize_changes(table_changes),
   "Changes to the country (ISO) table" = c(country_changes$line, spelling_changes$line),
   "Country names that don't match a CEPALSTAT country (left out of the ISO table)" = unmatched_names
