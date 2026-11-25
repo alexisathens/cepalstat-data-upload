@@ -23,3 +23,9 @@ Metadata/*
 !Metadata/Prompts/
 !Metadata/[0-9]*.md
 Metadata/*_*.md
+
+# Docs: working documents (Word, Excel, PowerPoint, rendered HTML, subfolders) stay local. New
+# Markdown guides and images are still picked up, and files already in git stay tracked.
+Docs/*
+!Docs/*.md
+!Docs/*.png
