@@ -2,11 +2,11 @@ library(here)
 #source(here("Scripts/build_tables.R"))
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
-source(here("Scripts/olade.R"))
-source(here("Scripts/emdat.R"))
-source(here("Scripts/climatewatch.R"))
-source(here("Scripts/other.R"))
-source(here("Scripts/fao.R"))
+source(here("Scripts/process_olade.R"))
+source(here("Scripts/process_emdat.R"))
+source(here("Scripts/process_climatewatch.R"))
+source(here("Scripts/process_other.R"))
+source(here("Scripts/process_fao.R"))
 
 # ---- run calls ----
 

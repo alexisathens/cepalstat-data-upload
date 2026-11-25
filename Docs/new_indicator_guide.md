@@ -15,7 +15,7 @@ This guide walks through adding a brand-new environmental indicator to CEPALSTAT
 | 7\. Request publication in the thematic tree | Email to Andrés Yañez |
 | 8\. Make the indicator visible | CEPALSTAT Admin |
 | 9\. Complete the technical sheet | CEPALSTAT Admin |
-| 10\. Polish the metadata with AI (optional) | `Scripts/run_meta.R` |
+| 10\. Polish the metadata with AI (optional) | `Scripts/run_metadata.R` |
 
 ------------------------------------------------------------------------
 
@@ -51,7 +51,7 @@ Save and close the file, then restart R (or re-source `Scripts/utils.R`) so the 
 2.  Because the indicator is new, the spec needs two additional settings:
     - **`define_source`:** a function that assigns the indicator's source ID. The default (`existing_source`) looks up the source already published in CEPALSTAT, which a new indicator does not have yet. Use one of the `define_source_*` functions in the "Source definitions" section of `Scripts/utils.R`, or add one there if the source is new.
     - **`new_indicator = TRUE`:** skips the comparisons against published data, since none exists yet.
-3.  Run the indicator from `Scripts/run_all.R` as usual, e.g., `run_one_indicator(5805)`.
+3.  Run the indicator from `Scripts/run_indicators.R` as usual, e.g., `run_one_indicator(5805)`.
 
 ### Example spec
 
@@ -116,5 +116,5 @@ Once the indicator is published and visible, the changes take a couple of hours 
 
 ## 10. Polish the metadata with AI (optional)
 
-1.  Run `Scripts/run_meta.R` to generate suggested improvements to the Definición, Metodología, and Comentarios fields (see the README's [Revise metadata](../README.md#5-revise-metadata-optional) section).
+1.  Run `Scripts/run_metadata.R` to generate suggested improvements to the Definición, Metodología, and Comentarios fields (see the README's [Revise metadata](../README.md#5-revise-metadata-optional) section).
 2.  Review the suggestions, then enter the final text in the CEPALSTAT Admin area.

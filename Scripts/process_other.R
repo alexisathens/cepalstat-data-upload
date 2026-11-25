@@ -1,5 +1,5 @@
 # This script processes "other" indicators from small/miscellaneous sources
-# See the data download instructions at: download_other.qmd
+# See the data download instructions at: instructions_other.qmd
 
 # ---- setup ----
 
@@ -29,7 +29,7 @@ data_iso_historic <- tibble(call.data(1763)) %>% select(Country, Years, Value) %
 # download latest year of ISO survey data
 iso_survey_file <- check_raw_file(
   glue(input_path, "/iso_", max_year_other, "_raw.xlsx"), source = "ISO Survey",
-  how = "Download it manually following the steps under 'International Accreditation Forum (IAF) - ISO Survey' in Scripts/manual_download.qmd."
+  how = "Download it manually following the steps under 'International Accreditation Forum (IAF) - ISO Survey' in Scripts/instructions_other.qmd."
 )
 data_iso_latest <- read_xlsx(iso_survey_file, sheet = "ISO 14001", skip = 1)
 data_iso_latest %<>% mutate(Years = as.character(max_year_other)) %>% select(Country, Years, value = certificates)

@@ -18,12 +18,12 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 
 | Source | Data | Associated steps/files |
 |---|---|---|
-| FAO | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides, fish capture, aquaculture, water withdrawal | <ul><li>Download and clean with `fao.R`, which uses the `FAOSTAT` R package</li></ul> |
-| OLADE | Energy production and consumption | <ul><li>Manual download following `manual_olade.qmd` instructions</li><li>Restructure raw data with `format_olade.R`</li><li>Clean with `olade.R`</li></ul> |
-| Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | API download with `download_climatewatch.R` |
-| EM-DAT | Natural disaster deaths, affected, economic damage | <ul><li>Manual download following `manual_download.qmd`</li><li>Clean with `emdat.R`</li></ul> |
-| InforMEA | Environmental treaty indicators | <ul><li>Download with `download_informea.qmd`, which scrapes web data from informea.org</li><li>Clean with `other.R`</li></ul> |
-| Other (UNEP/Ramsar/IRENA/ISO Survey) | | <ul><li>Download with `manual_download.qmd`</li><li>Clean with `other.R`</li></ul> |
+| FAO | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides, fish capture, aquaculture, water withdrawal | <ul><li>Download with `download_fao.R`, which uses the `FAOSTAT` R package (AQUASTAT is downloaded manually following `instructions_other.qmd`)</li><li>Clean with `process_fao.R`</li></ul> |
+| OLADE | Energy production and consumption | <ul><li>Manual download following `instructions_olade.qmd`</li><li>Restructure raw data with `format_olade.R`</li><li>Clean with `process_olade.R`</li></ul> |
+| Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | <ul><li>API download with `download_climatewatch.R`</li><li>Clean with `process_climatewatch.R`</li></ul> |
+| EM-DAT | Natural disaster deaths, affected, economic damage | <ul><li>Manual download following `instructions_other.qmd`</li><li>Clean with `process_emdat.R`</li></ul> |
+| InforMEA | Environmental treaty indicators | <ul><li>Download with `download_informea.qmd`, which scrapes web data from informea.org</li><li>Clean with `process_other.R`</li></ul> |
+| Other (UNEP/Ramsar/IRENA/ISO Survey) | | <ul><li>Manual download following `instructions_other.qmd`</li><li>Clean with `process_other.R`</li></ul> |
 
 ## Setup
 
@@ -60,7 +60,7 @@ The script then loads this environment by name with `use_virtualenv("cepalstat")
 
 ### 1. Download data
 
-Download the raw data files manually or automatically. The manual download instructions are split between files `manual_olade.qmd` and `manual_download.qmd`. The automatic download processes are either contained in the `download_*.R` files if downloading the data is complicated or combined into the cleaning files if it's simple (e.g., in `fao.R`). See the Data Source table above for instructions by source.
+Download the raw data files manually or automatically. The manual download instructions are split between files `instructions_olade.qmd` and `instructions_other.qmd`. The automatic downloads are in the `download_*` files (e.g., `download_fao.R`). See the Data Source table above for instructions by source.
 
 The resulting files from this step can be found in the folder `Data/Raw`.
 
@@ -92,9 +92,9 @@ spec_2530 <- indicator_spec(
 )
 ```
 
-Each of these values and functions are defined inside of the source file, in this case `fao.R`.
+Each of these values and functions are defined inside of the source file, in this case `process_fao.R`.
 
-To clean and process indicators easily, utilize the wrapper script `run_all.R`.
+To clean and process indicators easily, utilize the wrapper script `run_indicators.R`.
 
 The resulting files from this step can then be found in `Data/Cleaned` (for upload to Wasabi) and `Data/Checks` (for running the quality check dashboard).
 
@@ -146,11 +146,11 @@ Hitting "Send now" updates the new data to CEPALSTAT.
 
 ### 5. Revise metadata (optional)
 
-An optional step is to update the indicator's technical sheet in CEPALSTAT. The script `technical_sheet.R` suggests updates to the metadata fields of Definition, Methodology and Comments.
+An optional step is to update the indicator's technical sheet in CEPALSTAT. The script `update_metadata_fn.R` suggests updates to the metadata fields of Definition, Methodology and Comments.
 
 The script fetches existing metadata from the CEPALSTAT API and calls the Anthropic API to produce an updated draft in English. This suggested draft is then **human-reviewed** and edited, before calling the Anthropic API again to translate it into Spanish. This is then exported into a CEPALSTAT Admin-friendly format and must be updated manually in the CEPALSTAT Admin area.
 
-To manage this two-step metadata revision easily, utilize the wrapper script `run_meta.R`.
+To manage this two-step metadata revision easily, utilize the wrapper script `run_metadata.R`.
 
 ## Periodic Updates
 
@@ -169,11 +169,11 @@ Update the "checked" date next to each value when you review it.
 | `config.R` | 0. setup | Settings updated by hand (see Periodic Updates); loaded by `utils.R` |
 | `build_tables.R` | 0. setup | Download reference tables from the CEPALSTAT API (indicators, sources, notes, dimensions, countries), summarize changes since the last run, and update `Data/Tables/` and `Data/indicator_metadata.xlsx` |
 | `process_indicator_fn.R` | 2. clean data | Core `process_indicator()` function used by all cleaning scripts |
-| `run_all.R` | 2. clean data | Controller for `process_indicator_fn.R` |
+| `run_indicators.R` | 2. clean data | Controller for `process_indicator_fn.R` |
 | `utils.R` | 2. clean data | Shared utility functions (API calls, formatting, validation) |
 | `dashboard/dashboard.qmd` | 3. quality check | Interactive Quarto Dashboard for QC review |
-| `technical_sheet.R` | 5. metadata | Generate technical metadata sheet |
-| `run_meta.R` | 5. metadata | Controller for `technical_sheet.R` |
+| `update_metadata_fn.R` | 5. metadata | Draft, translate and export indicator metadata (Definition, Methodology, Comments) |
+| `run_metadata.R` | 5. metadata | Controller for `update_metadata_fn.R` |
 
 ## File Organization
 

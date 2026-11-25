@@ -68,7 +68,7 @@ aqua <- aqua %>%
   )
 
 ## aquastat manual download
-# follow instructions in manual_download.qmd for bulk file
+# follow instructions in instructions_other.qmd for bulk file
 aquastat_folder <- ensure_dir(here("Data/Raw/fao/aquastat"))
 #aquastat <- read_csv(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"))
 # AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")

@@ -12,7 +12,7 @@ source(here("Scripts/process_indicator_fn.R"))
 emdat_files <- list.files(ensure_dir(here("Data/Raw/emdat")), pattern = "^public_emdat_incl_hist_.*\\.xlsx$", full.names = TRUE)
 assert_that(length(emdat_files) > 0, msg = paste0(
   "❌ Missing raw data for EM-DAT: no file in Data/Raw/emdat/ matching public_emdat_incl_hist_*.xlsx.\n",
-  "   Download it manually following the steps under 'EM-DAT/CRED - Disaster Indicators' in Scripts/manual_download.qmd, ",
+  "   Download it manually following the steps under 'EM-DAT/CRED - Disaster Indicators' in Scripts/instructions_other.qmd, ",
   "keeping the default file name."
 ))
 

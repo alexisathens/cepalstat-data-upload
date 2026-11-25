@@ -17,7 +17,7 @@ check_raw_file(
   paste0(input_path, "/", c("energy_production_clean.csv", "energy_supply_clean.csv", "energy_consumption_clean.csv",
                             "energy_consumption_sector_clean.csv", "electricity_losses_clean.csv", "electricity_infra_clean.csv")),
   source = "OLADE",
-  how = "Download the raw OLADE files following Scripts/manual_olade.qmd, then run Scripts/format_olade.R to create these cleaned files."
+  how = "Download the raw OLADE files following Scripts/instructions_olade.qmd, then run Scripts/format_olade.R to create these cleaned files."
 )
 energy_types <- read_excel(paste0(input_path, "/Mappings/energy_dimensions_crosswalk.xlsx"))
 

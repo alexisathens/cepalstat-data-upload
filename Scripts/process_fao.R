@@ -1,4 +1,5 @@
-# This script downloads, cleans, and standardizes FAO indicators
+# This script cleans and standardizes FAO indicators. It uses the data loaded by download_fao.R
+# (e.g. `use`, `clim`, `crop`), so run download_fao.R first in the same session.
 
 # ---- setup ----
 

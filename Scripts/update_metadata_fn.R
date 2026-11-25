@@ -1,8 +1,7 @@
-# Generates draft metadata for CEPALSTAT indicators as Markdown (.md) files.
-# Markdown version of technical_sheet.R: same three steps and prompts, but all files are .md
-# (for use in a Markdown editor such as Obsidian) and are written to a single folder.
+# Generates draft metadata for CEPALSTAT indicators as Markdown (.md) files, for use in a Markdown
+# editor such as Obsidian. All files are written to a single folder.
 #
-# Workflow (see run_meta.R):
+# Workflow (see run_metadata.R):
 #   1. suggest_metadata_en()   - archives published metadata ({id}_legacy.md) and drafts English ({id}_en.md)
 #      -> human review: edit {id}_en.md
 #   2. translate_metadata_es() - translates the reviewed English draft ({id}_es.md)

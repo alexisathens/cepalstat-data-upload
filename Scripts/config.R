@@ -28,6 +28,6 @@ profile_file   <- "profile_data.xlsx"            # indicators in the country pro
 
 
 ## AI model ----
-# Used by technical_sheet.R to draft and translate indicator metadata.
+# Used by update_metadata_fn.R to draft and translate indicator metadata.
 
 ANTHROPIC_MODEL <- "claude-sonnet-4-6"

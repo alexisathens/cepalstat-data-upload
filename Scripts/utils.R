@@ -52,11 +52,11 @@ ensure_dir <- function(path) {
 }
 
 # Helper: stop with clear instructions if any raw data file that must be obtained separately is missing.
-# `how` explains how to get the file(s); by default it points to the source's section in manual_download.qmd.
+# `how` explains how to get the file(s); by default it points to the source's section in instructions_other.qmd.
 # Returns the path(s) unchanged, so it can wrap a read call directly.
 # Sample usage: read_xlsx(check_raw_file(here("Data/Raw/other/irena_raw.xlsx"), source = "IRENA"))
 check_raw_file <- function(paths, source,
-                           how = glue("Download it manually following the steps under '{source}' in Scripts/manual_download.qmd.")) {
+                           how = glue("Download it manually following the steps under '{source}' in Scripts/instructions_other.qmd.")) {
   missing_files <- paths[!file.exists(paths)]
   if (length(missing_files) > 0) {
     stop(glue(
@@ -1097,8 +1097,8 @@ run_one_indicator <- function(id, global = global_spec) {
   if (!exists(paste0("spec_", id))) {
     stop(glue(
       "❌ No spec found for indicator {id} (object `spec_{id}`). ",
-      "Source the script that defines it first (e.g. source(here('Scripts/fao.R'))), ",
-      "or run the source() lines at the top of run_all.R."
+      "Source the script that defines it first (e.g. source(here('Scripts/process_fao.R'))), ",
+      "or run the source() lines at the top of run_indicators.R."
     ), call. = FALSE)
   }
   spec <- get(paste0("spec_", id))
