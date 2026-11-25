@@ -149,14 +149,15 @@ ind_dims <- indicator_dimension %>%
   rename(id = indicator_id)
 
 # Yearbook and profile flags, from the external reference files
-yearbook_ids <- read_xlsx(file.path(external_dir, "AE2026-Indice-WEB-PDF.xlsx"), sheet = "AE2026-HTML&PDF_ID",
+# (file names are set in config.R)
+yearbook_ids <- read_xlsx(file.path(external_dir, yearbook_file), sheet = yearbook_sheet,
                           .name_repair = "unique_quiet") %>%
   pull(`ID INDICADOR CEPALSTAT`) %>%
   as.numeric() %>%   # non-numeric cells (e.g. section headers) become NA and are dropped below
   suppressWarnings() %>%
   na.omit()
 
-profile_ids <- read_xlsx(file.path(external_dir, "profile_data.xlsx")) %>% pull(Indicator)
+profile_ids <- read_xlsx(file.path(external_dir, profile_file)) %>% pull(Indicator)
 
 # One row per indicator (an indicator listed twice in the tree keeps its first placement)
 meta_new <- env %>%

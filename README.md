@@ -152,10 +152,21 @@ The script fetches existing metadata from the CEPALSTAT API and calls the Anthro
 
 To manage this two-step metadata revision easily, utilize the wrapper script `run_meta.R`.
 
+## Periodic Updates
+
+Settings that go out of date on a schedule are kept together in `Scripts/config.R`:
+
+- **Latest year of reliable data for each source** (`max_year_fao`, `max_year_olade`, etc.): update when a source publishes a new year of data.
+- **Statistical yearbook index** (`yearbook_file`, `yearbook_sheet`): update when a new yearbook comes out, and save the new index file in `Data/Tables/External/`.
+- **AI model** for metadata drafting (`ANTHROPIC_MODEL`): update when a newer model is available.
+
+Update the "checked" date next to each value when you review it.
+
 ## Global Files
 
 | Script | Associated Step | Purpose |
 |---|---|---|
+| `config.R` | 0. setup | Settings updated by hand (see Periodic Updates); loaded by `utils.R` |
 | `build_tables.R` | 0. setup | Download reference tables from the CEPALSTAT API (indicators, sources, notes, dimensions, countries), summarize changes since the last run, and update `Data/Tables/` and `Data/indicator_metadata.xlsx` |
 | `process_indicator_fn.R` | 2. clean data | Core `process_indicator()` function used by all cleaning scripts |
 | `run_all.R` | 2. clean data | Controller for `process_indicator_fn.R` |

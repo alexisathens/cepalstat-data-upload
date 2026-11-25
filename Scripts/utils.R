@@ -18,6 +18,9 @@ library(FAOSTAT)
 library(fishstat)
 library(usethis)
 
+# Settings updated by hand (max years by source, yearbook file, AI model)
+source(here("Scripts/config.R"))
+
 # ---- Global variables ----
 
 iso <- read_xlsx(here("Data/Tables/iso_codes.xlsx"))  # built by build_tables.R
@@ -27,14 +30,6 @@ iso %<>%
   select(cepalstat, name, std_name)
 
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
-
-# Define max year of reliable data by data by source
-# This serves as a maximum, and can be overwritten in indicator spec files if reliability for one indicator lags the general source
-max_year_fao <- 2025 # as of July 2026
-max_year_olade <- 2024 # last updated Dec 2025 with 2024 data
-max_year_emdat <- 2025 # as of July 2026
-max_year_cw <- 2023 # as of July 2026
-max_year_other <- 2025
 
 
 # ---- Small helpers ----

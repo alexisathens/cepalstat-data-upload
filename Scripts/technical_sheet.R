@@ -28,13 +28,13 @@
 # of token usage by only feeding Claude the current indicator metadata along with a "golden example" of a
 # similar CEPALSTAT indicator.
 
-# Requires utils.R to be sourced first (packages, `meta` table and get_indicator_metadata()).
+# Requires utils.R to be sourced (packages, `meta` table, get_indicator_metadata(), and the AI model
+# set in config.R as ANTHROPIC_MODEL).
 
 # ---- settings ----
 
 METADATA_DIR    <- here::here("Metadata")           # all .md files for every indicator are written here
 PROMPTS_DIR     <- file.path(METADATA_DIR, "Prompts") # system prompts and glossary
-ANTHROPIC_MODEL <- "claude-sonnet-4-6"              # model used for both drafting and translation
 
 
 # ---- shared helpers ----
