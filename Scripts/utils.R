@@ -31,6 +31,17 @@ iso %<>%
 
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
+# FAOSTAT bulk files: downloaded to Data/Raw/fao/ by download_fao.R and read by process_fao.R.
+# Each name is the object the data is loaded into in process_fao.R.
+fao_bulk_files <- c(
+  use   = "Inputs_LandUse_E_All_Data_(Normalized).zip",                 # land use (RL)
+  clim  = "Environment_Temperature_change_E_All_Data_(Normalized).zip", # temperature change (ET)
+  cover = "Environment_LandCover_E_All_Data_(Normalized).zip",          # land cover (LC)
+  crop  = "Production_Crops_Livestock_E_All_Data_(Normalized).zip",     # crops and livestock products (QCL)
+  fert  = "Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip",     # fertilizers by nutrient (RFN)
+  pest  = "Inputs_Pesticides_Use_E_All_Data_(Normalized).zip"           # pesticide use (RP)
+)
+
 
 # ---- Small helpers ----
 

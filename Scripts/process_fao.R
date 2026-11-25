@@ -9,20 +9,21 @@ source(here("Scripts/process_indicator_fn.R"))
 
 # ---- load data ----
 
-## FAOSTAT bulk files, saved in Data/Raw/fao/ by download_fao.R (reading them doesn't download anything)
-# Reads one saved file; stops with instructions if it hasn't been downloaded yet
+## FAOSTAT bulk files (saved in Data/Raw/fao/ by download_fao.R; listed in fao_bulk_files in utils.R)
+fao_folder <- here("Data/Raw/fao")
+check_raw_file(file.path(fao_folder, fao_bulk_files), source = "FAOSTAT",
+               how = "Run Scripts/download_fao.R to download them.")
+
 read_fao_bulk <- function(filename) {
-  path <- check_raw_file(here("Data/Raw/fao", filename), source = "FAOSTAT",
-                         how = "Run Scripts/download_fao.R to download it.")
-  read_faostat_bulk(path) %>% as_tibble() %>% filter(!is.na(value))
+  read_faostat_bulk(file.path(fao_folder, filename)) %>% as_tibble() %>% filter(!is.na(value))
 }
 
-use   <- read_fao_bulk("Inputs_LandUse_E_All_Data_(Normalized).zip")                 # land use (RL)
-clim  <- read_fao_bulk("Environment_Temperature_change_E_All_Data_(Normalized).zip") # temperature change (ET)
-cover <- read_fao_bulk("Environment_LandCover_E_All_Data_(Normalized).zip")          # land cover (LC)
-crop  <- read_fao_bulk("Production_Crops_Livestock_E_All_Data_(Normalized).zip")     # crops and livestock products (QCL)
-fert  <- read_fao_bulk("Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip")     # fertilizers by nutrient (RFN)
-pest  <- read_fao_bulk("Inputs_Pesticides_Use_E_All_Data_(Normalized).zip")          # pesticide use (RP)
+use   <- read_fao_bulk(fao_bulk_files[["use"]])
+clim  <- read_fao_bulk(fao_bulk_files[["clim"]])
+cover <- read_fao_bulk(fao_bulk_files[["cover"]])
+crop  <- read_fao_bulk(fao_bulk_files[["crop"]])
+fert  <- read_fao_bulk(fao_bulk_files[["fert"]])
+pest  <- read_fao_bulk(fao_bulk_files[["pest"]])
 
 ## Fishery and aquaculture data, from the fishstat package
 # See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
