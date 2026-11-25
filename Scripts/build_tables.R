@@ -1,9 +1,12 @@
 # Downloads reference tables for all environmental indicators from the CEPALSTAT API, builds the
 # indicator metadata table used throughout the code, and saves them locally:
-#   Data/Tables/indicator_table.xlsx  - indicators, with their category path in English and Spanish
+#   Data/Tables/indicator_table.xlsx  - indicators, with their category path, unit and last update date
 #   Data/Tables/source_table.xlsx     - sources    + by_indicator (indicator_id, source_id)
 #   Data/Tables/note_table.xlsx       - notes      + by_indicator (indicator_id, note_id)
 #   Data/Tables/dimension_table.xlsx  - dimensions + by_indicator (indicator_id, dim_id, order, position)
+#                                       + members (members of the indicator-specific dimensions)
+#   Data/Tables/Metadata/{id}.md      - one snapshot per indicator of its published metadata sheet
+#                                       (definition, methodology, comments), tracked in git for its history
 #   Data/Tables/iso_codes.xlsx        - every known spelling of each country, mapped to its CEPALSTAT
 #                                       name and ID, with ISO codes and ECLAC flags; read as `iso` by utils.R
 #   Data/indicator_metadata.xlsx      - one row per indicator; read as `meta` by utils.R
@@ -33,10 +36,11 @@ paths <- list(
   notes      = here("Data/Tables/note_table.xlsx"),
   dimensions = here("Data/Tables/dimension_table.xlsx"),
   iso        = here("Data/Tables/iso_codes.xlsx"),
+  snapshots  = here("Data/Tables/Metadata"),          # folder: one .md file per indicator
   metadata   = here("Data/indicator_metadata.xlsx")
 )
 
-# Reference files from outside CEPALSTAT, used for the metadata flags (step 5) and the country table (step 6)
+# Reference files from outside CEPALSTAT, used for the metadata flags (step 6) and the country table (step 7)
 external_dir <- here("Data/Tables/External")
 
 
@@ -114,8 +118,38 @@ dimensions <- dim_long %>%
   select(-indicator_id, -any_of(c("order", "position"))) %>%
   to_wide_by_lang("dim_id")
 
+# Standard dimensions shared by most indicators; their members (every country and year) are very
+# large and rarely change, so they're left out of the members sheet and the metadata table
+std_dims <- c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type")
 
-## 5. Indicator metadata table ----
+# Members of the indicator-specific dimensions (e.g. "Commercial, services, public"), to catch renamed,
+# added or removed members
+dim_members <- dimensions %>%
+  filter(!name %in% std_dims) %>%
+  pull(dim_id) %>%
+  fetch_dimension_members()
+
+
+## 5. Metadata sheets (unit and text) ----
+
+# One request per indicator and language. The text fields (definition, methodology, comments) are
+# converted to plain text, and are saved as one snapshot file per indicator in part D.
+sheet_long <- fetch_indicator_tables(inds, endpoint = "metadata", drop = "indicator_id") %>%
+  mutate(indicator_id = as.integer(indicator_id)) %>%
+  select(indicator_id, lang, any_of(c("unit", "last_update", metadata_fields$field))) %>%
+  mutate(across(any_of(metadata_fields$field), clean_metadata_text))
+
+# One row per indicator: English columns unsuffixed, Spanish columns ending in _es
+sheets <- sheet_long %>%
+  to_wide_by_lang("indicator_id") %>%
+  select(-any_of("last_update_es"))   # the same date in both languages
+
+# Add the unit and the date CEPALSTAT last updated each indicator to the indicator table
+env <- env %>%
+  left_join(sheets %>% select(id = indicator_id, unit, unit_es, last_update), by = "id")
+
+
+## 6. Indicator metadata table ----
 
 # Manual notes to keep in the metadata table
 manual_notes <- tribble(
@@ -136,9 +170,8 @@ main_source <- indicator_source %>%
   )) %>%
   rename(id = indicator_id)
 
-# Indicator-specific dimensions (excluding country, year and reporting type), in display order
-std_dims <- c("Country__ESTANDAR", "Years__ESTANDAR", "Reporting Type")
-
+# Indicator-specific dimensions (excluding country, year and reporting type; std_dims is set in step 4),
+# in display order
 ind_dims <- indicator_dimension %>%
   left_join(dimensions %>% select(dim_id, name), by = "dim_id") %>%
   filter(!name %in% std_dims) %>%
@@ -198,7 +231,8 @@ scan_indicator_uses <- function(script) {
 }
 
 indicator_uses <- list.files(here("Scripts"), pattern = "^process_.*\\.R$", full.names = TRUE) %>%
-  map_dfr(scan_indicator_uses) %>%
+  map(scan_indicator_uses) %>%
+  bind_rows(tibble(id = integer(), uses = list()), .) %>%   # keeps the columns even if nothing is found
   unnest(uses) %>%
   filter(uses != id) %>%
   distinct(id, uses) %>%
@@ -207,10 +241,11 @@ indicator_uses <- list.files(here("Scripts"), pattern = "^process_.*\\.R$", full
 
 meta_new <- meta_new %>%
   left_join(indicator_uses, by = "id") %>%
-  relocate(external_ind, .after = dimensions)
+  left_join(sheets %>% select(id = indicator_id, unit), by = "id") %>%
+  relocate(unit, external_ind, .after = dimensions)
 
 
-## 6. Countries (ISO table) ----
+## 7. Countries (ISO table) ----
 
 # Maps every known spelling of each country (CEPALSTAT's English and Spanish names, the names in
 # Data/Tables/External/lac_countries.xlsx and the manual entries below) to its standard CEPALSTAT name and ID,
@@ -320,9 +355,14 @@ duplicated <- env %>% filter(n() > 1, .by = id) %>% distinct(id, .keep_all = TRU
 unmatched_profile <- tibble(id = setdiff(profile_ids, env$id)) %>%
   left_join(meta %>% select(id, indicator), by = "id")
 
+# The saved indicator table. last_update changes with every data upload, so it's left out of the
+# comparisons below.
+old_indicators <- read_previous(paths$indicators)
+old_indicators_compared <- if (is.null(old_indicators)) NULL else select(old_indicators, -any_of("last_update"))
+
 # Changes to the reference tables in Data/Tables/, summarized as counts
 table_changes <- bind_rows(
-  compare_tables(read_previous(paths$indicators), env, key = "id", table = "indicators", label = "indicator"),
+  compare_tables(old_indicators_compared, select(env, -last_update), key = "id", table = "indicators", label = "indicator"),
   compare_tables(read_previous(paths$sources, "sources"), sources, key = "source_id", table = "sources", label = "description"),
   compare_links(read_previous(paths$sources, "by_indicator"), indicator_source, item_col = "source_id", table = "sources by indicator"),
   compare_tables(read_previous(paths$notes, "notes"), notes, key = "note_id", table = "notes", label = "description"),
@@ -330,6 +370,107 @@ table_changes <- bind_rows(
   compare_tables(read_previous(paths$dimensions, "dimensions"), dimensions, key = "dim_id", table = "dimensions", label = "name"),
   compare_links(read_previous(paths$dimensions, "by_indicator"), indicator_dimension, item_col = "dim_id", table = "dimensions by indicator")
 )
+
+# Unit changes, in English and Spanish (compared with the saved indicator table)
+unit_changes <- tibble(id = integer(), indicator = character(), lang = character(), old_unit = character(), new_unit = character())
+if (!is.null(old_indicators) && "unit" %in% names(old_indicators)) {
+  unit_changes <- old_indicators %>%
+    distinct(id, .keep_all = TRUE) %>%
+    select(id, any_of(c("unit", "unit_es"))) %>%
+    pivot_longer(-id, names_to = "column", values_to = "old_unit") %>%
+    inner_join(
+      env %>%
+        distinct(id, .keep_all = TRUE) %>%
+        select(id, indicator, unit, unit_es) %>%
+        pivot_longer(c(unit, unit_es), names_to = "column", values_to = "new_unit"),
+      by = c("id", "column")
+    ) %>%
+    filter(coalesce(old_unit, "") != coalesce(new_unit, "")) %>%
+    filter(id %in% sheets$indicator_id) %>%   # indicators with no metadata sheet are listed separately
+    mutate(lang = if_else(column == "unit", "EN", "ES"))
+}
+
+# Indicators with no metadata sheet in CEPALSTAT (no unit or text, so no snapshot)
+no_sheet <- env %>%
+  distinct(id, .keep_all = TRUE) %>%
+  filter(!id %in% sheets$indicator_id)
+
+# Metadata snapshots: the new text of each file, compared with the saved file (if any)
+snapshot_rows <- sheets %>%
+  left_join(
+    env %>%
+      distinct(id, .keep_all = TRUE) %>%
+      select(indicator_id = id, indicator_name = indicator, indicator_name_es = indicator_es),
+    by = "indicator_id"
+  )
+
+snapshots <- snapshot_rows %>%
+  select(indicator_id, indicator_name) %>%
+  mutate(
+    path     = file.path(paths$snapshots, glue("{indicator_id}.md")),
+    text     = map_chr(split(snapshot_rows, seq_len(nrow(snapshot_rows))), format_metadata_snapshot),
+    is_new   = !file.exists(path),
+    old_text = map_chr(path, function(f) if (file.exists(f)) read_file(f) else NA_character_),
+    changed  = !is_new & old_text != text
+  )
+
+# Snapshots of indicators that no longer have metadata in CEPALSTAT (their files are deleted in part D)
+removed_snapshots <- list.files(paths$snapshots, pattern = "^[0-9]+\\.md$", full.names = TRUE) %>%
+  discard(~ .x %in% snapshots$path)
+
+# Text changes in the six sections of each changed snapshot, sized by describe_text_change()
+text_changes <- tibble(indicator_id = integer(), indicator_name = character(), header = character(), change = character())
+if (any(snapshots$changed)) {
+  text_changes <- snapshots %>%
+    filter(changed) %>%
+    mutate(sections = map2(old_text, text, function(old, new) {
+      inner_join(parse_metadata_snapshot(old), parse_metadata_snapshot(new), by = "header", suffix = c("_old", "_new"))
+    })) %>%
+    select(indicator_id, indicator_name, sections) %>%
+    unnest(sections) %>%
+    filter(str_squish(text_old) != str_squish(text_new)) %>%
+    mutate(change = map2_chr(text_old, text_new, describe_text_change))
+}
+
+# Dimension member changes (compared with the saved members sheet). Members of a dimension that is new
+# or no longer used aren't listed one by one; those dimensions appear in the table changes instead.
+member_changes <- tibble(line = character())
+old_members <- read_previous(paths$dimensions, "members")
+if (!is.null(old_members)) {
+  old_members <- old_members %>% mutate(across(c(dim_id, member_id), as.integer))
+  dim_names   <- dimensions %>% select(dim_id, dim_name = name)
+
+  members_added <- anti_join(dim_members, old_members, by = c("dim_id", "member_id")) %>%
+    filter(dim_id %in% old_members$dim_id) %>%
+    mutate(line = glue('added member "{name}"'))
+  members_removed <- anti_join(old_members, dim_members, by = c("dim_id", "member_id")) %>%
+    filter(dim_id %in% dim_members$dim_id) %>%
+    mutate(line = glue('removed member "{name}"'))
+  members_renamed <- inner_join(old_members, dim_members, by = c("dim_id", "member_id"), suffix = c("_old", "")) %>%
+    filter(coalesce(name_old, "") != coalesce(name, "") | coalesce(name_es_old, "") != coalesce(name_es, "")) %>%
+    mutate(line = if_else(
+      coalesce(name_old, "") != coalesce(name, ""),
+      glue('renamed member "{name_old}" -> "{name}"'),
+      glue('renamed member (ES) "{name_es_old}" -> "{name_es}"')
+    ))
+
+  member_changes <- bind_rows(members_added, members_removed, members_renamed) %>%
+    left_join(dim_names, by = "dim_id") %>%
+    mutate(line = glue("Dimension {dim_id} ({dim_name}): {line}")) %>%
+    select(line)
+}
+
+# HTML tags other than <br> in the metadata text: kept as they are in the snapshots, and listed so
+# they can be reviewed
+other_html_tags <- sheet_long %>%
+  select(any_of(metadata_fields$field)) %>%
+  unlist() %>%
+  str_extract_all("<[A-Za-z][^>]*>") %>%    # opening tags only, so each link or tag is counted once
+  unlist() %>%
+  str_extract("(?<=<)[A-Za-z]+") %>%
+  tolower() %>%
+  discard(~ .x == "br") %>%
+  table()
 
 # Country (ISO) table: compared with the saved version. Changes are rare, so each one is listed in full.
 old_iso <- (read_previous(paths$iso) %||% iso_new) %>%
@@ -382,6 +523,14 @@ info <- list(
     glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
   "Indicators listed in more than one place in the tree" = label_ind(duplicated$id, duplicated$indicator),
   "Profile indicators not in the environmental tree" = label_ind(unmatched_profile$id, unmatched_profile$indicator),
+  "Unit changes" =
+    glue('{label_ind(unit_changes$id, unit_changes$indicator, width = 45)}: unit ({unit_changes$lang}) "{unit_changes$old_unit}" -> "{unit_changes$new_unit}"'),
+  "Indicators with no metadata sheet in CEPALSTAT (no snapshot)" = label_ind(no_sheet$id, no_sheet$indicator),
+  "Metadata text changes" =
+    glue("{label_ind(text_changes$indicator_id, text_changes$indicator_name, width = 45)}: {text_changes$header}, {text_changes$change}"),
+  "Dimension member changes" = member_changes$line,
+  "HTML tags other than <br> in the metadata text (kept as they are in the snapshots)" =
+    glue("<{names(other_html_tags)}>: {as.integer(other_html_tags)} occurrence(s)"),
   "Changes to the tables in Data/Tables/" = summarize_changes(table_changes),
   "Changes to the country (ISO) table" = c(country_changes$line, spelling_changes$line),
   "Country names that don't match a CEPALSTAT country (left out of the ISO table)" = unmatched_names
@@ -397,9 +546,24 @@ ensure_dir(here("Data/Tables"))
 write_xlsx(list(indicators = env), paths$indicators)
 write_xlsx(list(sources = sources, by_indicator = indicator_source), paths$sources)
 write_xlsx(list(notes = notes, by_indicator = indicator_note), paths$notes)
-write_xlsx(list(dimensions = dimensions, by_indicator = indicator_dimension), paths$dimensions)
+write_xlsx(list(dimensions = dimensions, by_indicator = indicator_dimension, members = dim_members), paths$dimensions)
 write_xlsx(list(iso = iso_new), paths$iso)
 message("✅ Tables saved to Data/Tables/")
+
+## Metadata snapshots: one file per indicator, always rewritten (git only shows files whose text changed) ----
+ensure_dir(paths$snapshots)
+walk2(snapshots$text, snapshots$path, function(text, path) write_file(text, path))
+file.remove(removed_snapshots)
+
+n_new     <- sum(snapshots$is_new)
+n_changed <- sum(snapshots$changed)
+n_removed <- length(removed_snapshots)
+if (n_new + n_changed + n_removed > 0) {
+  message(glue("📝 Metadata snapshots: {n_new} new, {n_changed} changed, {n_removed} removed. ",
+               "Commit Data/Tables/Metadata/ to keep the history of these changes."))
+} else {
+  message("✅ Metadata snapshots unchanged")
+}
 
 ## Metadata table: updated without asking unless indicators are missing ----
 needs_review <- any(lengths(review) > 0)
