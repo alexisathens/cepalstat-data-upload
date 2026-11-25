@@ -749,37 +749,44 @@ add_footnotes <- function(df, footnotes, calculate_regional) {
   df
 }
 
-# Compare a cleaned indicator's assigned source and footnote ids against what's currently published on
-# CEPALSTAT, printing a diagnostic message -- never stops execution or modifies df. Only runs when
-# diagnostics = TRUE, and skips entirely for new_indicator = TRUE (nothing published yet to compare
-# against). Footnotes are compared as a set across the whole indicator, since CEPALSTAT's /footnotes
-# endpoint isn't row-level -- this catches an id disappearing/appearing entirely, not one landing on
-# the wrong specific row while the overall set stays the same.
+# Compare a cleaned indicator's assigned source and footnotes against what's currently published on
+# CEPALSTAT, and print both with their names (before and after when they changed). Never stops
+# execution or modifies df. Only runs when diagnostics = TRUE. For new indicators (nothing published
+# yet), prints the assigned source and footnotes without comparing.
+# Published sources and footnotes come from the CEPALSTAT API; names come from the tables built by
+# build_tables.R (Data/Tables/source_table.xlsx and note_table.xlsx). Footnotes are compared as a set
+# across the whole indicator, since CEPALSTAT's /footnotes endpoint isn't row-level.
 # Sample usage: df_l %>% compare_metadata(indicator_id = 4046, new_indicator = FALSE, diagnostics = TRUE)
-compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
+compare_metadata <- function(df, indicator_id, new_indicator, diagnostics, note_width = 100) {
   if (!diagnostics) return(df)
 
-  if (new_indicator) {
-    return(df)
+  ## names for labeling, from the local tables (first sheet of each) and, for published items, the API
+  read_table <- function(file) {
+    path <- here("Data/Tables", file)
+    if (file.exists(path)) read_xlsx(path, sheet = 1) else NULL
+  }
+  src <- read_table("source_table.xlsx")
+  nts <- read_table("note_table.xlsx")
+
+  source_names <- tibble(id = as.integer(src$source_id), label = as.character(glue("{src$organization_acronym}: {src$description}")))
+  note_names   <- tibble(id = as.integer(nts$note_id), label = as.character(nts$description))
+
+  # Formats ids as "id - name" lines (marked when added or removed); unknown ids get a hint
+  label_lines <- function(ids, names, width = Inf, mark = integer(), mark_text = "") {
+    if (length(ids) == 0) return("   (none)")
+    tibble(id = as.integer(ids)) %>%
+      left_join(distinct(names, id, .keep_all = TRUE), by = "id") %>%
+      mutate(
+        label = coalesce(label, "(not in Data/Tables; re-run build_tables.R to get its name)"),
+        label = if (is.finite(width)) str_trunc(label, width) else label,
+        line  = glue("   {id} - {label}{if_else(id %in% mark, mark_text, '')}")
+      ) %>%
+      pull(line)
   }
 
-  # compare source
-  pub_source_df <- get_indicator_source(indicator_id) %>% slice(1) 
-  pub_source <- pub_source_df %>% pull(id)
-  pub_source_name <- glue("{pub_source_df$organization_acronym} / {pub_source_df$description}")
-  new_source <- unique(df$source_id)
-
-  if (setequal(new_source, pub_source)) {
-    message(glue(" - Source unchanged ({pub_source}): {pub_source_name}"))
-  } else {
-    message(glue("⚠️ Source changed: {paste(pub_source, collapse = ',')} → {paste(new_source, collapse = ',')}"))
-  }
-
-  # compare footnotes (set-level, across the whole indicator)
-  pub_footnotes <- get_indicator_footnotes(indicator_id)
-  pub_ids <- if ("id" %in% names(pub_footnotes)) sort(pub_footnotes$id) else integer(0)
-
-  new_ids <- df$footnotes_id %>%
+  ## sources and footnotes assigned in this run
+  new_source <- unique(as.integer(df$source_id))
+  new_notes <- df$footnotes_id %>%
     str_split(",") %>%
     unlist() %>%
     trimws() %>%
@@ -788,19 +795,75 @@ compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
     unique() %>%
     sort()
 
-  added <- setdiff(new_ids, pub_ids)
-  removed <- setdiff(pub_ids, new_ids)
+  if (new_indicator) {
+    message(" - Source (new indicator):\n", paste(label_lines(new_source, source_names), collapse = "\n"))
+    message(glue(" - Footnotes (new indicator) ({length(new_notes)}):"), "\n",
+            paste(label_lines(new_notes, note_names, width = note_width), collapse = "\n"))
+    return(df)
+  }
+
+  ## compare source
+  pub_source_df <- get_indicator_source(indicator_id) %>% slice(1)
+  pub_source <- as.integer(pub_source_df$id)
+  source_names <- bind_rows(
+    source_names,
+    tibble(id = pub_source, label = as.character(glue("{pub_source_df$organization_acronym}: {pub_source_df$description}")))
+  )
+
+  if (setequal(new_source, pub_source)) {
+    message(" - Source unchanged:\n", paste(label_lines(pub_source, source_names), collapse = "\n"))
+  } else {
+    message("⚠️ Source changed:\n",
+            "   Before:\n", paste0("   ", label_lines(pub_source, source_names), collapse = "\n"), "\n",
+            "   After:\n",  paste0("   ", label_lines(new_source, source_names), collapse = "\n"))
+  }
+
+  ## compare footnotes (set-level, across the whole indicator)
+  pub_footnotes <- get_indicator_footnotes(indicator_id)
+  pub_notes <- if ("id" %in% names(pub_footnotes)) sort(as.integer(pub_footnotes$id)) else integer(0)
+  if (all(c("id", "description") %in% names(pub_footnotes))) {
+    note_names <- bind_rows(note_names, tibble(id = as.integer(pub_footnotes$id), label = pub_footnotes$description))
+  }
+
+  added   <- setdiff(new_notes, pub_notes)
+  removed <- setdiff(pub_notes, new_notes)
 
   if (length(added) == 0 && length(removed) == 0) {
-    message(glue(" - Footnotes unchanged ({paste(new_ids, collapse = ',')})"))
+    message(glue(" - Footnotes unchanged ({length(new_notes)}):"), "\n",
+            paste(label_lines(new_notes, note_names, width = note_width), collapse = "\n"))
   } else {
-    message(glue(
-      "⚠️ Footnotes changed -- added: {if (length(added)) paste(added, collapse = ',') else 'none'}, ",
-      "removed: {if (length(removed)) paste(removed, collapse = ',') else 'none'}"
-    ))
+    message("⚠️ Footnotes changed:\n",
+            glue("   Before ({length(pub_notes)}):"), "\n",
+            paste0("   ", label_lines(pub_notes, note_names, note_width, mark = removed, mark_text = "  [removed]"), collapse = "\n"), "\n",
+            glue("   After ({length(new_notes)}):"), "\n",
+            paste0("   ", label_lines(new_notes, note_names, note_width, mark = added, mark_text = "  [added]"), collapse = "\n"))
   }
 
   df
+}
+
+# Print the latest year in the new data, next to the latest published year and the max year set for
+# the source in config.R. Flags new data that ends earlier than what's published, since uploading it
+# would remove years from CEPALSTAT.
+# Sample usage: report_latest_year(comp, max_year = max_year_fao)
+report_latest_year <- function(comp, max_year) {
+  latest <- function(values, years) {
+    years <- suppressWarnings(as.numeric(years[!is.na(values)]))
+    if (all(is.na(years))) NA_real_ else max(years, na.rm = TRUE)
+  }
+  if (!"Years" %in% names(comp)) return(invisible(NULL))
+
+  new_year <- latest(comp$value, comp$Years)
+  pub_year <- latest(comp$value.pub, comp$Years)
+  pub_text <- if (is.na(pub_year)) "none" else pub_year
+
+  if (!is.na(new_year) && !is.na(pub_year) && new_year < pub_year) {
+    message(glue("⚠️ Latest year in the data: {new_year}, earlier than the latest published year ({pub_year}); ",
+                 "max year for this source: {max_year}"))
+  } else {
+    message(glue(" - Latest year in the data: {new_year} (published: {pub_text}; max year for this source: {max_year})"))
+  }
+  invisible(NULL)
 }
 
 

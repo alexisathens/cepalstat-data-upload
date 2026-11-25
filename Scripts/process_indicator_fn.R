@@ -61,6 +61,9 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     create_comp_file(., indicator_id, dim_config, new_indicator) %>%
     assert_no_na_cols(., !contains("value"))
   
+  # print the latest year in the data, next to the latest published year and the source's max year
+  report_latest_year(comp, max_year)
+
   # run summary diagnostics
   if (diagnostics) {
     comp %>% 
