@@ -176,7 +176,7 @@ meta_new <- env %>%
   ) %>%
   left_join(manual_notes, by = "id")
 
-# Other CEPALSTAT indicators each indicator uses (e.g. GDP as a denominator). Found by scanning the
+# external_ind: other CEPALSTAT indicators each indicator uses (e.g. GDP as a denominator). Found by scanning the
 # process_*.R scripts: each indicator's section starts with a header like "## ---- indicator 4186 - ..."
 # and ends at the next "# ----" header, and any call.data(<id>) inside it is recorded.
 # Commented-out lines and an indicator's use of its own id are ignored.
@@ -203,10 +203,11 @@ indicator_uses <- list.files(here("Scripts"), pattern = "^process_.*\\.R$", full
   filter(uses != id) %>%
   distinct(id, uses) %>%
   arrange(id, uses) %>%
-  summarise(uses_indicators = paste(uses, collapse = "; "), .by = id)
+  summarise(external_ind = paste(uses, collapse = "; "), .by = id)
 
 meta_new <- meta_new %>%
-  left_join(indicator_uses, by = "id")
+  left_join(indicator_uses, by = "id") %>%
+  relocate(external_ind, .after = dimensions)
 
 
 ## 6. Countries (ISO table) ----
