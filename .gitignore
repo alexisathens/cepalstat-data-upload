@@ -5,6 +5,8 @@
 .quarto/
 *_files/
 *_cache/
+Archive/
+Data/Backup/*
 Data/Checks/*
 !Data/Checks/comp_id3381.xlsx
 !Data/Checks/comp_id4243.xlsx
@@ -13,8 +15,10 @@ Data/Cleaned/*
 !Data/Cleaned/.gitkeep
 Data/Misc/
 Data/Raw/
+Exploratory Analysis/
 Pilot/
 CEPALSTAT Review/
+Scripts/**/*.html
 
 # Metadata: the published snapshots ({id}.md, written by build_tables.R) and the prompts are tracked.
 # Drafts and other working files (any name with an underscore, e.g. 3381_draft.md) and other
