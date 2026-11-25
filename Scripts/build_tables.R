@@ -4,6 +4,8 @@
 #   Data/Tables/source_table.xlsx     - sources    + by_indicator (indicator_id, source_id)
 #   Data/Tables/note_table.xlsx       - notes      + by_indicator (indicator_id, note_id)
 #   Data/Tables/dimension_table.xlsx  - dimensions + by_indicator (indicator_id, dim_id, order, position)
+#   Data/Tables/iso_codes.xlsx        - every known spelling of each country, mapped to its CEPALSTAT
+#                                       name and ID, with ISO codes and ECLAC flags; read as `iso` by utils.R
 #   Data/indicator_metadata.xlsx      - one row per indicator; read as `meta` by utils.R
 #
 # The script runs in four parts:
@@ -30,8 +32,13 @@ paths <- list(
   sources    = here("Data/Tables/source_table.xlsx"),
   notes      = here("Data/Tables/note_table.xlsx"),
   dimensions = here("Data/Tables/dimension_table.xlsx"),
+  iso        = here("Data/Tables/iso_codes.xlsx"),
   metadata   = here("Data/indicator_metadata.xlsx")
 )
+
+# The country (ISO) table also needs two local reference files; check for them before downloading anything
+check_raw_file(here("Data/Misc", c("code_iso_mp.csv", "lac_countries.xlsx")), source = "the ISO reference table",
+               how = "These reference files are not stored in git. Ask the project maintainer for a copy of the Data/Misc folder.")
 
 
 # ==== A. Download and build tables ====
@@ -170,6 +177,84 @@ meta_new <- env %>%
   left_join(manual_notes, by = "id")
 
 
+## 6. Countries (ISO table) ----
+
+# Maps every known spelling of each country (CEPALSTAT's English and Spanish names, the names in
+# Data/Misc/lac_countries.xlsx and the manual entries below) to its standard CEPALSTAT name and ID,
+# with ISO codes and ECLAC flags. Read as `iso` by utils.R to standardize country names.
+
+# Spellings found in source data that match none of the names above: name in data -> CEPALSTAT name
+manual_names <- tribble(
+  ~name,                         ~std_name,
+  "Trinidad & Tobago",           "Trinidad and Tobago",
+  "Sint Maarten",                "Sint Maarten (Dutch part)",
+  "Bermuda",                     "Bermudas",
+  "CuraÃ§ao",                    "Curaçao",
+  "Dominican Republic (the)",    "Dominican Republic",
+  "Bahamas (the)",               "Bahamas",
+  "Latin America and Caribbean", "Latin America and the Caribbean"
+)
+
+# Country names in the World Data ISO file that differ from CEPALSTAT's: World Data name = CEPALSTAT name.
+# (World Data combines England and Scotland as the United Kingdom, so those can't be mapped.)
+world_data_names <- c(
+  "Bermuda"                  = "Bermudas",
+  "Czechia"                  = "Czech Republic",
+  "North Korea"              = "Democratic Peoples Republic of Korea (North Korea)",
+  "Falkland Islands"         = "Falkland Islands (Malvinas)",
+  "Guinea-Bissau"            = "Guinea Bissau",
+  "Netherlands"              = "Holland",
+  "South Korea"              = "Republic of Korea (South Korea)",
+  "United States of America" = "United States",
+  "Sint Maarten"             = "Sint Maarten (Dutch part)",
+  "Virgin Islands"           = "United States Virgin Islands"
+)
+
+# ECLAC associate members (https://www.cepal.org/en/about/member-states-and-associate-members)
+eclac_associates <- c("Anguilla", "Aruba", "Bermudas", "British Virgin Islands", "Cayman Islands", "Curaçao",
+                      "Guadeloupe", "French Guiana", "Martinique", "Montserrat", "Puerto Rico",
+                      "Sint Maarten (Dutch part)", "Turks and Caicos Islands", "United States Virgin Islands")
+
+regional_iso3 <- c("LAA", "CAR", "SAA", "CAA")   # regional aggregates in lac_countries.xlsx
+
+# CEPALSTAT countries (dimension 208), with English and Spanish names
+cs_country <- get_dimension_table(208)
+lac        <- read_excel(here("Data/Misc/lac_countries.xlsx"))
+
+# One row per CEPALSTAT country: standard name, ISO codes (matched by name) and flags
+countries <- cs_country %>%
+  select(cepalstat = id, std_name = name) %>%
+  left_join(
+    read_csv(here("Data/Misc/code_iso_mp.csv"), show_col_types = FALSE) %>%
+      transmute(std_name = recode(`...1`, !!!world_data_names), iso2 = alpha2, iso3 = alpha3),
+    by = "std_name", relationship = "many-to-many"
+  ) %>%
+  mutate(
+    iso3   = if_else(std_name == "World", "WLD", iso3),
+    in_lac = iso3 %in% lac$iso3,
+    ECLAC  = if_else(in_lac & iso3 != "WLD", "Y", NA),
+    ECLACa = if_else(ECLAC %in% "Y" | std_name %in% eclac_associates, "Y", NA),
+    region = if_else(in_lac & iso3 %in% regional_iso3, "Y", NA),
+    world  = if_else(in_lac & iso3 %in% "WLD", "Y", NA)
+  ) %>%
+  select(-in_lac)
+
+# Every spelling of each country, in one list
+spellings <- bind_rows(
+  cs_country %>% select(cepalstat = id, name, name_es) %>% pivot_longer(-cepalstat, names_to = "type", values_to = "name"),
+  lac %>%
+    pivot_longer(c(english, english_short, spanish, spanish_short), names_to = "type", values_to = "name") %>%
+    inner_join(countries %>% select(cepalstat, iso3), by = "iso3", relationship = "many-to-many"),
+  manual_names %>% inner_join(countries %>% select(cepalstat, std_name), by = "std_name")
+) %>%
+  distinct(cepalstat, name)
+
+iso_new <- spellings %>%
+  left_join(countries, by = "cepalstat", relationship = "many-to-many") %>%
+  select(cepalstat, name, std_name, ECLAC, ECLACa, region, world, iso2, iso3) %>%
+  arrange(desc(ECLAC), std_name)
+
+
 # ==== B. Compare with the saved files ====
 
 # `meta` is the current Data/indicator_metadata.xlsx, loaded by utils.R
@@ -213,6 +298,40 @@ table_changes <- bind_rows(
   compare_links(read_previous(paths$dimensions, "by_indicator"), indicator_dimension, item_col = "dim_id", table = "dimensions by indicator")
 )
 
+# Country (ISO) table: compared with the saved version (or Data/iso_codes.xlsx, its location before
+# Data/Tables/, on the first run). Changes are rare, so each one is listed in full.
+old_iso <- (read_previous(paths$iso) %||% read_previous(here("Data/iso_codes.xlsx")) %||% iso_new) %>%
+  filter(!is.na(cepalstat))
+old_countries <- old_iso %>% select(any_of(names(countries))) %>% distinct()
+old_spellings <- old_iso %>% distinct(cepalstat, name)
+
+country_names <- bind_rows(countries, old_countries) %>%
+  distinct(cepalstat, .keep_all = TRUE) %>%
+  select(cepalstat, country = std_name)
+
+country_changes <- compare_tables(old_countries, countries, key = "cepalstat", table = "countries") %>%
+  mutate(cepalstat = as.numeric(id)) %>%
+  left_join(country_names, by = "cepalstat") %>%
+  mutate(line = if_else(
+    change == "changed",
+    glue("{cepalstat} - {country}: {field} {coalesce(old_value, '(blank)')} -> {coalesce(new_value, '(blank)')}"),
+    glue("{cepalstat} - {country}: country {change}")
+  ))
+
+spelling_changes <- bind_rows(
+  anti_join(spellings, old_spellings, by = c("cepalstat", "name")) %>% mutate(change = "added"),
+  anti_join(old_spellings, spellings, by = c("cepalstat", "name")) %>% mutate(change = "removed")
+) %>%
+  filter(!cepalstat %in% country_changes$cepalstat[country_changes$change != "changed"]) %>%  # whole country already listed
+  left_join(country_names, by = "cepalstat") %>%
+  mutate(line = glue("{cepalstat} - {country}: {change} spelling \"{name}\""))
+
+# Names in the reference files that don't match any CEPALSTAT country (left out of the table)
+unmatched_names <- c(
+  lac %>% filter(!iso3 %in% countries$iso3) %>% glue_data("{iso3} - {english} (lac_countries.xlsx)"),
+  manual_names %>% filter(!std_name %in% countries$std_name) %>% glue_data("\"{name}\" -> \"{std_name}\" (manual entry)")
+)
+
 
 # ==== C. Summary ====
 
@@ -231,7 +350,9 @@ info <- list(
     glue("{label_ind(source_changed$id, source_changed$indicator, width = 45)}: {source_changed$old_source} -> {source_changed$source}"),
   "Indicators listed in more than one place in the tree" = label_ind(duplicated$id, duplicated$indicator),
   "Profile indicators not in the environmental tree" = label_ind(unmatched_profile$id, unmatched_profile$indicator),
-  "Changes to the tables in Data/Tables/" = summarize_changes(table_changes)
+  "Changes to the tables in Data/Tables/" = summarize_changes(table_changes),
+  "Changes to the country (ISO) table" = c(country_changes$line, spelling_changes$line),
+  "Country names that don't match a CEPALSTAT country (left out of the ISO table)" = unmatched_names
 )
 
 print_review_summary(review, info)
@@ -245,6 +366,7 @@ write_xlsx(list(indicators = env), paths$indicators)
 write_xlsx(list(sources = sources, by_indicator = indicator_source), paths$sources)
 write_xlsx(list(notes = notes, by_indicator = indicator_note), paths$notes)
 write_xlsx(list(dimensions = dimensions, by_indicator = indicator_dimension), paths$dimensions)
+write_xlsx(list(iso = iso_new), paths$iso)
 message("✅ Tables saved to Data/Tables/")
 
 ## Metadata table: updated without asking unless indicators are missing ----
