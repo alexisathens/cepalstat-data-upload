@@ -32,7 +32,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   meta_row <- meta %>% filter(id == indicator_id)
   if (nrow(meta_row) == 0) {
     stop(glue(
-      "❌ Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Re-run build_metadata_table.R (if the indicator exists in CEPALSTAT) ",
+      "❌ Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Re-run build_tables.R (if the indicator exists in CEPALSTAT) ",
       "or add a row manually with at least id, indicator, and source. Then reload utils.R so `meta` is refreshed."
     ))
   }

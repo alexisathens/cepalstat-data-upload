@@ -30,7 +30,7 @@ if (length(missing_files) > 0) {
 }
 
 # read in ISO with cepalstat ids
-iso <- read_xlsx(here("Data/iso_codes.xlsx"))
+iso <- read_xlsx(here("Data/Tables/iso_codes.xlsx"))
 
 iso %<>%
   filter(ECLACa == "Y") %>%

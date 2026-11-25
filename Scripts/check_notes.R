@@ -15,7 +15,7 @@ library(CepalStatR)
 
 source(here("Scripts/utils.R"))
 
-## 1. Retrieve full list of environmental indicators (same approach as build_metadata_table.R) ----
+## 1. Retrieve full list of environmental indicators ----
 
 ind <- call.indicators() %>% as_tibble()
 

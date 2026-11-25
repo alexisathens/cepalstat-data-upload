@@ -156,8 +156,7 @@ To manage this two-step metadata revision easily, utilize the wrapper script `ru
 
 | Script | Associated Step | Purpose |
 |---|---|---|
-| `build_iso_table.R` | 0. setup | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
-| `build_metadata_table.R` | 0. setup | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
+| `build_tables.R` | 0. setup | Download reference tables from the CEPALSTAT API (indicators, sources, notes, dimensions, countries), summarize changes since the last run, and update `Data/Tables/` and `Data/indicator_metadata.xlsx` |
 | `process_indicator_fn.R` | 2. clean data | Core `process_indicator()` function used by all cleaning scripts |
 | `run_all.R` | 2. clean data | Controller for `process_indicator_fn.R` |
 | `utils.R` | 2. clean data | Shared utility functions (API calls, formatting, validation) |
@@ -173,7 +172,13 @@ Data/
 ├── Raw/          # Raw source downloads
 ├── Cleaned/      # Final files for Wasabi upload (id{indicator_id}_{timestamp}.xlsx)
 ├── Checks/       # Comparison files vs. published data (comp_id{indicator_id}.xlsx)
-├── iso_codes.xlsx           # Country name ↔ CEPALSTAT ID mapping
-└── indicator_metadata.xlsx  # Indicator reference table (id, area, source, dimensions, notes), rebuilt via `build_metadata_table.R`
+├── Misc/         # Local reference files for the country table (not stored in git)
+├── Tables/       # Reference tables from CEPALSTAT, rebuilt via `build_tables.R`
+│   ├── indicator_table.xlsx  # Indicators and their categories (English and Spanish)
+│   ├── source_table.xlsx     # Sources, and the sources of each indicator
+│   ├── note_table.xlsx       # Footnotes, and the footnotes of each indicator
+│   ├── dimension_table.xlsx  # Dimensions, and the dimensions of each indicator
+│   └── iso_codes.xlsx        # Country name ↔ CEPALSTAT ID mapping, with ISO codes and ECLAC flags
+└── indicator_metadata.xlsx  # One row per indicator (id, names, categories, source, dimensions, flags, notes), rebuilt via `build_tables.R`
 Docs/       # Misc documentation and visuals
 ```

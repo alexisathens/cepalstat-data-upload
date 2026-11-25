@@ -264,10 +264,9 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
     mutate(across(.cols = matches("value|^abs_diff$|^diff$|^perc_diff$|^abs_perc_diff$"), .fns = as.numeric)) %>%
     mutate(across(.cols = starts_with("flag_"), .fns = as.logical))
 
-  # One lookup into Data/indicator_metadata.xlsx for every field this indicator has there - a
-  # 0-row result (indicator not yet in the metadata sheet) or a column the sheet doesn't have yet
-  # (e.g. source_id - see build_metadata_table.R, which designs for it but the sheet checked in
-  # today predates that column) falls back to NA_character_ for that field rather than failing.
+  # One lookup into Data/indicator_metadata.xlsx (built by build_tables.R) for every field this
+  # indicator has there - a 0-row result (indicator not yet in the metadata sheet) or a column the
+  # sheet doesn't have falls back to NA_character_ for that field rather than failing.
   # Deliberately sheet-only, no CEPALSTAT API calls, for every field on this table.
   meta_row <- meta %>% filter(id == indicator_id)
   meta_field <- function(col) {

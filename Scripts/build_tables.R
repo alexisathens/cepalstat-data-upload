@@ -298,9 +298,8 @@ table_changes <- bind_rows(
   compare_links(read_previous(paths$dimensions, "by_indicator"), indicator_dimension, item_col = "dim_id", table = "dimensions by indicator")
 )
 
-# Country (ISO) table: compared with the saved version (or Data/iso_codes.xlsx, its location before
-# Data/Tables/, on the first run). Changes are rare, so each one is listed in full.
-old_iso <- (read_previous(paths$iso) %||% read_previous(here("Data/iso_codes.xlsx")) %||% iso_new) %>%
+# Country (ISO) table: compared with the saved version. Changes are rare, so each one is listed in full.
+old_iso <- (read_previous(paths$iso) %||% iso_new) %>%
   filter(!is.na(cepalstat))
 old_countries <- old_iso %>% select(any_of(names(countries))) %>% distinct()
 old_spellings <- old_iso %>% distinct(cepalstat, name)

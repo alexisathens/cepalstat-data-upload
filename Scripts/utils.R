@@ -20,7 +20,7 @@ library(usethis)
 
 # ---- Global variables ----
 
-iso <- read_xlsx(here("Data/iso_codes.xlsx"))
+iso <- read_xlsx(here("Data/Tables/iso_codes.xlsx"))  # built by build_tables.R
 
 iso %<>% 
   filter(ECLACa == "Y") %>% 
