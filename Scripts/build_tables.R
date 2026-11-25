@@ -36,9 +36,8 @@ paths <- list(
   metadata   = here("Data/indicator_metadata.xlsx")
 )
 
-# The country (ISO) table also needs two local reference files; check for them before downloading anything
-check_raw_file(here("Data/Misc", c("code_iso_mp.csv", "lac_countries.xlsx")), source = "the ISO reference table",
-               how = "These reference files are not stored in git. Ask the project maintainer for a copy of the Data/Misc folder.")
+# Reference files from outside CEPALSTAT, used for the metadata flags (step 5) and the country table (step 6)
+external_dir <- here("Data/Tables/External")
 
 
 # ==== A. Download and build tables ====
@@ -149,15 +148,15 @@ ind_dims <- indicator_dimension %>%
             .by = indicator_id) %>%
   rename(id = indicator_id)
 
-# Yearbook and profile flags, from local files
-yearbook_ids <- read_xlsx(here("Data/AE2026-Indice-WEB-PDF.xlsx"), sheet = "AE2026-HTML&PDF_ID",
+# Yearbook and profile flags, from the external reference files
+yearbook_ids <- read_xlsx(file.path(external_dir, "AE2026-Indice-WEB-PDF.xlsx"), sheet = "AE2026-HTML&PDF_ID",
                           .name_repair = "unique_quiet") %>%
   pull(`ID INDICADOR CEPALSTAT`) %>%
   as.numeric() %>%   # non-numeric cells (e.g. section headers) become NA and are dropped below
   suppressWarnings() %>%
   na.omit()
 
-profile_ids <- read_xlsx(here("Data/profile_data.xlsx")) %>% pull(Indicator)
+profile_ids <- read_xlsx(file.path(external_dir, "profile_data.xlsx")) %>% pull(Indicator)
 
 # One row per indicator (an indicator listed twice in the tree keeps its first placement)
 meta_new <- env %>%
@@ -180,7 +179,7 @@ meta_new <- env %>%
 ## 6. Countries (ISO table) ----
 
 # Maps every known spelling of each country (CEPALSTAT's English and Spanish names, the names in
-# Data/Misc/lac_countries.xlsx and the manual entries below) to its standard CEPALSTAT name and ID,
+# Data/Tables/External/lac_countries.xlsx and the manual entries below) to its standard CEPALSTAT name and ID,
 # with ISO codes and ECLAC flags. Read as `iso` by utils.R to standardize country names.
 
 # Spellings found in source data that match none of the names above: name in data -> CEPALSTAT name
@@ -219,13 +218,13 @@ regional_iso3 <- c("LAA", "CAR", "SAA", "CAA")   # regional aggregates in lac_co
 
 # CEPALSTAT countries (dimension 208), with English and Spanish names
 cs_country <- get_dimension_table(208)
-lac        <- read_excel(here("Data/Misc/lac_countries.xlsx"))
+lac        <- read_excel(file.path(external_dir, "lac_countries.xlsx"))
 
 # One row per CEPALSTAT country: standard name, ISO codes (matched by name) and flags
 countries <- cs_country %>%
   select(cepalstat = id, std_name = name) %>%
   left_join(
-    read_csv(here("Data/Misc/code_iso_mp.csv"), show_col_types = FALSE) %>%
+    read_csv(file.path(external_dir, "code_iso_mp.csv"), show_col_types = FALSE, name_repair = "unique_quiet") %>%  # unnamed first column becomes ...1
       transmute(std_name = recode(`...1`, !!!world_data_names), iso2 = alpha2, iso3 = alpha3),
     by = "std_name", relationship = "many-to-many"
   ) %>%

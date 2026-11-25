@@ -172,13 +172,17 @@ Data/
 ├── Raw/          # Raw source downloads
 ├── Cleaned/      # Final files for Wasabi upload (id{indicator_id}_{timestamp}.xlsx)
 ├── Checks/       # Comparison files vs. published data (comp_id{indicator_id}.xlsx)
-├── Misc/         # Local reference files for the country table (not stored in git)
 ├── Tables/       # Reference tables from CEPALSTAT, rebuilt via `build_tables.R`
 │   ├── indicator_table.xlsx  # Indicators and their categories (English and Spanish)
 │   ├── source_table.xlsx     # Sources, and the sources of each indicator
 │   ├── note_table.xlsx       # Footnotes, and the footnotes of each indicator
 │   ├── dimension_table.xlsx  # Dimensions, and the dimensions of each indicator
-│   └── iso_codes.xlsx        # Country name ↔ CEPALSTAT ID mapping, with ISO codes and ECLAC flags
+│   ├── iso_codes.xlsx        # Country name ↔ CEPALSTAT ID mapping, with ISO codes and ECLAC flags
+│   └── External/             # Reference files from outside CEPALSTAT, updated by hand
+│       ├── AE2026-Indice-WEB-PDF.xlsx  # Statistical yearbook index (yearbook flag; update each year)
+│       ├── profile_data.xlsx           # Indicators in the country profiles (profile flag)
+│       ├── code_iso_mp.csv             # ISO codes by country name, from World Data (country table)
+│       └── lac_countries.xlsx          # ECLAC countries and their spellings (country table)
 └── indicator_metadata.xlsx  # One row per indicator (id, names, categories, source, dimensions, flags, notes), rebuilt via `build_tables.R`
 Docs/       # Misc documentation and visuals
 ```
