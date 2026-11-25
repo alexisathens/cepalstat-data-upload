@@ -192,6 +192,6 @@ Data/
 │       ├── profile_data.xlsx           # Indicators in the country profiles (profile flag)
 │       ├── code_iso_mp.csv             # ISO codes by country name, from World Data (country table)
 │       └── lac_countries.xlsx          # ECLAC countries and their spellings (country table)
-└── indicator_metadata.xlsx  # One row per indicator (id, names, categories, source, dimensions, flags, notes), rebuilt via `build_tables.R`
+└── indicator_metadata.xlsx  # One row per indicator (id, names, categories, source, dimensions, CEPALSTAT indicators it uses, flags, notes), rebuilt via `build_tables.R`
 Docs/       # Misc documentation and visuals
 ```
