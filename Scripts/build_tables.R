@@ -432,32 +432,38 @@ if (any(snapshots$changed)) {
     mutate(change = map2_chr(text_old, text_new, describe_text_change))
 }
 
-# Dimension member changes (compared with the saved members sheet). Members of a dimension that is new
-# or no longer used aren't listed one by one; those dimensions appear in the table changes instead.
-member_changes <- tibble(line = character())
+# Dimension member changes (compared with the saved members sheet): one row per change, with the old
+# and new member name. Members of a dimension that is new or no longer used aren't listed one by one;
+# those dimensions appear in the table changes instead.
+member_changes <- tibble(dim_id = integer(), dim_name = character(), change = character(),
+                         field = character(), old_name = character(), new_name = character(), line = character())
 old_members <- read_previous(paths$dimensions, "members")
 if (!is.null(old_members)) {
   old_members <- old_members %>% mutate(across(c(dim_id, member_id), as.integer))
-  dim_names   <- dimensions %>% select(dim_id, dim_name = name)
 
   members_added <- anti_join(dim_members, old_members, by = c("dim_id", "member_id")) %>%
     filter(dim_id %in% old_members$dim_id) %>%
-    mutate(line = glue('added member "{name}"'))
+    transmute(dim_id, change = "added", field = "member", old_name = NA_character_, new_name = name)
   members_removed <- anti_join(old_members, dim_members, by = c("dim_id", "member_id")) %>%
     filter(dim_id %in% dim_members$dim_id) %>%
-    mutate(line = glue('removed member "{name}"'))
+    transmute(dim_id, change = "removed", field = "member", old_name = name, new_name = NA_character_)
+  # renamed: one row per language that changed
   members_renamed <- inner_join(old_members, dim_members, by = c("dim_id", "member_id"), suffix = c("_old", "")) %>%
-    filter(coalesce(name_old, "") != coalesce(name, "") | coalesce(name_es_old, "") != coalesce(name_es, "")) %>%
-    mutate(line = if_else(
-      coalesce(name_old, "") != coalesce(name, ""),
-      glue('renamed member "{name_old}" -> "{name}"'),
-      glue('renamed member (ES) "{name_es_old}" -> "{name_es}"')
-    ))
+    transmute(dim_id, member = name_old, name_old, name, name_es_old, name_es) %>%
+    pivot_longer(c(name_old, name_es_old), names_to = "old_col", values_to = "old_name") %>%
+    mutate(new_name = if_else(old_col == "name_old", name, name_es),
+           field    = if_else(old_col == "name_old", "member", "member_es")) %>%
+    filter(coalesce(old_name, "") != coalesce(new_name, "")) %>%
+    transmute(dim_id, change = "renamed", field, old_name, new_name)
 
   member_changes <- bind_rows(members_added, members_removed, members_renamed) %>%
-    left_join(dim_names, by = "dim_id") %>%
-    mutate(line = glue("Dimension {dim_id} ({dim_name}): {line}")) %>%
-    select(line)
+    left_join(dimensions %>% select(dim_id, dim_name = name), by = "dim_id") %>%
+    mutate(line = case_when(
+      change == "added"   ~ glue('Dimension {dim_id} ({dim_name}): added member "{new_name}"'),
+      change == "removed" ~ glue('Dimension {dim_id} ({dim_name}): removed member "{old_name}"'),
+      field == "member"   ~ glue('Dimension {dim_id} ({dim_name}): renamed member "{old_name}" -> "{new_name}"'),
+      TRUE                ~ glue('Dimension {dim_id} ({dim_name}): renamed member (ES) "{old_name}" -> "{new_name}"')
+    ))
 }
 
 # Country (ISO) table: compared with the saved version. Changes are rare, so each one is listed in full.
