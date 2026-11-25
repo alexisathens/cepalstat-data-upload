@@ -49,18 +49,14 @@ Save and close the file, then restart R (or re-source `Scripts/utils.R`) so the 
 
 1.  Download the source data and write the indicator's processing functions: `filter_*`, `transform_*`, and the `calculate_regional` strategy.
 2.  Because the indicator is new, the spec needs two additional settings:
-    - **`define_source`:** a function that assigns the indicator's source ID. The default (`existing_source`) looks up the source already published in CEPALSTAT, which a new indicator does not have yet.
+    - **`define_source`:** a function that assigns the indicator's source ID. The default (`existing_source`) looks up the source already published in CEPALSTAT, which a new indicator does not have yet. Use one of the `define_source_*` functions in the "Source definitions" section of `Scripts/utils.R`, or add one there if the source is new.
     - **`new_indicator = TRUE`:** skips the comparisons against published data, since none exists yet.
 3.  Run the indicator from `Scripts/run_all.R` as usual, e.g., `run_one_indicator(5805)`.
 
 ### Example spec
 
 ``` r
-# Assign the source: Global Information System on Water and Agriculture (AQUASTAT)
-define_source_aquastat <- function(df, indicator_id) {
-  df %>% mutate(source_id = 5173)
-}
-
+# define_source_aquastat is defined in Scripts/utils.R (source: AQUASTAT, source_id 5173)
 spec_5805 <- indicator_spec(
   indicator_id = 5805,
   data = aquastat,

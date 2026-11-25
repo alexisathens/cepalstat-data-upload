@@ -290,7 +290,7 @@ unmatched_profile <- tibble(id = setdiff(profile_ids, env$id)) %>%
 # Changes to the reference tables in Data/Tables/, summarized as counts
 table_changes <- bind_rows(
   compare_tables(read_previous(paths$indicators), env, key = "id", table = "indicators", label = "indicator"),
-  compare_tables(read_previous(paths$sources, "sources"), sources, key = "source_id", table = "sources", label = "name"),
+  compare_tables(read_previous(paths$sources, "sources"), sources, key = "source_id", table = "sources", label = "description"),
   compare_links(read_previous(paths$sources, "by_indicator"), indicator_source, item_col = "source_id", table = "sources by indicator"),
   compare_tables(read_previous(paths$notes, "notes"), notes, key = "note_id", table = "notes", label = "description"),
   compare_links(read_previous(paths$notes, "by_indicator"), indicator_note, item_col = "note_id", table = "notes by indicator"),

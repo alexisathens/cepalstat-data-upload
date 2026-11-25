@@ -749,12 +749,6 @@ add_footnotes <- function(df, footnotes, calculate_regional) {
   df
 }
 
-# Default define_source: look up an indicator's existing CEPALSTAT source and assign it as source_id.
-# Sample usage: df_l %>% existing_source(indicator_id = 4046)
-existing_source <- function(df, indicator_id) { # default: get existing source
-  df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
-}
-
 # Compare a cleaned indicator's assigned source and footnote ids against what's currently published on
 # CEPALSTAT, printing a diagnostic message -- never stops execution or modifies df. Only runs when
 # diagnostics = TRUE, and skips entirely for new_indicator = TRUE (nothing published yet to compare
@@ -807,6 +801,47 @@ compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
   }
 
   df
+}
+
+
+# ---- Source definitions (define_source) ----
+
+# Each indicator spec's define_source assigns the CEPALSTAT source ID to every row. The default,
+# existing_source(), keeps the source already published for the indicator. The functions below set a
+# specific source instead, e.g. for new indicators (nothing published yet) or ECLAC calculations.
+# To add one, copy a function below and change its name and source_id (IDs are in
+# Data/Tables/source_table.xlsx).
+# Sample usage in a spec: define_source = define_source_aquastat
+
+# Default: look up the indicator's existing CEPALSTAT source and assign it as source_id
+existing_source <- function(df, indicator_id) {
+  df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
+}
+
+## FAO
+
+define_source_fao <- function(df, indicator_id) {
+  df %>% mutate(source_id = 651)  # Online Statistical Database (FAOSTAT)
+}
+
+define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
+}
+
+define_source_aquastat <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT)
+}
+
+## OLADE
+
+define_source_olade_w_cepal_calcs <- function(df, indicator_id) {
+  df %>% mutate(source_id = 885)  # Calculations made by ECLAC based on data from the Energy Information System of OLACDE
+}
+
+## Climate Watch
+
+define_source_cw <- function(df, indicator_id) {
+  df %>% mutate(source_id = 1742) # Climate Watch Data Explorer (WRI)
 }
 
 

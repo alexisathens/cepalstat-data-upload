@@ -38,11 +38,6 @@ transform_none <- function(df) df
 units_percapita <- 1e6 # tonnes of CO2eq per capita
 units_pergdp <- 1e12 # tonnes of CO2eq per million USD GDP
 
-define_source_cw <- function(df, indicator_id) {
-  df %>% mutate(source_id = 1742)
-}
-
-
 ## ---- indicator 3387 - share of global greenhouse gas (GHG) emissions ----
 
 dim_config_3387 <- tibble(

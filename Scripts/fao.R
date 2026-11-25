@@ -128,19 +128,6 @@ result_cropland <- use %>%
 #     select(-area)
 # }
 
-define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
-  df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
-}
-
-define_source_aquastat <- function(df, indicator_id) {
-  df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT) 
-}
-
-define_source_fao <- function(df, indicator_id) {
-  df %>% mutate(source_id = 651) # Online Statistical Database (FAOSTAT) 
-}
-
-
 ## ---- indicator 3381 - mean annual temperature change ----
 
 dim_config_3381 <- tibble(

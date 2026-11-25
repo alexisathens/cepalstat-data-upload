@@ -39,11 +39,6 @@ data_infra <- read_csv(paste0(input_path, "/electricity_infra_clean.csv"))
 # Shared no-op filter
 filter_none <- function(data) data
 
-define_source_olade_w_cepal_calcs <- function(df, indicator_id) {
-  df %>% mutate(source_id = 885) # Calculations made by ECLAC based on data from the Energy Information System of OLACDE
-}
-
-
 # ---- indicator 5672 — energy production ----
 
 dim_config_5672 <- tibble(
