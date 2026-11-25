@@ -1,11 +1,68 @@
-# This script cleans and standardizes FAO indicators. It uses the data loaded by download_fao.R
-# (e.g. `use`, `clim`, `crop`), so run download_fao.R first in the same session.
+# This script cleans and standardizes FAO indicators. It reads the FAOSTAT files saved by
+# download_fao.R, so it can run on its own once those files have been downloaded.
 
 # ---- setup ----
 
 library(here)
 source(here("Scripts/utils.R"))
 source(here("Scripts/process_indicator_fn.R"))
+
+# ---- load data ----
+
+## FAOSTAT bulk files (saved in Data/Raw/fao/ by download_fao.R; listed in fao_bulk_files in utils.R)
+fao_folder <- here("Data/Raw/fao")
+check_raw_file(file.path(fao_folder, fao_bulk_files), source = "FAOSTAT",
+               how = "Run Scripts/download_fao.R to download them.")
+
+read_fao_bulk <- function(filename) {
+  read_faostat_bulk(file.path(fao_folder, filename)) %>% as_tibble() %>% filter(!is.na(value))
+}
+
+use   <- read_fao_bulk(fao_bulk_files[["use"]])
+clim  <- read_fao_bulk(fao_bulk_files[["clim"]])
+cover <- read_fao_bulk(fao_bulk_files[["cover"]])
+crop  <- read_fao_bulk(fao_bulk_files[["crop"]])
+fert  <- read_fao_bulk(fao_bulk_files[["fert"]])
+pest  <- read_fao_bulk(fao_bulk_files[["pest"]])
+
+## Fishery and aquaculture data, from the fishstat package
+# See documentation here: https://cran.r-universe.dev/fishstat/doc/manual.html
+fish <- capture %>%
+  inner_join(country, by = "country") %>%
+  inner_join(species, by = "species") %>% 
+  as_tibble()
+
+fish <- fish %>% 
+  mutate(
+    Years = as.integer(year),
+    Country = country_name,
+    Species = species_name,
+    Species_Group = isscaap
+  )
+
+aqua <- aquaculture %>%
+  inner_join(country, by = "country") %>%
+  inner_join(species, by = "species") %>% 
+  inner_join(area, by = "area") %>% 
+  inner_join(environment, by = "environment") %>% 
+  as_tibble()
+
+aqua <- aqua %>% 
+  mutate(
+    Years = as.integer(year),
+    Country = country_name,
+    Area = inlandmarine
+  )
+
+## AQUASTAT, downloaded manually (follow the steps in instructions_other.qmd)
+# The AQUASTAT bulk file is Latin-1 encoded (e.g., "Côte d'Ivoire", "Türkiye")
+aquastat_folder <- ensure_dir(here("Data/Raw/fao/aquastat"))
+aquastat <- read_csv(check_raw_file(paste0(aquastat_folder, "/bulk_aquastat_raw.csv"), source = "AQUASTAT"),
+                     locale = locale(encoding = "latin1"))
+
+aquastat %<>% 
+  rename(Country = AREA, Years = timePointYears...5, Variable = aquastatElement...2, value = Value) %>% 
+  select(Country, Years, Variable, value)
 
 # ---- shared functions ----
 
