@@ -165,7 +165,7 @@ Update the "checked" date next to each value when you review it.
 | Script | Associated Step | Purpose |
 |---|---|---|
 | `config.R` | 0. setup | Settings updated by hand (see Periodic Updates); loaded by `utils.R` |
-| `build_tables.R` | 0. setup | Download reference tables from the CEPALSTAT API (indicators, sources, notes, dimensions and their members, metadata sheets, countries), summarize changes since the last run (including unit and metadata text changes), and update `Data/Tables/` (with one metadata snapshot per indicator in `Data/Tables/Metadata/`) and `Data/indicator_metadata.xlsx` |
+| `build_tables.R` | 0. setup | Download reference tables from the CEPALSTAT API (indicators, sources, notes, dimensions and their members, metadata sheets, countries), summarize changes since the last run (including unit and metadata text changes), and update `Data/Tables/`, `Data/indicator_metadata.xlsx` and the metadata snapshots in `Metadata/` |
 | `process_indicator_fn.R` | 2. clean data | Core `process_indicator()` function used by all cleaning scripts |
 | `run_indicators.R` | 2. clean data | Controller for `process_indicator_fn.R` |
 | `utils.R` | 2. clean data | Shared utility functions (API calls, formatting, validation) |
@@ -187,13 +187,16 @@ Data/
 │   ├── note_table.xlsx       # Footnotes, and the footnotes of each indicator
 │   ├── dimension_table.xlsx  # Dimensions, the dimensions of each indicator, and members of the indicator-specific dimensions
 │   ├── iso_codes.xlsx        # Country name ↔ CEPALSTAT ID mapping, with ISO codes and ECLAC flags
-│   ├── Metadata/             # One snapshot per indicator of its published metadata sheet ({id}.md); don't edit
-│   │                         #   by hand. Commit after each run: the git history is the history of the sheets
 │   └── External/             # Reference files from outside CEPALSTAT, updated by hand
 │       ├── AE2026-Indice-WEB-PDF.xlsx  # Statistical yearbook index (yearbook flag; update each year)
 │       ├── profile_data.xlsx           # Indicators in the country profiles (profile flag)
 │       ├── code_iso_mp.csv             # ISO codes by country name, from World Data (country table)
 │       └── lac_countries.xlsx          # ECLAC countries and their spellings (country table)
 └── indicator_metadata.xlsx  # One row per indicator (id, names, categories, source, dimensions, unit, CEPALSTAT indicators it uses, flags, notes), rebuilt via `build_tables.R`
+Metadata/
+├── {id}.md       # Snapshot of each indicator's published metadata sheet, rebuilt via `build_tables.R`. Don't edit
+│                 #   by hand; commit after each run (the git history is the history of the sheets)
+├── {id}_*.md     # Drafts and working files (e.g. 3381_draft.md), not stored in git
+└── Prompts/      # AI prompts and translation glossary
 Docs/       # Misc documentation and visuals
 ```

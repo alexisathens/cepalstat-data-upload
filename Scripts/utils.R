@@ -539,7 +539,7 @@ to_wide_by_lang <- function(long, id_col) {
 }
 
 
-# ---- Metadata snapshots (Data/Tables/Metadata/, written by build_tables.R) ----
+# ---- Metadata snapshots (Metadata/{id}.md, written by build_tables.R) ----
 
 # The three metadata sheet fields, with their section headers in CEPALSTAT Admin order
 # (each field in Spanish, then English)
@@ -603,7 +603,7 @@ parse_metadata_snapshot <- function(text) {
   )
 }
 
-# Sample usage: read_metadata_snapshot(here("Data/Tables/Metadata/3381.md"))
+# Sample usage: read_metadata_snapshot(here("Metadata/3381.md"))
 read_metadata_snapshot <- function(path) {
   parse_metadata_snapshot(read_file(path))
 }

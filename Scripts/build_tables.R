@@ -5,7 +5,7 @@
 #   Data/Tables/note_table.xlsx       - notes      + by_indicator (indicator_id, note_id)
 #   Data/Tables/dimension_table.xlsx  - dimensions + by_indicator (indicator_id, dim_id, order, position)
 #                                       + members (members of the indicator-specific dimensions)
-#   Data/Tables/Metadata/{id}.md      - one snapshot per indicator of its published metadata sheet
+#   Metadata/{id}.md                  - one snapshot per indicator of its published metadata sheet
 #                                       (definition, methodology, comments), tracked in git for its history
 #   Data/Tables/iso_codes.xlsx        - every known spelling of each country, mapped to its CEPALSTAT
 #                                       name and ID, with ISO codes and ECLAC flags; read as `iso` by utils.R
@@ -36,7 +36,7 @@ paths <- list(
   notes      = here("Data/Tables/note_table.xlsx"),
   dimensions = here("Data/Tables/dimension_table.xlsx"),
   iso        = here("Data/Tables/iso_codes.xlsx"),
-  snapshots  = here("Data/Tables/Metadata"),          # folder: one .md file per indicator
+  snapshots  = here("Metadata"),                      # folder: one {id}.md file per indicator, next to the drafts
   metadata   = here("Data/indicator_metadata.xlsx")
 )
 
@@ -546,7 +546,7 @@ n_changed <- sum(snapshots$changed)
 n_removed <- length(removed_snapshots)
 if (n_new + n_changed + n_removed > 0) {
   message(glue("📝 Metadata snapshots: {n_new} new, {n_changed} changed, {n_removed} removed. ",
-               "Commit Data/Tables/Metadata/ to keep the history of these changes."))
+               "Commit the {{id}}.md files in Metadata/ to keep the history of these changes."))
 } else {
   message("✅ Metadata snapshots unchanged")
 }
