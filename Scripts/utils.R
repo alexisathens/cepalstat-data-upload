@@ -18,9 +18,12 @@ library(FAOSTAT)
 library(fishstat)
 library(usethis)
 
+# Settings updated by hand (max years by source, yearbook file, AI model)
+source(here("Scripts/config.R"))
+
 # ---- Global variables ----
 
-iso <- read_xlsx(here("Data/iso_codes.xlsx"))
+iso <- read_xlsx(here("Data/Tables/iso_codes.xlsx"))  # built by build_tables.R
 
 iso %<>% 
   filter(ECLACa == "Y") %>% 
@@ -28,13 +31,20 @@ iso %<>%
 
 meta <- read_xlsx(here("Data/indicator_metadata.xlsx"))
 
-# Define max year of reliable data by data by source
-# This serves as a maximum, and can be overwritten in indicator spec files if reliability for one indicator lags the general source
-max_year_fao <- 2025 # as of July 2026
-max_year_olade <- 2024 # last updated Dec 2025 with 2024 data
-max_year_emdat <- 2025 # as of July 2026
-max_year_cw <- 2023 # as of July 2026
-max_year_other <- 2025
+# Last full calendar year (current year minus 1). Used as the cutoff for sources whose current-year
+# data is incomplete, such as EM-DAT disasters.
+last_complete_year <- as.integer(format(Sys.Date(), "%Y")) - 1L
+
+# FAOSTAT bulk files: downloaded to Data/Raw/fao/ by download_fao.R and read by process_fao.R.
+# Each name is the object the data is loaded into in process_fao.R.
+fao_bulk_files <- c(
+  use   = "Inputs_LandUse_E_All_Data_(Normalized).zip",                 # land use (RL)
+  clim  = "Environment_Temperature_change_E_All_Data_(Normalized).zip", # temperature change (ET)
+  cover = "Environment_LandCover_E_All_Data_(Normalized).zip",          # land cover (LC)
+  crop  = "Production_Crops_Livestock_E_All_Data_(Normalized).zip",     # crops and livestock products (QCL)
+  fert  = "Inputs_FertilizersNutrient_E_All_Data_(Normalized).zip",     # fertilizers by nutrient (RFN)
+  pest  = "Inputs_Pesticides_Use_E_All_Data_(Normalized).zip"           # pesticide use (RP)
+)
 
 
 # ---- Small helpers ----
@@ -57,11 +67,11 @@ ensure_dir <- function(path) {
 }
 
 # Helper: stop with clear instructions if any raw data file that must be obtained separately is missing.
-# `how` explains how to get the file(s); by default it points to the source's section in manual_download.qmd.
+# `how` explains how to get the file(s); by default it points to the source's section in instructions_other.qmd.
 # Returns the path(s) unchanged, so it can wrap a read call directly.
 # Sample usage: read_xlsx(check_raw_file(here("Data/Raw/other/irena_raw.xlsx"), source = "IRENA"))
 check_raw_file <- function(paths, source,
-                           how = glue("Download it manually following the steps under '{source}' in Scripts/manual_download.qmd.")) {
+                           how = glue("Download it manually following the steps under '{source}' in Scripts/instructions_other.qmd.")) {
   missing_files <- paths[!file.exists(paths)]
   if (length(missing_files) > 0) {
     stop(glue(
@@ -135,15 +145,27 @@ assert_no_duplicates <- function(data, data_name = deparse(substitute(data))) {
 
 # Validate cleaned data before regional aggregation: no NA values in 'value', no unexpected columns beyond
 # dim_config + value/num/denom, and drop years beyond max_year. Stops on failure, else returns data.
-# Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = max_year_emdat)
-assert_data_reqs <- function(data, dim_config, indicator_id, max_year) {
-  
-  # filter out extra years and coerce type
-  if (indicator_id != 2031) { # exception for MEA indicator where Years is the value
-    data %<>%
-      filter(Years <= max_year) %>%
-      mutate(Years = as.character(Years)) %>%
-      arrange(Country, Years)
+# Sample usage: df %>% assert_data_reqs(dim_config_4046, indicator_id = 4046, max_year = last_complete_year)
+assert_data_reqs <- function(data, dim_config, indicator_id, max_year = NULL) {
+
+  # Years: stored as whole numbers (integers) during processing; get_cepalstat_ids() converts them to
+  # text later, to match CEPALSTAT's labels. Skipped for indicators without a Years column (e.g. 2031,
+  # where the value itself is a year).
+  if ("Years" %in% names(data)) {
+    years <- suppressWarnings(as.integer(as.character(data$Years)))
+    invalid <- unique(data$Years[is.na(years) | years < 1900 | years > 2100])
+    if (length(invalid) > 0) {
+      stop(glue(
+        "❌ The Years column has values that aren't valid years: {paste(head(invalid, 5), collapse = ', ')}. ",
+        "Check how Years is created in filter_data() or transform_data()."
+      ))
+    }
+    data$Years <- years
+
+    # Optional cutoff, for sources whose latest year is incomplete (set as max_year in the spec)
+    if (!is.null(max_year)) data <- data %>% filter(Years <= max_year)
+
+    data <- data %>% arrange(Country, Years)
   }
   
   # check for NA values
@@ -351,6 +373,9 @@ get_cepalstat_ids <- function(df, dim_config) {
       rename(!!this_dim_col := id,
              name = !!sym(this_name_col))
 
+    # CEPALSTAT labels are text (e.g. Years "2020"), so the column is converted to text to match
+    df_l[[this_data_col]] <- as.character(df_l[[this_data_col]])
+
     df_l %<>%
       left_join(this_dim_table, by = setNames("name", this_data_col))
 
@@ -404,6 +429,462 @@ get_cepalstat_labels <- function(pub, dim_config) {
     relocate(c("value", starts_with("dim")), .after = last_col())
 }
 
+
+# ---- CEPALSTAT bulk downloads (used by build_tables.R) ----
+
+CEPALSTAT_API_URL <- "https://api-cepalstat.cepal.org/cepalstat/api/v1"
+
+# Walks one node of the CEPALSTAT thematic tree; returns one row per indicator beneath it, with the
+# categories above each indicator as a path (e.g. "Environmental > Environmental conditions > ...").
+flatten_tree <- function(node, path = character()) {
+  if (!is.null(node$indicator_id)) {
+    return(tibble(id = node$indicator_id, indicator = node$name,
+                  path = paste(path, collapse = " > ")))
+  }
+  map_dfr(node$children, flatten_tree, path = c(path, node$name))
+}
+
+# Pulls the environmental area (area_id = 493) of the CEPALSTAT thematic tree in one language
+# and returns one row per indicator, with the categories above it as a path.
+# Sample usage: get_env_indicators("es")
+get_env_indicators <- function(lang) {
+  url  <- glue("{CEPALSTAT_API_URL}/thematic-tree?lang={lang}&format=json&area_id=493")
+  tree <- request(url) %>% req_perform() %>% resp_body_json()
+  
+  out <- tree$body$children %>% map_dfr(flatten_tree)
+  assert_that(nrow(out) > 0, msg = glue("No indicators found in the thematic tree (lang = {lang})"))
+  out
+}
+
+# Fetches many URLs in parallel (up to max_active at a time) and parses each response as JSON.
+# Failed requests return NULL, so one failure doesn't stop the whole batch.
+# Sample usage: fetch_cepalstat_json_many(c(url1, url2))
+fetch_cepalstat_json_many <- function(urls, max_active = 8) {
+  assert_that(
+    packageVersion("httr2") >= "1.1.0",
+    msg = "fetch_cepalstat_json_many() requires httr2 1.1.0 or later. Update it with install.packages(\"httr2\")."
+  )
+  
+  reqs  <- map(urls, function(url) request(url) %>% req_retry(max_tries = 3))
+  resps <- req_perform_parallel(reqs, on_error = "continue", max_active = max_active, progress = TRUE)
+  
+  map(resps, function(resp) {
+    if (!inherits(resp, "httr2_response")) return(NULL)
+    fromJSON(resp_body_string(resp), flatten = TRUE)
+  })
+}
+
+# Converts an API table to a tibble of text columns, so tables from different indicators can be
+# combined even when a field comes back as a different type (e.g. NA in one, text in another).
+# List fields are collapsed into one string, e.g. "a; b".
+as_character_tibble <- function(x) {
+  if (is.null(x) || length(x) == 0) return(tibble())
+
+  # Converts one column to text; list columns are collapsed into one string per row.
+  # Empty or missing values stay NA, so they're written as blank cells in Excel (not the text "NA").
+  to_text <- function(col) {
+    if (is.list(col)) {
+      map_chr(col, function(item) {
+        values <- unlist(item)
+        values <- values[!is.na(values)]
+        if (length(values) == 0) NA_character_ else paste(values, collapse = "; ")
+      })
+    } else {
+      as.character(col)
+    }
+  }
+  
+  as_tibble(x) %>%
+    mutate(across(everything(), to_text))
+}
+
+# Fetches one indicator endpoint (e.g. "sources", "footnotes") for every indicator in English and
+# Spanish, in parallel, and returns one row per indicator, language and item. Columns named in
+# `drop` are removed before processing (e.g. large member lists). Stops if any request fails, so
+# incomplete tables are never saved.
+# Sample usage: fetch_indicator_tables(inds, endpoint = "footnotes")
+fetch_indicator_tables <- function(inds, endpoint, field = endpoint, extra_query = "", drop = character()) {
+  calls <- expand_grid(indicator_id = inds, lang = c("en", "es")) %>%
+    mutate(url = glue("{CEPALSTAT_API_URL}/indicator/{indicator_id}/{endpoint}?lang={lang}&format=json{extra_query}"))
+  
+  calls$json <- fetch_cepalstat_json_many(calls$url)
+  
+  failed <- calls %>% filter(map_lgl(json, is.null))
+  if (nrow(failed) > 0) {
+    stop(glue(
+      "{nrow(failed)} {endpoint} request(s) failed: ",
+      "{paste(failed$indicator_id, failed$lang, collapse = ', ')}. Please re-run."
+    ))
+  }
+  
+  calls %>%
+    mutate(items = map(json, function(j) {
+      items <- j$body[[field]]
+      # A single record (e.g. the metadata endpoint) comes back as a list; empty (null) fields are set
+      # to NA so it can become a one-row table
+      if (is.list(items) && !is.data.frame(items)) items <- map(items, function(x) if (is.null(x)) NA else x)
+      items %>%
+        as_tibble() %>%
+        select(-any_of(drop)) %>%
+        as_character_tibble()
+    })) %>%
+    select(indicator_id, lang, items) %>%
+    unnest(items)
+}
+
+# Turns a long table (one row per item and language) into one row per item, with English columns
+# unsuffixed and Spanish columns ending in _es (e.g. name, name_es). If an item appears for several
+# indicators, the first version is kept.
+# Sample usage: to_wide_by_lang(note_long, "note_id")
+to_wide_by_lang <- function(long, id_col) {
+  long %>%
+    distinct(.data[[id_col]], lang, .keep_all = TRUE) %>%
+    mutate(lang = if_else(lang == "en", "", "_es")) %>%
+    pivot_wider(names_from = lang, values_from = -all_of(c(id_col, "lang")), names_glue = "{.value}{lang}")
+}
+
+
+# ---- Metadata snapshots (Metadata/{id}.md, written by build_tables.R) ----
+
+# The three metadata sheet fields, with their section headers in CEPALSTAT Admin order
+# (each field in Spanish, then English)
+metadata_fields <- tribble(
+  ~field,                    ~header_es,              ~header_en,
+  "definition",              "DEFINICIÓN - ESPAÑOL",  "DEFINICIÓN - INGLÉS",
+  "calculation_methodology", "METODOLOGÍA - ESPAÑOL", "METODOLOGÍA - INGLÉS",
+  "comments",                "COMENTARIOS - ESPAÑOL", "COMENTARIOS - INGLÉS"
+)
+
+# Converts CEPALSTAT metadata text to plain text: <br><br> becomes a blank line (new paragraph),
+# a single <br> becomes a line break, and Windows line endings (\r) are removed. Any other HTML tags
+# are kept as they are. The reverse conversion is to_html_breaks() in update_metadata_fn.R.
+# Sample usage: clean_metadata_text("First paragraph.<br><br>\r\n\r\nSecond paragraph.")
+clean_metadata_text <- function(text) {
+  text %>%
+    coalesce("") %>%
+    str_remove_all("\r") %>%
+    str_replace_all("[ \t]*\n*[ \t]*(<br\\s*/?>)[ \t]*\n*[ \t]*", "\\1") %>%  # drop line breaks around <br>
+    str_replace_all("(<br\\s*/?>){2,}", "\n\n") %>%                             # two or more: new paragraph
+    str_replace_all("<br\\s*/?>", "\n") %>%                                    # one: line break
+    str_replace_all("[ \t]+\n", "\n") %>%                                      # trailing spaces on a line
+    str_replace_all("\n{3,}", "\n\n") %>%
+    str_trim()
+}
+
+# Builds the text of one snapshot file from one row of metadata (English columns unsuffixed, Spanish
+# columns ending in _es, as produced by to_wide_by_lang()). The text fields should already be cleaned.
+format_metadata_snapshot <- function(row) {
+  quote_yaml <- function(x) paste0('"', str_replace_all(coalesce(x, ""), '"', '\\\\"'), '"')
+
+  front_matter <- c(
+    "---",
+    glue("indicator_id: {row$indicator_id}"),
+    glue("indicator_name: {quote_yaml(row$indicator_name)}"),
+    glue("indicator_name_es: {quote_yaml(row$indicator_name_es)}"),
+    glue("unit: {quote_yaml(row$unit)}"),
+    glue("unit_es: {quote_yaml(row$unit_es)}"),
+    "---"
+  )
+
+  note <- glue("> Generated by build_tables.R from CEPALSTAT. Don't edit; draft changes in Metadata/{row$indicator_id}_draft.md")
+
+  sections <- metadata_fields %>%
+    pmap_chr(function(field, header_es, header_en) {
+      paste0("### ", header_es, "\n", row[[paste0(field, "_es")]], "\n\n",
+             "### ", header_en, "\n", row[[field]], "\n")
+    })
+
+  paste0(paste(front_matter, collapse = "\n"), "\n", note, "\n\n", paste(sections, collapse = "\n"))
+}
+
+# Splits the text of a snapshot (or draft) into its six sections: one row per section, with the
+# header (e.g. "DEFINICIÓN - INGLÉS") and its text. read_metadata_snapshot() does the same from a file.
+# Sample usage: parse_metadata_snapshot(format_metadata_snapshot(row))
+parse_metadata_snapshot <- function(text) {
+  parts <- str_split(str_remove_all(text, "\r"), "\n### ")[[1]][-1]   # everything after each "### " header
+  tibble(
+    header = str_extract(parts, "^[^\n]+"),
+    text   = str_trim(str_remove(parts, "^[^\n]+"))
+  )
+}
+
+# Sample usage: read_metadata_snapshot(here("Metadata/3381.md"))
+read_metadata_snapshot <- function(path) {
+  parse_metadata_snapshot(read_file(path))
+}
+
+# File paths of an indicator's snapshot and draft. Sample usage: draft_path(3381) -> Metadata/3381_draft.md
+snapshot_path <- function(indicator_id) here("Metadata", glue("{indicator_id}.md"))
+draft_path    <- function(indicator_id) here("Metadata", glue("{indicator_id}_draft.md"))
+
+# A short code that changes whenever the snapshot file changes. Stored in each draft (based_on), so
+# a later change to the published text can be detected. "none" if the indicator has no snapshot.
+snapshot_fingerprint <- function(indicator_id) {
+  path <- snapshot_path(indicator_id)
+  if (!file.exists(path)) return("none")
+  unname(tools::md5sum(path))
+}
+
+# Reads the front matter (the block between the first two "---" lines) of a snapshot or draft into a
+# named list of text values, e.g. list(indicator_id = "3381", stage = "admin").
+read_front_matter <- function(path) {
+  lines <- read_lines(path)
+  bounds <- which(lines == "---")
+  if (length(bounds) < 2 || bounds[1] != 1) return(list())
+  entries <- lines[(bounds[1] + 1):(bounds[2] - 1)]
+  entries <- entries[str_detect(entries, "^[A-Za-z_]+:")]
+  values <- str_remove(entries, "^[A-Za-z_]+:\\s*") %>%
+    str_remove('^"') %>% str_remove('"$') %>% str_replace_all('\\\\"', '"')
+  as.list(set_names(values, str_extract(entries, "^[A-Za-z_]+")))
+}
+
+# Reads a draft in the admin stage (each field in a code block with <br> tags) back into plain text,
+# one row per section, so it can be compared with the snapshot.
+read_admin_draft <- function(path) {
+  read_metadata_snapshot(path) %>%
+    mutate(text = text %>%
+             str_remove("^```[a-z]*\n?") %>%   # opening ```html line
+             str_remove("\n?```$") %>%         # closing ``` line
+             clean_metadata_text())
+}
+
+# Describes how much a text changed, for the build_tables.R summary. Compares the two texts word by
+# word, from the start and from the end, to find the part that differs:
+#   - "small edit": a short snippet of the words that changed (e.g. "1961 to 1990" -> "1951 to 1980")
+#   - "edited (X% of words changed)" for larger changes, or "rewritten" when most of the text changed
+#   - "text added" or "text removed" when the field was empty before or is empty now
+# Sample usage: describe_text_change("The baseline is 1961 to 1990.", "The baseline is 1951 to 1980.")
+describe_text_change <- function(old, new, max_snippet_words = 12) {
+  if (str_squish(old) == "") return("text added")
+  if (str_squish(new) == "") return("text removed")
+
+  old_words <- str_split(str_squish(old), " ")[[1]]
+  new_words <- str_split(str_squish(new), " ")[[1]]
+
+  # words that match from the start, then from the end
+  n_min  <- min(length(old_words), length(new_words))
+  prefix <- 0
+  while (prefix < n_min && old_words[prefix + 1] == new_words[prefix + 1]) prefix <- prefix + 1
+  suffix <- 0
+  while (suffix < n_min - prefix &&
+         old_words[length(old_words) - suffix] == new_words[length(new_words) - suffix]) suffix <- suffix + 1
+
+  old_mid <- old_words[seq_len(length(old_words) - prefix - suffix) + prefix]
+  new_mid <- new_words[seq_len(length(new_words) - prefix - suffix) + prefix]
+  share_changed <- (length(old_mid) + length(new_mid)) / max(length(old_words) + length(new_words), 1)
+
+  if (share_changed > 0.6) {
+    "rewritten"
+  } else if (length(old_mid) <= max_snippet_words && length(new_mid) <= max_snippet_words) {
+    glue('small edit: "{paste(old_mid, collapse = " ")}" -> "{paste(new_mid, collapse = " ")}"')
+  } else {
+    glue("edited ({round(share_changed * 100)}% of words changed)")
+  }
+}
+
+# Downloads the members of the given CEPALSTAT dimensions, in English and Spanish, in parallel.
+# Returns one row per dimension member: dim_id, member_id, name, name_es.
+# Sample usage: fetch_dimension_members(c(78134, 21714))
+fetch_dimension_members <- function(dim_ids) {
+  calls <- expand_grid(dim_id = dim_ids, lang = c("en", "es")) %>%
+    mutate(url = glue("{CEPALSTAT_API_URL}/dimensions/{dim_id}?lang={lang}&format=json"))
+
+  calls$json <- fetch_cepalstat_json_many(calls$url)
+
+  failed <- calls %>% filter(map_lgl(json, is.null))
+  if (nrow(failed) > 0) {
+    stop(glue("{nrow(failed)} dimension request(s) failed: {paste(failed$dim_id, failed$lang, collapse = ', ')}. Please re-run."))
+  }
+
+  calls %>%
+    mutate(members = map(json, function(j) {
+      j$body$dimensions$members[[1]] %>%
+        as_tibble() %>%
+        transmute(member_id = as.integer(id), name = as.character(name))
+    })) %>%
+    select(dim_id, lang, members) %>%
+    unnest(members) %>%
+    mutate(lang = if_else(lang == "en", "", "_es")) %>%
+    pivot_wider(names_from = lang, values_from = name, names_glue = "name{lang}") %>%
+    mutate(dim_id = as.integer(dim_id))
+}
+
+
+# ---- Comparing and reviewing table updates (used by build_tables.R) ----
+
+# Reads one sheet of a previously saved table, or returns NULL if the file doesn't exist yet
+# (e.g. on the first run). Sample usage: read_previous(here("Data/Tables/source_table.xlsx"), "sources")
+read_previous <- function(path, sheet = 1) {
+  if (!file.exists(path)) return(NULL)
+  if (is.character(sheet) && !sheet %in% excel_sheets(path)) return(NULL)  # e.g. a sheet added later
+  read_xlsx(path, sheet = sheet)
+}
+
+# Compares two versions of a table with one row per item (e.g. sources) and returns one row per
+# change: items added or removed, and each field whose value changed. For added and removed items,
+# the label column (e.g. the name) is recorded too, so it's clear what each id was.
+# Sample usage: compare_tables(old_sources, sources, key = "source_id", table = "sources", label = "name")
+compare_tables <- function(old, new, key, table, label = NULL) {
+  if (is.null(old)) return(tibble())
+
+  # Compare everything as text, so 3158 and 3158.0 (as read back from Excel) count as equal.
+  # Items listed more than once (e.g. an indicator in two places in the tree) are compared once.
+  old <- old %>% mutate(across(everything(), as.character)) %>% distinct(across(all_of(key)), .keep_all = TRUE)
+  new <- new %>% mutate(across(everything(), as.character)) %>% distinct(across(all_of(key)), .keep_all = TRUE)
+
+  get_label <- function(df) if (is.null(label) || !label %in% names(df)) NA_character_ else df[[label]]
+
+  added <- anti_join(new, old, by = key) %>%
+    transmute(id = .data[[key]], change = "added", field = label, new_value = get_label(.))
+
+  removed <- anti_join(old, new, by = key) %>%
+    transmute(id = .data[[key]], change = "removed", field = label, old_value = get_label(.))
+
+  # Fields present in both versions, compared item by item (a blank and a missing value count as equal)
+  shared_fields <- setdiff(intersect(names(old), names(new)), key)
+  changed <- inner_join(
+      old %>% pivot_longer(all_of(shared_fields), names_to = "field", values_to = "old_value"),
+      new %>% pivot_longer(all_of(shared_fields), names_to = "field", values_to = "new_value"),
+      by = c(key, "field")
+    ) %>%
+    filter(coalesce(old_value, "") != coalesce(new_value, "")) %>%
+    transmute(id = .data[[key]], change = "changed", field, old_value, new_value)
+
+  bind_rows(added, removed, changed) %>%
+    mutate(table = table, .before = 1)
+}
+
+# Compares two versions of a link table (e.g. indicator_id x source_id) and returns one row per
+# link added or removed.
+# Sample usage: compare_links(old_links, indicator_source, item_col = "source_id", table = "sources by indicator")
+compare_links <- function(old, new, item_col, table) {
+  if (is.null(old)) return(tibble())
+
+  old <- old %>% select(indicator_id, all_of(item_col)) %>% mutate(across(everything(), as.character))
+  new <- new %>% select(indicator_id, all_of(item_col)) %>% mutate(across(everything(), as.character))
+  keys <- c("indicator_id", item_col)
+
+  bind_rows(
+    anti_join(new, old, by = keys) %>% transmute(id = indicator_id, change = "added",   field = item_col, new_value = .data[[item_col]]),
+    anti_join(old, new, by = keys) %>% transmute(id = indicator_id, change = "removed", field = item_col, old_value = .data[[item_col]])
+  ) %>%
+    mutate(table = table, .before = 1)
+}
+
+# Summarizes compare_tables()/compare_links() output as one line per table,
+# e.g. "sources: 1 added, 2 changed". Changed items are counted once, however many fields changed.
+summarize_changes <- function(changes) {
+  if (nrow(changes) == 0) return(character())
+  changes %>%
+    distinct(table, id, change) %>%
+    count(table, change) %>%
+    summarise(text = paste(n, change, collapse = ", "), .by = table) %>%
+    mutate(line = paste0(table, ": ", text)) %>%
+    pull(line)
+}
+
+# Prints the end-of-run summary. `review` and `info` are named lists: each name is a heading and
+# each element a character vector of lines (empty elements are skipped). Every line is printed.
+print_review_summary <- function(review, info) {
+  print_section <- function(items, icon) {
+    for (title in names(items)) {
+      lines <- items[[title]]
+      if (length(lines) == 0) next
+      message(glue("{icon} {title} ({length(lines)}):"))
+      message(paste0("   ", lines, collapse = "\n"))
+    }
+  }
+
+  rule <- strrep("═", 70)
+  message("\n", rule)
+  message("  SUMMARY OF CHANGES FROM CEPALSTAT")
+  message(rule)
+  if (all(lengths(review) == 0) && all(lengths(info) == 0)) message("✅ No changes since the last download")
+  print_section(review, "⚠️ REVIEW:")
+  print_section(info, "ℹ️")
+  message(rule, "\n")
+}
+
+# Asks a yes/no question in the console and returns TRUE for "y" or "yes". Returns FALSE when the
+# script isn't run interactively (e.g. with Rscript), since there's no one to answer.
+ask_yes_no <- function(question) {
+  if (!interactive()) return(FALSE)
+  answer <- readline(glue("{question} (y/n): "))
+  tolower(trimws(answer)) %in% c("y", "yes")
+}
+
+# Columns of Data/indicator_changelog.xlsx, in order. reason and notes are filled in by hand.
+changelog_columns <- c("entry_id", "date", "indicator_id", "indicator_name", "dimension_id", "affected_indicators",
+                       "change_type", "old_value", "new_value", "detected_by", "reason", "notes")
+
+# Adds new rows to the indicator changelog and returns how many were added. Rows already in the
+# changelog (same indicator, dimension, change type, old and new value) are skipped, so a change
+# detected on two runs is only logged once. New rows get the next entry_id (e.g. c084), today's date and
+# detected_by = "build_tables". If the file can't be written (e.g. it's open in Excel), the new rows are
+# saved to a separate dated file instead.
+# affected_lookup (optional) lists the indicators that use each dimension (columns dim_id and
+# affected_indicators). Any row with a dimension_id but no affected_indicators is filled in from it,
+# including rows added by hand. Rows that already list affected indicators are left as they are.
+# Sample usage: append_changelog(changelog_rows, here("Data/indicator_changelog.xlsx"), affected_lookup)
+append_changelog <- function(new_rows, path, affected_lookup = NULL) {
+  existing <- if (file.exists(path)) read_xlsx(path) else tibble()
+  existing <- existing %>%
+    mutate(across(any_of(c("indicator_id", "dimension_id")), as.numeric),
+           across(any_of("date"), as.Date))
+
+  # Columns that identify a change, compared as text
+  key_cols <- c("indicator_id", "dimension_id", "change_type", "old_value", "new_value")
+  as_keys  <- function(df) {
+    for (col in setdiff(key_cols, names(df))) df[[col]] <- NA
+    df %>% transmute(across(all_of(key_cols), as.character))
+  }
+
+  new_rows <- new_rows %>%
+    mutate(across(any_of(c("indicator_id", "dimension_id")), as.numeric)) %>%
+    filter(!duplicated(as_keys(.))) %>%
+    filter(!vctrs::vec_in(as_keys(.), as_keys(existing)))
+
+  # Fill in affected indicators for rows that have a dimension but none listed yet
+  n_filled <- 0
+  if (!is.null(affected_lookup) && nrow(existing) > 0 && all(c("dimension_id", "affected_indicators") %in% names(existing))) {
+    lookup  <- affected_lookup %>% transmute(dimension_id = as.numeric(dim_id), filled = affected_indicators)
+    to_fill <- !is.na(existing$dimension_id) & is.na(existing$affected_indicators)
+    filled  <- existing %>% select(dimension_id) %>% left_join(lookup, by = "dimension_id") %>% pull(filled)
+    to_fill <- to_fill & !is.na(filled)
+    existing$affected_indicators[to_fill] <- filled[to_fill]
+    n_filled <- sum(to_fill)
+    if (n_filled > 0) message(glue("ℹ️ Filled in affected indicators for {n_filled} changelog row(s)"))
+  }
+
+  if (nrow(new_rows) == 0 && n_filled == 0) return(0L)
+
+  last_number <- suppressWarnings(max(as.integer(str_extract(existing$entry_id, "[0-9]+")), 0, na.rm = TRUE))
+  new_rows <- new_rows %>%
+    mutate(entry_id    = sprintf("c%03d", last_number + row_number()),
+           date        = Sys.Date(),
+           detected_by = "build_tables")
+
+  all_rows <- bind_rows(existing, new_rows)
+  for (col in setdiff(changelog_columns, names(all_rows))) all_rows[[col]] <- NA   # e.g. notes, if never used
+  all_rows <- all_rows %>% select(all_of(changelog_columns), everything(), -any_of("field"))   # field: an older column, no longer used
+
+  saved <- tryCatch({
+    write_xlsx(list(changelog = all_rows), path)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!saved && nrow(new_rows) == 0) {
+    message(glue("⚠️ Couldn't update {basename(path)} (is it open in Excel?). The affected indicators will be ",
+                 "filled in on the next run."))
+  } else if (!saved) {
+    pending_path <- str_replace(path, "\\.xlsx$", glue("_pending_{Sys.Date()}.xlsx"))
+    write_xlsx(list(changelog = new_rows %>% select(any_of(changelog_columns))), pending_path)
+    message(glue("⚠️ Couldn't update {basename(path)} (is it open in Excel?). The {nrow(new_rows)} new row(s) ",
+                 "were saved to {basename(pending_path)}; copy them into the changelog by hand."))
+  }
+
+  nrow(new_rows)
+}
 
 # ---- Country / regional handling ----
 
@@ -547,43 +1028,44 @@ add_footnotes <- function(df, footnotes, calculate_regional) {
   df
 }
 
-# Default define_source: look up an indicator's existing CEPALSTAT source and assign it as source_id.
-# Sample usage: df_l %>% existing_source(indicator_id = 4046)
-existing_source <- function(df, indicator_id) { # default: get existing source
-  df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
-}
-
-# Compare a cleaned indicator's assigned source and footnote ids against what's currently published on
-# CEPALSTAT, printing a diagnostic message -- never stops execution or modifies df. Only runs when
-# diagnostics = TRUE, and skips entirely for new_indicator = TRUE (nothing published yet to compare
-# against). Footnotes are compared as a set across the whole indicator, since CEPALSTAT's /footnotes
-# endpoint isn't row-level -- this catches an id disappearing/appearing entirely, not one landing on
-# the wrong specific row while the overall set stays the same.
+# Compare a cleaned indicator's assigned source and footnotes against what's currently published on
+# CEPALSTAT, and print both with their names (before and after when they changed). Never stops
+# execution or modifies df. Only runs when diagnostics = TRUE. For new indicators (nothing published
+# yet), prints the assigned source and footnotes without comparing.
+# Published sources and footnotes come from the CEPALSTAT API; names come from the tables built by
+# build_tables.R (Data/Tables/source_table.xlsx and note_table.xlsx). Footnotes are compared as a set
+# across the whole indicator, since CEPALSTAT's /footnotes endpoint isn't row-level.
 # Sample usage: df_l %>% compare_metadata(indicator_id = 4046, new_indicator = FALSE, diagnostics = TRUE)
-compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
+compare_metadata <- function(df, indicator_id, new_indicator, diagnostics, note_width = 100) {
   if (!diagnostics) return(df)
 
-  if (new_indicator) {
-    return(df)
+  ## names for labeling, from the local tables (first sheet of each) and, for published items, the API
+  read_table <- function(file) {
+    path <- here("Data/Tables", file)
+    if (file.exists(path)) read_xlsx(path, sheet = 1) else NULL
+  }
+  src <- read_table("source_table.xlsx")
+  nts <- read_table("note_table.xlsx")
+
+  source_names <- tibble(id = as.integer(src$source_id), label = as.character(glue("{src$organization_acronym}: {src$description}")))
+  note_names   <- tibble(id = as.integer(nts$note_id), label = as.character(nts$description))
+
+  # Formats ids as "id - name" lines (marked when added or removed); unknown ids get a hint
+  label_lines <- function(ids, names, width = Inf, mark = integer(), mark_text = "") {
+    if (length(ids) == 0) return("   (none)")
+    tibble(id = as.integer(ids)) %>%
+      left_join(distinct(names, id, .keep_all = TRUE), by = "id") %>%
+      mutate(
+        label = coalesce(label, "(not in Data/Tables; re-run build_tables.R to get its name)"),
+        label = if (is.finite(width)) str_trunc(label, width) else label,
+        line  = glue("   {id} - {label}{if_else(id %in% mark, mark_text, '')}")
+      ) %>%
+      pull(line)
   }
 
-  # compare source
-  pub_source_df <- get_indicator_source(indicator_id) %>% slice(1) 
-  pub_source <- pub_source_df %>% pull(id)
-  pub_source_name <- glue("{pub_source_df$organization_acronym} / {pub_source_df$description}")
-  new_source <- unique(df$source_id)
-
-  if (setequal(new_source, pub_source)) {
-    message(glue(" - Source unchanged ({pub_source}): {pub_source_name}"))
-  } else {
-    message(glue("⚠️ Source changed: {paste(pub_source, collapse = ',')} → {paste(new_source, collapse = ',')}"))
-  }
-
-  # compare footnotes (set-level, across the whole indicator)
-  pub_footnotes <- get_indicator_footnotes(indicator_id)
-  pub_ids <- if ("id" %in% names(pub_footnotes)) sort(pub_footnotes$id) else integer(0)
-
-  new_ids <- df$footnotes_id %>%
+  ## sources and footnotes assigned in this run
+  new_source <- unique(as.integer(df$source_id))
+  new_notes <- df$footnotes_id %>%
     str_split(",") %>%
     unlist() %>%
     trimws() %>%
@@ -592,19 +1074,132 @@ compare_metadata <- function(df, indicator_id, new_indicator, diagnostics) {
     unique() %>%
     sort()
 
-  added <- setdiff(new_ids, pub_ids)
-  removed <- setdiff(pub_ids, new_ids)
+  if (new_indicator) {
+    message(" - Source (new indicator):\n", paste(label_lines(new_source, source_names), collapse = "\n"))
+    message(glue(" - Footnotes (new indicator) ({length(new_notes)}):"), "\n",
+            paste(label_lines(new_notes, note_names, width = note_width), collapse = "\n"))
+    return(df)
+  }
+
+  ## compare source
+  pub_source_df <- get_indicator_source(indicator_id) %>% slice(1)
+  pub_source <- as.integer(pub_source_df$id)
+  source_names <- bind_rows(
+    source_names,
+    tibble(id = pub_source, label = as.character(glue("{pub_source_df$organization_acronym}: {pub_source_df$description}")))
+  )
+
+  if (setequal(new_source, pub_source)) {
+    message(" - Source unchanged:\n", paste(label_lines(pub_source, source_names), collapse = "\n"))
+  } else {
+    message("⚠️ Source changed:\n",
+            "   Before:\n", paste0("   ", label_lines(pub_source, source_names), collapse = "\n"), "\n",
+            "   After:\n",  paste0("   ", label_lines(new_source, source_names), collapse = "\n"))
+  }
+
+  ## compare footnotes (set-level, across the whole indicator)
+  pub_footnotes <- get_indicator_footnotes(indicator_id)
+  pub_notes <- if ("id" %in% names(pub_footnotes)) sort(as.integer(pub_footnotes$id)) else integer(0)
+  if (all(c("id", "description") %in% names(pub_footnotes))) {
+    note_names <- bind_rows(note_names, tibble(id = as.integer(pub_footnotes$id), label = pub_footnotes$description))
+  }
+
+  added   <- setdiff(new_notes, pub_notes)
+  removed <- setdiff(pub_notes, new_notes)
 
   if (length(added) == 0 && length(removed) == 0) {
-    message(glue(" - Footnotes unchanged ({paste(new_ids, collapse = ',')})"))
+    message(glue(" - Footnotes unchanged ({length(new_notes)}):"), "\n",
+            paste(label_lines(new_notes, note_names, width = note_width), collapse = "\n"))
   } else {
-    message(glue(
-      "⚠️ Footnotes changed -- added: {if (length(added)) paste(added, collapse = ',') else 'none'}, ",
-      "removed: {if (length(removed)) paste(removed, collapse = ',') else 'none'}"
-    ))
+    message("⚠️ Footnotes changed:\n",
+            glue("   Before ({length(pub_notes)}):"), "\n",
+            paste0("   ", label_lines(pub_notes, note_names, note_width, mark = removed, mark_text = "  [removed]"), collapse = "\n"), "\n",
+            glue("   After ({length(new_notes)}):"), "\n",
+            paste0("   ", label_lines(new_notes, note_names, note_width, mark = added, mark_text = "  [added]"), collapse = "\n"))
   }
 
   df
+}
+
+# Returns the latest year with a value in the new data and in the published data, from a comparison
+# file (create_comp_file()). Both are NA for indicators without a Years column (e.g. 2031).
+# Sample usage: latest_years(result_4046$comp)   # list(new = 2025, published = 2024)
+latest_years <- function(comp) {
+  latest <- function(values) {
+    years <- suppressWarnings(as.integer(comp$Years[!is.na(values)]))
+    if (all(is.na(years))) NA_integer_ else max(years, na.rm = TRUE)
+  }
+  if (!"Years" %in% names(comp)) return(list(new = NA_integer_, published = NA_integer_))
+  list(new = latest(comp$value), published = latest(comp$value.pub))
+}
+
+# Describes how the new data's latest year compares with the published one, e.g. "+1 year",
+# "same as published", or a warning if the new data ends earlier (uploading it would remove years).
+describe_year_change <- function(new_year, pub_year) {
+  case_when(
+    is.na(new_year)       ~ "",
+    is.na(pub_year)       ~ "not published yet",
+    new_year == pub_year  ~ "same as published",
+    new_year > pub_year   ~ glue("+{new_year - pub_year} year(s)"),
+    TRUE                  ~ "⚠️ ends earlier than published"
+  )
+}
+
+# Prints the latest year in the new data, next to the latest published year (and the cutoff, if the
+# spec sets max_year). Flags new data that ends earlier than what's published.
+# Sample usage: report_latest_year(comp, max_year = NULL)
+report_latest_year <- function(comp, max_year = NULL) {
+  years <- latest_years(comp)
+  if (is.na(years$new)) return(invisible(NULL))
+
+  pub_text     <- if (is.na(years$published)) "none" else years$published
+  cutoff_text  <- if (is.null(max_year)) "" else glue("; data after {max_year} excluded")
+  ends_earlier <- !is.na(years$published) && years$new < years$published
+  icon         <- if (ends_earlier) "⚠️" else " -"
+
+  message(glue("{icon} Latest year in the data: {years$new} (published: {pub_text}{cutoff_text})"))
+  invisible(NULL)
+}
+
+
+# ---- Source definitions (define_source) ----
+
+# Each indicator spec's define_source assigns the CEPALSTAT source ID to every row. The default,
+# existing_source(), keeps the source already published for the indicator. The functions below set a
+# specific source instead, e.g. for new indicators (nothing published yet) or ECLAC calculations.
+# To add one, copy a function below and change its name and source_id (IDs are in
+# Data/Tables/source_table.xlsx).
+# Sample usage in a spec: define_source = define_source_aquastat
+
+# Default: look up the indicator's existing CEPALSTAT source and assign it as source_id
+existing_source <- function(df, indicator_id) {
+  df %>% mutate(source_id = get_indicator_source(indicator_id) %>% slice(1) %>% pull(id))
+}
+
+## FAO
+
+define_source_fao <- function(df, indicator_id) {
+  df %>% mutate(source_id = 651)  # Online Statistical Database (FAOSTAT)
+}
+
+define_source_fao_w_cepal_calcs <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5174) # Calculations made by ECLAC based on data from the FAOSTAT database of FAO
+}
+
+define_source_aquastat <- function(df, indicator_id) {
+  df %>% mutate(source_id = 5173) # Global Information System on Water and Agriculture (AQUASTAT)
+}
+
+## OLADE
+
+define_source_olade_w_cepal_calcs <- function(df, indicator_id) {
+  df %>% mutate(source_id = 885)  # Calculations made by ECLAC based on data from the Energy Information System of OLACDE
+}
+
+## Climate Watch
+
+define_source_cw <- function(df, indicator_id) {
+  df %>% mutate(source_id = 1742) # Climate Watch Data Explorer (WRI)
 }
 
 
@@ -797,8 +1392,8 @@ run_one_indicator <- function(id, global = global_spec) {
   if (!exists(paste0("spec_", id))) {
     stop(glue(
       "❌ No spec found for indicator {id} (object `spec_{id}`). ",
-      "Source the script that defines it first (e.g. source(here('Scripts/fao.R'))), ",
-      "or run the source() lines at the top of run_all.R."
+      "Source the script that defines it first (e.g. source(here('Scripts/process_fao.R'))), ",
+      "or run the source() lines at the top of run_indicators.R."
     ), call. = FALSE)
   }
   spec <- get(paste0("spec_", id))
@@ -810,27 +1405,49 @@ run_one_indicator <- function(id, global = global_spec) {
 # Run many indicators and cache error messages
 # Sample usage: run_many_indicators(run_list) # where run_list is list of ids
 run_many_indicators <- function(run_list, global = global_spec) {
-  run_log <- tibble(id = numeric(), status = character(), message = character())
-  
+  run_log <- tibble(id = numeric(), status = character(), latest_year = integer(),
+                    published_year = integer(), message = character())
+
   for (i in seq_along(run_list)) {
     id <- run_list[i]
-    
+
     outcome <- tryCatch({
-      run_one_indicator(id, global)
-      list(status = "ok", message = NA_character_)
+      result <- run_one_indicator(id, global)
+      years <- latest_years(result$comp)
+      list(status = "ok", latest_year = years$new, published_year = years$published, message = NA_character_)
     }, error = function(e) {
       message(glue("❌ Indicator {id} failed: {conditionMessage(e)}"))
-      list(status = "error", message = conditionMessage(e))
+      list(status = "error", latest_year = NA_integer_, published_year = NA_integer_, message = conditionMessage(e))
     })
-    
-    run_log <- add_row(run_log, id = id, status = outcome$status, message = outcome$message)
+
+    run_log <- add_row(run_log, id = id, status = outcome$status, latest_year = outcome$latest_year,
+                       published_year = outcome$published_year, message = outcome$message)
   }
-  
+
+  # Summary table: one row per indicator, with its latest year next to the published one
+  run_log <- run_log %>%
+    left_join(meta %>% select(id, indicator), by = "id") %>%
+    mutate(year_change = describe_year_change(latest_year, published_year)) %>%
+    relocate(indicator, .after = id)
+
   message(glue("\n✅ {sum(run_log$status == 'ok')}/{nrow(run_log)} indicators processed successfully"))
   if (any(run_log$status == "error")) {
     message("❌ Failed: ", paste(run_log$id[run_log$status == "error"], collapse = ", "))
   }
-  return(run_log)
+
+  message("\nLatest year of data by indicator:")
+  run_log %>%
+    transmute(id, indicator = str_trunc(indicator, 50), status, latest_year, published_year, year_change) %>%
+    as.data.frame() %>%
+    print(row.names = FALSE)
+
+  # Save the summary alongside the comparison files, when exporting
+  if (isTRUE(global$export)) {
+    write_xlsx(run_log, ensure_dir(here("Data/Checks")) %>% file.path("run_summary.xlsx"))
+    message("✅ Summary saved to Data/Checks/run_summary.xlsx")
+  }
+
+  invisible(run_log)
 }
 
 

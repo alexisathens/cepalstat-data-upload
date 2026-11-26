@@ -264,10 +264,9 @@ load_qc_raw <- function(indicator_id, use_cache = TRUE) {
     mutate(across(.cols = matches("value|^abs_diff$|^diff$|^perc_diff$|^abs_perc_diff$"), .fns = as.numeric)) %>%
     mutate(across(.cols = starts_with("flag_"), .fns = as.logical))
 
-  # One lookup into Data/indicator_metadata.xlsx for every field this indicator has there - a
-  # 0-row result (indicator not yet in the metadata sheet) or a column the sheet doesn't have yet
-  # (e.g. source_id - see build_metadata_table.R, which designs for it but the sheet checked in
-  # today predates that column) falls back to NA_character_ for that field rather than failing.
+  # One lookup into Data/indicator_metadata.xlsx (built by build_tables.R) for every field this
+  # indicator has there - a 0-row result (indicator not yet in the metadata sheet) or a column the
+  # sheet doesn't have falls back to NA_character_ for that field rather than failing.
   # Deliberately sheet-only, no CEPALSTAT API calls, for every field on this table.
   meta_row <- meta %>% filter(id == indicator_id)
   meta_field <- function(col) {
@@ -1785,7 +1784,7 @@ This shows the metadata currently published on CEPALSTAT in English and Spanish.
 ```{r}
 #| context: server
 # Field names come back from the API as raw keys in snake_case (e.g. "calculation_methodology" -
-# see technical_sheet.R, which already depends on these same key names) - prettified for display
+# see update_metadata_fn.R, which already depends on these same key names) - prettified for display
 # only (underscores/camelCase -> spaced Title Case), not used for anything else.
 prettify_field_name <- function(x) {
   x %>%
@@ -1798,13 +1797,13 @@ prettify_field_name <- function(x) {
 # to just these, matched by raw API key (not the prettified name, so a coincidental word match
 # elsewhere can't pull in the wrong field) and always shown in this order regardless of what order
 # the API returns them in. data_features/unit/last_update are a best guess at the actual key names
-# (definition/calculation_methodology/comments are confirmed via technical_sheet.R) - if one of
+# (definition/calculation_methodology/comments are confirmed via update_metadata_fn.R) - if one of
 # those three doesn't show up for a real indicator, the fix is just updating this list with the
 # actual key.
 metadata_fields_to_show <- c("data_features", "unit", "definition", "calculation_methodology", "comments", "last_update")
 
 # Some published metadata text has literal "<br>"/"<br/>" tags baked in (matches
-# strip_html_breaks() in technical_sheet.R, which strips them the same way before this same text
+# strip_html_breaks() in update_metadata_fn.R, which strips them the same way before this same text
 # is fed to other tooling) - shown as plain text here rather than parsed as HTML, so left as-is
 # they'd read as literal "<br>" in the middle of a sentence. Removed outright rather than swapped
 # for a real newline - the source text already has its own paragraph breaks, so converting also

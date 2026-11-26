@@ -13,7 +13,7 @@ utils::globalVariables(c(
 ))
 
 # Read in ISO with cepalstat ids
-iso_cw <- read_xlsx(here("Data/iso_codes.xlsx"))
+iso_cw <- read_xlsx(here("Data/Tables/iso_codes.xlsx"))
 
 iso_cw %<>% 
   filter(ECLACa == "Y" | name == "World") %>% 

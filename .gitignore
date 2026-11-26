@@ -5,6 +5,8 @@
 .quarto/
 *_files/
 *_cache/
+Archive/
+Data/Backup/*
 Data/Checks/*
 !Data/Checks/comp_id3381.xlsx
 !Data/Checks/comp_id4243.xlsx
@@ -13,7 +15,21 @@ Data/Cleaned/*
 !Data/Cleaned/.gitkeep
 Data/Misc/
 Data/Raw/
+Exploratory Analysis/
 Pilot/
-CEPALSTAT Review/# Metadata: indicator drafts (e.g. 2487_en.md) stay local; only the prompts and glossary are tracked
+CEPALSTAT Review/
+Scripts/**/*.html
+
+# Metadata: the published snapshots ({id}.md, written by build_tables.R) and the prompts are tracked.
+# Drafts and other working files (any name with an underscore, e.g. 3381_draft.md) and other
+# subfolders stay local.
 Metadata/*
 !Metadata/Prompts/
+!Metadata/[0-9]*.md
+Metadata/*_*.md
+
+# Docs: working documents (Word, Excel, PowerPoint, rendered HTML, subfolders) stay local. New
+# Markdown guides and images are still picked up, and files already in git stay tracked.
+Docs/*
+!Docs/*.md
+!Docs/*.png

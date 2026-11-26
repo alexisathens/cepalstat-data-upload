@@ -18,12 +18,12 @@ This repository contains scripts to download, clean, standardize, and quality-ch
 
 | Source | Data | Associated steps/files |
 |---|---|---|
-| FAO | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides, fish capture, aquaculture, water withdrawal | <ul><li>Download and clean with `fao.R`, which uses the `FAOSTAT` R package</li></ul> |
-| OLADE | Energy production and consumption | <ul><li>Manual download following `manual_olade.qmd` instructions</li><li>Restructure raw data with `format_olade.R`</li><li>Clean with `olade.R`</li></ul> |
-| Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | API download with `download_climatewatch.R` |
-| EM-DAT | Natural disaster deaths, affected, economic damage | <ul><li>Manual download following `manual_download.qmd`</li><li>Clean with `emdat.R`</li></ul> |
-| InforMEA | Environmental treaty indicators | <ul><li>Download with `download_informea.qmd`, which scrapes web data from informea.org</li><li>Clean with `other.R`</li></ul> |
-| Other (UNEP/Ramsar/IRENA/ISO Survey) | | <ul><li>Download with `manual_download.qmd`</li><li>Clean with `other.R`</li></ul> |
+| FAO | Land use, climate change, land cover, crops/livestock, fertilizers, pesticides, fish capture, aquaculture, water withdrawal | <ul><li>Download with `download_fao.R`, which uses the `FAOSTAT` R package (AQUASTAT is downloaded manually following `instructions_other.qmd`)</li><li>Clean with `process_fao.R`</li></ul> |
+| OLADE | Energy production and consumption | <ul><li>Manual download following `instructions_olade.qmd`</li><li>Restructure raw data with `format_olade.R`</li><li>Clean with `process_olade.R`</li></ul> |
+| Climate Watch | GHG emissions (CO₂, CH₄, N₂O, etc.) | <ul><li>API download with `download_climatewatch.R`</li><li>Clean with `process_climatewatch.R`</li></ul> |
+| EM-DAT | Natural disaster deaths, affected, economic damage | <ul><li>Manual download following `instructions_other.qmd`</li><li>Clean with `process_emdat.R`</li></ul> |
+| InforMEA | Environmental treaty indicators | <ul><li>Download with `download_informea.qmd`, which scrapes web data from informea.org</li><li>Clean with `process_other.R`</li></ul> |
+| Other (UNEP/Ramsar/IRENA/ISO Survey) | | <ul><li>Manual download following `instructions_other.qmd`</li><li>Clean with `process_other.R`</li></ul> |
 
 ## Setup
 
@@ -60,7 +60,7 @@ The script then loads this environment by name with `use_virtualenv("cepalstat")
 
 ### 1. Download data
 
-Download the raw data files manually or automatically. The manual download instructions are split between files `manual_olade.qmd` and `manual_download.qmd`. The automatic download processes are either contained in the `download_*.R` files if downloading the data is complicated or combined into the cleaning files if it's simple (e.g., in `fao.R`). See the Data Source table above for instructions by source.
+Download the raw data files manually or automatically. The manual download instructions are split between files `instructions_olade.qmd` and `instructions_other.qmd`. The automatic downloads are in the `download_*` files (e.g., `download_fao.R`). See the Data Source table above for instructions by source.
 
 The resulting files from this step can be found in the folder `Data/Raw`.
 
@@ -84,7 +84,6 @@ For example, indicator 2530 (Natural Forest Proportion of Total Forest from FAO)
 spec_2530 <- indicator_spec(
   indicator_id = 2530,
   data = use,
-  max_year = max_year_fao,
   dim_config = dim_config_2530,
   filter_data = filter_forest,
   transform_data = transform_2530,
@@ -92,9 +91,9 @@ spec_2530 <- indicator_spec(
 )
 ```
 
-Each of these values and functions are defined inside of the source file, in this case `fao.R`.
+Each of these values and functions are defined inside of the source file, in this case `process_fao.R`.
 
-To clean and process indicators easily, utilize the wrapper script `run_all.R`.
+To clean and process indicators easily, utilize the wrapper script `run_indicators.R`.
 
 The resulting files from this step can then be found in `Data/Cleaned` (for upload to Wasabi) and `Data/Checks` (for running the quality check dashboard).
 
@@ -146,24 +145,34 @@ Hitting "Send now" updates the new data to CEPALSTAT.
 
 ### 5. Revise metadata (optional)
 
-An optional step is to update the indicator's technical sheet in CEPALSTAT. The script `technical_sheet.R` suggests updates to the metadata fields of Definition, Methodology and Comments.
+An optional step is to revise an indicator's metadata sheet in CEPALSTAT (Definition, Methodology and Comments). The functions are in `update_metadata_fn.R`, and `run_metadata.R` shows how to use them. Each draft is one file, `Metadata/{id}_draft.md`, that goes through two stages:
 
-The script fetches existing metadata from the CEPALSTAT API and calls the Anthropic API to produce an updated draft in English. This suggested draft is then **human-reviewed** and edited, before calling the Anthropic API again to translate it into Spanish. This is then exported into a CEPALSTAT Admin-friendly format and must be updated manually in the CEPALSTAT Admin area.
+1. `start_draft()` creates an **English draft** from the published text in `Metadata/{id}.md`: AI suggestions, AI edits that follow your `instructions`, or a plain copy for small edits by hand (`ai_assist = FALSE`). New indicators need a closely related published indicator as a `gold` standard. Edit the English by hand.
+2. `finish_draft()` translates the English fields you changed into Spanish (unchanged fields keep their published Spanish, and the glossary in `Metadata/Prompts/glossary.md` is applied) and rewrites the draft in **Admin format**: each field in Spanish and English, in a code block ready to copy into the CEPALSTAT Admin area.
 
-To manage this two-step metadata revision easily, utilize the wrapper script `run_meta.R`.
+After pasting into CEPALSTAT Admin, run `build_tables.R`: the snapshot updates, and the draft is deleted once the published text matches it. `draft_status()` lists the drafts in progress.
+
+## Periodic Updates
+
+Settings that go out of date on a schedule are kept together in `Scripts/config.R`:
+
+- **Statistical yearbook index** (`yearbook_file`, `yearbook_sheet`): update when a new yearbook comes out, and save the new index file in `Data/Tables/External/`.
+- **AI model** for metadata drafting (`ANTHROPIC_MODEL`): update when a newer model is available.
+
+Update the "checked" date next to each value when you review it.
 
 ## Global Files
 
 | Script | Associated Step | Purpose |
 |---|---|---|
-| `build_iso_table.R` | 0. setup | Build/update country name and ISO code mapping (`Data/iso_codes.xlsx`) |
-| `build_metadata_table.R` | 0. setup | Build/update indicator metadata table (`Data/indicator_metadata.xlsx`) |
+| `config.R` | 0. setup | Settings updated by hand (see Periodic Updates); loaded by `utils.R` |
+| `build_tables.R` | 0. setup | Download reference tables from the CEPALSTAT API (indicators, sources, notes, dimensions and their members, metadata sheets, countries), summarize changes since the last run (including unit and metadata text changes), and update `Data/Tables/`, `Data/indicator_metadata.xlsx` and the metadata snapshots in `Metadata/` |
 | `process_indicator_fn.R` | 2. clean data | Core `process_indicator()` function used by all cleaning scripts |
-| `run_all.R` | 2. clean data | Controller for `process_indicator_fn.R` |
+| `run_indicators.R` | 2. clean data | Controller for `process_indicator_fn.R` |
 | `utils.R` | 2. clean data | Shared utility functions (API calls, formatting, validation) |
 | `dashboard/dashboard.qmd` | 3. quality check | Interactive Quarto Dashboard for QC review |
-| `technical_sheet.R` | 5. metadata | Generate technical metadata sheet |
-| `run_meta.R` | 5. metadata | Controller for `technical_sheet.R` |
+| `update_metadata_fn.R` | 5. metadata | Draft, translate and export indicator metadata (Definition, Methodology, Comments) |
+| `run_metadata.R` | 5. metadata | Controller for `update_metadata_fn.R` |
 
 ## File Organization
 
@@ -173,7 +182,23 @@ Data/
 ├── Raw/          # Raw source downloads
 ├── Cleaned/      # Final files for Wasabi upload (id{indicator_id}_{timestamp}.xlsx)
 ├── Checks/       # Comparison files vs. published data (comp_id{indicator_id}.xlsx)
-├── iso_codes.xlsx           # Country name ↔ CEPALSTAT ID mapping
-└── indicator_metadata.xlsx  # Indicator reference table (id, area, source, dimensions, notes), rebuilt via `build_metadata_table.R`
+├── Tables/       # Reference tables from CEPALSTAT, rebuilt via `build_tables.R`
+│   ├── indicator_table.xlsx  # Indicators: categories (English and Spanish), unit and last update date
+│   ├── source_table.xlsx     # Sources, and the sources of each indicator
+│   ├── note_table.xlsx       # Footnotes, and the footnotes of each indicator
+│   ├── dimension_table.xlsx  # Dimensions, the dimensions of each indicator, and members of the indicator-specific dimensions
+│   ├── iso_codes.xlsx        # Country name ↔ CEPALSTAT ID mapping, with ISO codes and ECLAC flags
+│   └── External/             # Reference files from outside CEPALSTAT, updated by hand
+│       ├── AE2026-Indice-WEB-PDF.xlsx  # Statistical yearbook index (yearbook flag; update each year)
+│       ├── profile_data.xlsx           # Indicators in the country profiles (profile flag)
+│       ├── code_iso_mp.csv             # ISO codes by country name, from World Data (country table)
+│       └── lac_countries.xlsx          # ECLAC countries and their spellings (country table)
+├── indicator_changelog.xlsx # History of indicator changes: rows added by `build_tables.R` (fill in `reason`) plus rows added by hand
+└── indicator_metadata.xlsx  # One row per indicator (id, names, categories, source, dimensions, unit, CEPALSTAT indicators it uses, flags, notes), rebuilt via `build_tables.R`
+Metadata/
+├── {id}.md       # Snapshot of each indicator's published metadata sheet, rebuilt via `build_tables.R`. Don't edit
+│                 #   by hand; commit after each run (the git history is the history of the sheets)
+├── {id}_*.md     # Drafts and working files (e.g. 3381_draft.md), not stored in git
+└── Prompts/      # AI prompts and translation glossary
 Docs/       # Misc documentation and visuals
 ```

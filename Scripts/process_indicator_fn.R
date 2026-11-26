@@ -1,6 +1,8 @@
 # define indicator specs
+# max_year is optional: by default all years in the data are kept. Set it only for a source whose
+# latest year is incomplete (e.g. EM-DAT uses last_complete_year).
 indicator_spec <- function(
-    indicator_id, data, max_year, dim_config, filter_data, transform_data, calculate_regional, 
+    indicator_id, data, dim_config, filter_data, transform_data, calculate_regional, max_year = NULL,
     footnotes = list(), define_source = existing_source, new_indicator = FALSE) {
   list(indicator_id = indicator_id, data = data, max_year = max_year, dim_config = dim_config,
        filter_data = filter_data, transform_data = transform_data, calculate_regional = calculate_regional,
@@ -32,7 +34,7 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
   meta_row <- meta %>% filter(id == indicator_id)
   if (nrow(meta_row) == 0) {
     stop(glue(
-      "❌ Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Re-run build_metadata_table.R (if the indicator exists in CEPALSTAT) ",
+      "❌ Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Re-run build_tables.R (if the indicator exists in CEPALSTAT) ",
       "or add a row manually with at least id, indicator, and source. Then reload utils.R so `meta` is refreshed."
     ))
   }
@@ -61,6 +63,9 @@ process_indicator <- function(spec = indicator_spec, global = global_spec) {
     create_comp_file(., indicator_id, dim_config, new_indicator) %>%
     assert_no_na_cols(., !contains("value"))
   
+  # print the latest year in the data, next to the latest published year and the source's max year
+  report_latest_year(comp, max_year)
+
   # run summary diagnostics
   if (diagnostics) {
     comp %>% 
