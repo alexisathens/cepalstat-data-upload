@@ -782,8 +782,11 @@ changelog_columns <- c("entry_id", "date", "indicator_id", "indicator_name", "di
 # detected on two runs is only logged once. New rows get the next entry_id (e.g. c084), today's date and
 # detected_by = "build_tables". If the file can't be written (e.g. it's open in Excel), the new rows are
 # saved to a separate dated file instead.
-# Sample usage: append_changelog(changelog_rows, here("Data/indicator_changelog.xlsx"))
-append_changelog <- function(new_rows, path) {
+# affected_lookup (optional) lists the indicators that use each dimension (columns dim_id and
+# affected_indicators). Any row with a dimension_id but no affected_indicators is filled in from it,
+# including rows added by hand. Rows that already list affected indicators are left as they are.
+# Sample usage: append_changelog(changelog_rows, here("Data/indicator_changelog.xlsx"), affected_lookup)
+append_changelog <- function(new_rows, path, affected_lookup = NULL) {
   existing <- if (file.exists(path)) read_xlsx(path) else tibble()
   existing <- existing %>%
     mutate(across(any_of(c("indicator_id", "dimension_id")), as.numeric),
@@ -801,7 +804,19 @@ append_changelog <- function(new_rows, path) {
     filter(!duplicated(as_keys(.))) %>%
     filter(!vctrs::vec_in(as_keys(.), as_keys(existing)))
 
-  if (nrow(new_rows) == 0) return(0L)
+  # Fill in affected indicators for rows that have a dimension but none listed yet
+  n_filled <- 0
+  if (!is.null(affected_lookup) && nrow(existing) > 0 && all(c("dimension_id", "affected_indicators") %in% names(existing))) {
+    lookup  <- affected_lookup %>% transmute(dimension_id = as.numeric(dim_id), filled = affected_indicators)
+    to_fill <- !is.na(existing$dimension_id) & is.na(existing$affected_indicators)
+    filled  <- existing %>% select(dimension_id) %>% left_join(lookup, by = "dimension_id") %>% pull(filled)
+    to_fill <- to_fill & !is.na(filled)
+    existing$affected_indicators[to_fill] <- filled[to_fill]
+    n_filled <- sum(to_fill)
+    if (n_filled > 0) message(glue("ℹ️ Filled in affected indicators for {n_filled} changelog row(s)"))
+  }
+
+  if (nrow(new_rows) == 0 && n_filled == 0) return(0L)
 
   last_number <- suppressWarnings(max(as.integer(str_extract(existing$entry_id, "[0-9]+")), 0, na.rm = TRUE))
   new_rows <- new_rows %>%
@@ -818,7 +833,10 @@ append_changelog <- function(new_rows, path) {
     TRUE
   }, error = function(e) FALSE)
 
-  if (!saved) {
+  if (!saved && nrow(new_rows) == 0) {
+    message(glue("⚠️ Couldn't update {basename(path)} (is it open in Excel?). The affected indicators will be ",
+                 "filled in on the next run."))
+  } else if (!saved) {
     pending_path <- str_replace(path, "\\.xlsx$", glue("_pending_{Sys.Date()}.xlsx"))
     write_xlsx(list(changelog = new_rows %>% select(any_of(changelog_columns))), pending_path)
     message(glue("⚠️ Couldn't update {basename(path)} (is it open in Excel?). The {nrow(new_rows)} new row(s) ",

@@ -689,7 +689,10 @@ if (update_meta) {
 
 ## Changelog: add the changes found in this run ----
 new_log_rows <- bind_rows(changelog_rows, if (update_meta) changelog_rows_created)
-n_logged <- append_changelog(new_log_rows, paths$changelog)
+# Which indicators use each dimension, to fill in affected_indicators (e.g. for rows added by hand)
+dim_usage <- indicator_dimension %>%
+  summarise(affected_indicators = paste(sort(unique(indicator_id)), collapse = "; "), .by = dim_id)
+n_logged <- append_changelog(new_log_rows, paths$changelog, affected_lookup = dim_usage)
 if (n_logged > 0) {
   message(glue("📝 {n_logged} new row(s) added to Data/indicator_changelog.xlsx. Add a reason where useful."))
 } else {
