@@ -479,11 +479,16 @@ fetch_cepalstat_json_many <- function(urls, max_active = 8) {
 # List fields are collapsed into one string, e.g. "a; b".
 as_character_tibble <- function(x) {
   if (is.null(x) || length(x) == 0) return(tibble())
-  
-  # Converts one column to text; list columns are collapsed into one string per row
+
+  # Converts one column to text; list columns are collapsed into one string per row.
+  # Empty or missing values stay NA, so they're written as blank cells in Excel (not the text "NA").
   to_text <- function(col) {
     if (is.list(col)) {
-      map_chr(col, function(item) paste(unlist(item), collapse = "; "))
+      map_chr(col, function(item) {
+        values <- unlist(item)
+        values <- values[!is.na(values)]
+        if (length(values) == 0) NA_character_ else paste(values, collapse = "; ")
+      })
     } else {
       as.character(col)
     }
