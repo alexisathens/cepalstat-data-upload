@@ -10,6 +10,7 @@
 #   Data/Tables/iso_codes.xlsx        - every known spelling of each country, mapped to its CEPALSTAT
 #                                       name and ID, with ISO codes and ECLAC flags; read as `iso` by utils.R
 #   Data/indicator_metadata.xlsx      - one row per indicator; read as `meta` by utils.R
+#   Data/indicator_changelog.xlsx     - new rows for the changes found in this run (reasons are added by hand)
 #
 # The script runs in four parts:
 #   A. Download and build every table in memory (nothing is saved yet)
@@ -37,7 +38,8 @@ paths <- list(
   dimensions = here("Data/Tables/dimension_table.xlsx"),
   iso        = here("Data/Tables/iso_codes.xlsx"),
   snapshots  = here("Metadata"),                      # folder: one {id}.md file per indicator, next to the drafts
-  metadata   = here("Data/indicator_metadata.xlsx")
+  metadata   = here("Data/indicator_metadata.xlsx"),
+  changelog  = here("Data/indicator_changelog.xlsx")
 )
 
 # Reference files from outside CEPALSTAT, used for the metadata flags (step 6) and the country table (step 7)
@@ -466,6 +468,115 @@ if (!is.null(old_members)) {
     ))
 }
 
+# ---- Changelog rows (added to Data/indicator_changelog.xlsx in part D) ----
+
+# Logged: indicators created or deprecated, and changes to an indicator's name, category, unit, sources,
+# footnotes or dimensions, and to dimension members. Not logged: metadata text (its history is in the
+# Metadata/{id}.md snapshots in git), latest years of data, and the text of sources or footnotes.
+# The comparisons below only cover indicators in both the saved and the new indicator table; indicators
+# that are new or no longer in the tree are logged as created or deprecated instead.
+
+new_ind <- env %>% distinct(id, .keep_all = TRUE)
+old_ind <- if (is.null(old_indicators)) new_ind else distinct(old_indicators, id, .keep_all = TRUE)
+both_ids <- intersect(old_ind$id, new_ind$id)
+
+# Compares one or more columns of the saved and new indicator tables; one row per changed value
+compare_indicator_columns <- function(columns, change_type, fields = columns) {
+  field_of <- setNames(fields, columns)              # e.g. indicator -> indicator_name
+  columns  <- intersect(columns, names(old_ind))     # older saved tables may lack some columns
+  if (length(columns) == 0) return(tibble())
+  old <- old_ind %>% filter(id %in% both_ids) %>% select(id, all_of(columns)) %>%
+    mutate(across(-id, as.character)) %>% pivot_longer(-id, names_to = "column", values_to = "old_value")
+  new <- new_ind %>% filter(id %in% both_ids) %>% select(id, all_of(columns)) %>%
+    mutate(across(-id, as.character)) %>% pivot_longer(-id, names_to = "column", values_to = "new_value")
+  inner_join(old, new, by = c("id", "column")) %>%
+    filter(coalesce(old_value, "") != coalesce(new_value, "")) %>%
+    transmute(indicator_id = id, change_type = change_type,
+              field = unname(field_of[column]), old_value, new_value)
+}
+
+# Category: the indicator's place in the thematic tree, e.g. "Environmental conditions > Water"
+add_category_path <- function(df) {
+  for (col in setdiff(c("cat1", "cat2", "cat3"), names(df))) df[[col]] <- NA_character_
+  df %>% mutate(category = pmap_chr(list(cat1, cat2, cat3), function(...) paste(na.omit(c(...)), collapse = " > ")))
+}
+old_ind <- add_category_path(old_ind)
+new_ind <- add_category_path(new_ind)
+
+# Sources, footnotes or dimensions linked to each indicator (one row per link added or removed)
+compare_indicator_links <- function(old_links, new_links, item_col, labels, change_type) {
+  if (is.null(old_links)) return(tibble())
+  keep <- function(df) df %>% filter(indicator_id %in% both_ids) %>% distinct(indicator_id, .data[[item_col]]) %>%
+    mutate(across(everything(), as.integer))
+  old_links <- keep(old_links)
+  new_links <- keep(new_links)
+  bind_rows(
+    anti_join(old_links, new_links, by = c("indicator_id", item_col)) %>% mutate(side = "old"),
+    anti_join(new_links, old_links, by = c("indicator_id", item_col)) %>% mutate(side = "new")
+  ) %>%
+    left_join(labels, by = item_col) %>%
+    transmute(indicator_id, change_type = change_type, field = change_type,
+              old_value = if_else(side == "old", label, NA_character_),
+              new_value = if_else(side == "new", label, NA_character_))
+}
+
+old_sources <- read_previous(paths$sources, "sources")
+source_labels <- bind_rows(sources, old_sources) %>%
+  mutate(source_id = as.integer(source_id)) %>%
+  distinct(source_id, .keep_all = TRUE) %>%
+  transmute(source_id, label = as.character(glue("{source_id} - {organization_acronym}: {description}")))
+
+note_labels <- bind_rows(notes, read_previous(paths$notes, "notes")) %>%
+  mutate(note_id = as.integer(note_id)) %>%
+  distinct(note_id, .keep_all = TRUE) %>%
+  transmute(note_id, label = as.character(glue("{note_id} - {str_trunc(description, 80)}")))
+
+dim_labels <- bind_rows(dimensions, read_previous(paths$dimensions, "dimensions")) %>%
+  mutate(dim_id = as.integer(dim_id)) %>%
+  distinct(dim_id, .keep_all = TRUE) %>%
+  transmute(dim_id, label = as.character(glue("{dim_id} - {name}")))
+
+# Source changes: one row per indicator whose set of sources changed (not the text of a source)
+source_rows <- tibble()
+old_source_links <- read_previous(paths$sources, "by_indicator")
+if (!is.null(old_source_links)) {
+  source_sets <- function(links) links %>%
+    mutate(across(c(indicator_id, source_id), as.integer)) %>%
+    filter(indicator_id %in% both_ids) %>%
+    left_join(source_labels, by = "source_id") %>%
+    arrange(indicator_id, source_id) %>%
+    summarise(ids = paste(source_id, collapse = ";"), value = paste(label, collapse = "; "), .by = indicator_id)
+  source_rows <- inner_join(source_sets(old_source_links), source_sets(indicator_source),
+                            by = "indicator_id", suffix = c("_old", "_new")) %>%
+    filter(ids_old != ids_new) %>%
+    transmute(indicator_id, change_type = "source", field = "source", old_value = value_old, new_value = value_new)
+}
+
+# All changes that are logged on every run (starting from an empty table, so the columns always exist)
+changelog_rows <- bind_rows(
+  tibble(indicator_id = integer(), dimension_id = integer(), affected_indicators = character(),
+         change_type = character(), field = character(), old_value = character(), new_value = character()),
+  compare_indicator_columns(c("indicator", "indicator_es"), "name", fields = c("indicator_name", "indicator_name_es")),
+  compare_indicator_columns("category", "category"),
+  compare_indicator_columns(c("unit", "unit_es"), "unit") %>%
+    filter(indicator_id %in% sheets$indicator_id),   # indicators with no metadata sheet have no unit to compare
+  source_rows,
+  compare_indicator_links(read_previous(paths$notes, "by_indicator"), indicator_note, "note_id", note_labels, "footnote"),
+  compare_indicator_links(read_previous(paths$dimensions, "by_indicator"), indicator_dimension, "dim_id", dim_labels, "dimension"),
+  member_changes %>%
+    left_join(indicator_dimension %>% summarise(affected_indicators = paste(sort(unique(indicator_id)), collapse = "; "),
+                                                .by = dim_id), by = "dim_id") %>%
+    transmute(dimension_id = dim_id, affected_indicators, change_type = "dimension_member", field, old_value = old_name, new_value = new_name)
+) %>%
+  left_join(new_ind %>% select(indicator_id = id, indicator_name = indicator), by = "indicator_id")
+
+# Indicators created or deprecated: logged only when the metadata table is updated (part D), since a
+# missing indicator is only dropped from it after confirmation
+changelog_rows_created <- bind_rows(
+  added   %>% transmute(indicator_id = id, indicator_name = indicator, change_type = "created",    new_value = indicator),
+  removed %>% transmute(indicator_id = id, indicator_name = indicator, change_type = "deprecated", old_value = indicator)
+)
+
 # Country (ISO) table: compared with the saved version. Changes are rare, so each one is listed in full.
 old_iso <- (read_previous(paths$iso) %||% iso_new) %>%
   filter(!is.na(cepalstat))
@@ -574,4 +685,13 @@ if (update_meta) {
 } else {
   message("⏸️ Data/indicator_metadata.xlsx was NOT updated. Review the changes above, then re-run ",
           "this script in RStudio and answer 'y' to update it.")
+}
+
+## Changelog: add the changes found in this run ----
+new_log_rows <- bind_rows(changelog_rows, if (update_meta) changelog_rows_created)
+n_logged <- append_changelog(new_log_rows, paths$changelog)
+if (n_logged > 0) {
+  message(glue("📝 {n_logged} new row(s) added to Data/indicator_changelog.xlsx. Add a reason where useful."))
+} else {
+  message("✅ No new changes for the changelog")
 }

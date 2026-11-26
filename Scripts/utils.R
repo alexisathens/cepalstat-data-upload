@@ -773,6 +773,61 @@ ask_yes_no <- function(question) {
   tolower(trimws(answer)) %in% c("y", "yes")
 }
 
+# Columns of Data/indicator_changelog.xlsx, in order. reason and notes are filled in by hand.
+changelog_columns <- c("entry_id", "date", "indicator_id", "indicator_name", "dimension_id", "affected_indicators",
+                       "change_type", "field", "old_value", "new_value", "detected_by", "reason", "notes")
+
+# Adds new rows to the indicator changelog and returns how many were added. Rows already in the
+# changelog (same indicator, dimension, change type, field, old and new value) are skipped, so a change
+# detected on two runs is only logged once. New rows get the next entry_id (e.g. c084), today's date and
+# detected_by = "build_tables". If the file can't be written (e.g. it's open in Excel), the new rows are
+# saved to a separate dated file instead.
+# Sample usage: append_changelog(changelog_rows, here("Data/indicator_changelog.xlsx"))
+append_changelog <- function(new_rows, path) {
+  existing <- if (file.exists(path)) read_xlsx(path) else tibble()
+  existing <- existing %>%
+    mutate(across(any_of(c("indicator_id", "dimension_id")), as.numeric),
+           across(any_of("date"), as.Date))
+
+  # Columns that identify a change, compared as text
+  key_cols <- c("indicator_id", "dimension_id", "change_type", "field", "old_value", "new_value")
+  as_keys  <- function(df) {
+    for (col in setdiff(key_cols, names(df))) df[[col]] <- NA
+    df %>% transmute(across(all_of(key_cols), as.character))
+  }
+
+  new_rows <- new_rows %>%
+    mutate(across(any_of(c("indicator_id", "dimension_id")), as.numeric)) %>%
+    filter(!duplicated(as_keys(.))) %>%
+    filter(!vctrs::vec_in(as_keys(.), as_keys(existing)))
+
+  if (nrow(new_rows) == 0) return(0L)
+
+  last_number <- suppressWarnings(max(as.integer(str_extract(existing$entry_id, "[0-9]+")), 0, na.rm = TRUE))
+  new_rows <- new_rows %>%
+    mutate(entry_id    = sprintf("c%03d", last_number + row_number()),
+           date        = Sys.Date(),
+           detected_by = "build_tables")
+
+  all_rows <- bind_rows(existing, new_rows)
+  for (col in setdiff(changelog_columns, names(all_rows))) all_rows[[col]] <- NA   # e.g. notes, if never used
+  all_rows <- all_rows %>% select(all_of(changelog_columns), everything())
+
+  saved <- tryCatch({
+    write_xlsx(list(changelog = all_rows), path)
+    TRUE
+  }, error = function(e) FALSE)
+
+  if (!saved) {
+    pending_path <- str_replace(path, "\\.xlsx$", glue("_pending_{Sys.Date()}.xlsx"))
+    write_xlsx(list(changelog = new_rows %>% select(any_of(changelog_columns))), pending_path)
+    message(glue("⚠️ Couldn't update {basename(path)} (is it open in Excel?). The {nrow(new_rows)} new row(s) ",
+                 "were saved to {basename(pending_path)}; copy them into the changelog by hand."))
+  }
+
+  nrow(new_rows)
+}
+
 # ---- Country / regional handling ----
 
 # Standardize country names to CEPALSTAT's iso table, restrict to LAC countries, and drop subregion groupings.
