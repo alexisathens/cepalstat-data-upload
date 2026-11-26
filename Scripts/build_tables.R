@@ -434,37 +434,34 @@ if (any(snapshots$changed)) {
     mutate(change = map2_chr(text_old, text_new, describe_text_change))
 }
 
-# Dimension member changes (compared with the saved members sheet): one row per change, with the old
-# and new member name. Members of a dimension that is new or no longer used aren't listed one by one;
-# those dimensions appear in the table changes instead.
+# Dimension member changes (compared with the saved members sheet): one row per member added, removed
+# or renamed, with its English and Spanish names together (e.g. "Methane (CH4); Metano (CH4)").
+# Members of a dimension that is new or no longer used aren't listed one by one; those dimensions
+# appear in the table changes instead.
 member_changes <- tibble(dim_id = integer(), dim_name = character(), change = character(),
-                         field = character(), old_name = character(), new_name = character(), line = character())
+                         old_name = character(), new_name = character(), line = character())
 old_members <- read_previous(paths$dimensions, "members")
 if (!is.null(old_members)) {
-  old_members <- old_members %>% mutate(across(c(dim_id, member_id), as.integer))
+  both_names  <- function(en, es) paste(coalesce(en, ""), coalesce(es, ""), sep = "; ")
+  old_members <- old_members %>% mutate(across(c(dim_id, member_id), as.integer), names = both_names(name, name_es))
+  new_members <- dim_members %>% mutate(names = both_names(name, name_es))
 
-  members_added <- anti_join(dim_members, old_members, by = c("dim_id", "member_id")) %>%
+  members_added <- anti_join(new_members, old_members, by = c("dim_id", "member_id")) %>%
     filter(dim_id %in% old_members$dim_id) %>%
-    transmute(dim_id, change = "added", field = "member", old_name = NA_character_, new_name = name)
-  members_removed <- anti_join(old_members, dim_members, by = c("dim_id", "member_id")) %>%
-    filter(dim_id %in% dim_members$dim_id) %>%
-    transmute(dim_id, change = "removed", field = "member", old_name = name, new_name = NA_character_)
-  # renamed: one row per language that changed
-  members_renamed <- inner_join(old_members, dim_members, by = c("dim_id", "member_id"), suffix = c("_old", "")) %>%
-    transmute(dim_id, member = name_old, name_old, name, name_es_old, name_es) %>%
-    pivot_longer(c(name_old, name_es_old), names_to = "old_col", values_to = "old_name") %>%
-    mutate(new_name = if_else(old_col == "name_old", name, name_es),
-           field    = if_else(old_col == "name_old", "member", "member_es")) %>%
-    filter(coalesce(old_name, "") != coalesce(new_name, "")) %>%
-    transmute(dim_id, change = "renamed", field, old_name, new_name)
+    transmute(dim_id, change = "added", old_name = NA_character_, new_name = names)
+  members_removed <- anti_join(old_members, new_members, by = c("dim_id", "member_id")) %>%
+    filter(dim_id %in% new_members$dim_id) %>%
+    transmute(dim_id, change = "removed", old_name = names, new_name = NA_character_)
+  members_renamed <- inner_join(old_members, new_members, by = c("dim_id", "member_id"), suffix = c("_old", "")) %>%
+    filter(names_old != names) %>%
+    transmute(dim_id, change = "renamed", old_name = names_old, new_name = names)
 
   member_changes <- bind_rows(members_added, members_removed, members_renamed) %>%
     left_join(dimensions %>% select(dim_id, dim_name = name), by = "dim_id") %>%
     mutate(line = case_when(
       change == "added"   ~ glue('Dimension {dim_id} ({dim_name}): added member "{new_name}"'),
       change == "removed" ~ glue('Dimension {dim_id} ({dim_name}): removed member "{old_name}"'),
-      field == "member"   ~ glue('Dimension {dim_id} ({dim_name}): renamed member "{old_name}" -> "{new_name}"'),
-      TRUE                ~ glue('Dimension {dim_id} ({dim_name}): renamed member (ES) "{old_name}" -> "{new_name}"')
+      TRUE                ~ glue('Dimension {dim_id} ({dim_name}): renamed member "{old_name}" -> "{new_name}"')
     ))
 }
 
@@ -480,25 +477,30 @@ new_ind <- env %>% distinct(id, .keep_all = TRUE)
 old_ind <- if (is.null(old_indicators)) new_ind else distinct(old_indicators, id, .keep_all = TRUE)
 both_ids <- intersect(old_ind$id, new_ind$id)
 
-# Compares one or more columns of the saved and new indicator tables; one row per changed value
-compare_indicator_columns <- function(columns, change_type, fields = columns) {
-  field_of <- setNames(fields, columns)              # e.g. indicator -> indicator_name
-  columns  <- intersect(columns, names(old_ind))     # older saved tables may lack some columns
-  if (length(columns) == 0) return(tibble())
-  old <- old_ind %>% filter(id %in% both_ids) %>% select(id, all_of(columns)) %>%
-    mutate(across(-id, as.character)) %>% pivot_longer(-id, names_to = "column", values_to = "old_value")
-  new <- new_ind %>% filter(id %in% both_ids) %>% select(id, all_of(columns)) %>%
-    mutate(across(-id, as.character)) %>% pivot_longer(-id, names_to = "column", values_to = "new_value")
-  inner_join(old, new, by = c("id", "column")) %>%
-    filter(coalesce(old_value, "") != coalesce(new_value, "")) %>%
-    transmute(indicator_id = id, change_type = change_type,
-              field = unname(field_of[column]), old_value, new_value)
+# Compares columns of the saved and new indicator tables, e.g. the English and Spanish names. Their
+# values are combined into one, separated by "; " (e.g. "tonnes; toneladas"), so a change in either
+# language gives one row per indicator. Skipped if an older saved table lacks one of the columns.
+compare_indicator_columns <- function(columns, change_type) {
+  if (!all(columns %in% names(old_ind))) return(tibble())
+  combine <- function(df) {
+    df %>%
+      filter(id %in% both_ids) %>%
+      select(id, all_of(columns)) %>%
+      mutate(across(-id, ~ coalesce(as.character(.x), ""))) %>%
+      unite("value", all_of(columns), sep = "; ")
+  }
+  inner_join(combine(old_ind), combine(new_ind), by = "id", suffix = c("_old", "_new")) %>%
+    filter(value_old != value_new) %>%
+    transmute(indicator_id = id, change_type = change_type, old_value = value_old, new_value = value_new)
 }
 
-# Category: the indicator's place in the thematic tree, e.g. "Environmental conditions > Water"
+# Category: the indicator's place in the thematic tree, e.g. "Environmental conditions > Water", in
+# English (category) and Spanish (category_es)
 add_category_path <- function(df) {
-  for (col in setdiff(c("cat1", "cat2", "cat3"), names(df))) df[[col]] <- NA_character_
-  df %>% mutate(category = pmap_chr(list(cat1, cat2, cat3), function(...) paste(na.omit(c(...)), collapse = " > ")))
+  for (col in setdiff(c("cat1", "cat2", "cat3", "cat1_es", "cat2_es", "cat3_es"), names(df))) df[[col]] <- NA_character_
+  path <- function(...) paste(na.omit(c(...)), collapse = " > ")
+  df %>% mutate(category    = pmap_chr(list(cat1, cat2, cat3), path),
+                category_es = pmap_chr(list(cat1_es, cat2_es, cat3_es), path))
 }
 old_ind <- add_category_path(old_ind)
 new_ind <- add_category_path(new_ind)
@@ -515,7 +517,7 @@ compare_indicator_links <- function(old_links, new_links, item_col, labels, chan
     anti_join(new_links, old_links, by = c("indicator_id", item_col)) %>% mutate(side = "new")
   ) %>%
     left_join(labels, by = item_col) %>%
-    transmute(indicator_id, change_type = change_type, field = change_type,
+    transmute(indicator_id, change_type = change_type,
               old_value = if_else(side == "old", label, NA_character_),
               new_value = if_else(side == "new", label, NA_character_))
 }
@@ -549,15 +551,15 @@ if (!is.null(old_source_links)) {
   source_rows <- inner_join(source_sets(old_source_links), source_sets(indicator_source),
                             by = "indicator_id", suffix = c("_old", "_new")) %>%
     filter(ids_old != ids_new) %>%
-    transmute(indicator_id, change_type = "source", field = "source", old_value = value_old, new_value = value_new)
+    transmute(indicator_id, change_type = "source", old_value = value_old, new_value = value_new)
 }
 
 # All changes that are logged on every run (starting from an empty table, so the columns always exist)
 changelog_rows <- bind_rows(
   tibble(indicator_id = integer(), dimension_id = integer(), affected_indicators = character(),
-         change_type = character(), field = character(), old_value = character(), new_value = character()),
-  compare_indicator_columns(c("indicator", "indicator_es"), "name", fields = c("indicator_name", "indicator_name_es")),
-  compare_indicator_columns("category", "category"),
+         change_type = character(), old_value = character(), new_value = character()),
+  compare_indicator_columns(c("indicator", "indicator_es"), "name"),
+  compare_indicator_columns(c("category", "category_es"), "category"),
   compare_indicator_columns(c("unit", "unit_es"), "unit") %>%
     filter(indicator_id %in% sheets$indicator_id),   # indicators with no metadata sheet have no unit to compare
   source_rows,
@@ -566,7 +568,7 @@ changelog_rows <- bind_rows(
   member_changes %>%
     left_join(indicator_dimension %>% summarise(affected_indicators = paste(sort(unique(indicator_id)), collapse = "; "),
                                                 .by = dim_id), by = "dim_id") %>%
-    transmute(dimension_id = dim_id, affected_indicators, change_type = "dimension_member", field, old_value = old_name, new_value = new_name)
+    transmute(dimension_id = dim_id, affected_indicators, change_type = "dimension_member", old_value = old_name, new_value = new_name)
 ) %>%
   left_join(new_ind %>% select(indicator_id = id, indicator_name = indicator), by = "indicator_id")
 
