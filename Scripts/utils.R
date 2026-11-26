@@ -608,6 +608,41 @@ read_metadata_snapshot <- function(path) {
   parse_metadata_snapshot(read_file(path))
 }
 
+# File paths of an indicator's snapshot and draft. Sample usage: draft_path(3381) -> Metadata/3381_draft.md
+snapshot_path <- function(indicator_id) here("Metadata", glue("{indicator_id}.md"))
+draft_path    <- function(indicator_id) here("Metadata", glue("{indicator_id}_draft.md"))
+
+# A short code that changes whenever the snapshot file changes. Stored in each draft (based_on), so
+# a later change to the published text can be detected. "none" if the indicator has no snapshot.
+snapshot_fingerprint <- function(indicator_id) {
+  path <- snapshot_path(indicator_id)
+  if (!file.exists(path)) return("none")
+  unname(tools::md5sum(path))
+}
+
+# Reads the front matter (the block between the first two "---" lines) of a snapshot or draft into a
+# named list of text values, e.g. list(indicator_id = "3381", stage = "admin").
+read_front_matter <- function(path) {
+  lines <- read_lines(path)
+  bounds <- which(lines == "---")
+  if (length(bounds) < 2 || bounds[1] != 1) return(list())
+  entries <- lines[(bounds[1] + 1):(bounds[2] - 1)]
+  entries <- entries[str_detect(entries, "^[A-Za-z_]+:")]
+  values <- str_remove(entries, "^[A-Za-z_]+:\\s*") %>%
+    str_remove('^"') %>% str_remove('"$') %>% str_replace_all('\\\\"', '"')
+  as.list(set_names(values, str_extract(entries, "^[A-Za-z_]+")))
+}
+
+# Reads a draft in the admin stage (each field in a code block with <br> tags) back into plain text,
+# one row per section, so it can be compared with the snapshot.
+read_admin_draft <- function(path) {
+  read_metadata_snapshot(path) %>%
+    mutate(text = text %>%
+             str_remove("^```[a-z]*\n?") %>%   # opening ```html line
+             str_remove("\n?```$") %>%         # closing ``` line
+             clean_metadata_text())
+}
+
 # Describes how much a text changed, for the build_tables.R summary. Compares the two texts word by
 # word, from the start and from the end, to find the part that differs:
 #   - "small edit": a short snippet of the words that changed (e.g. "1961 to 1990" -> "1951 to 1980")

@@ -145,11 +145,12 @@ Hitting "Send now" updates the new data to CEPALSTAT.
 
 ### 5. Revise metadata (optional)
 
-An optional step is to update the indicator's technical sheet in CEPALSTAT. The script `update_metadata_fn.R` suggests updates to the metadata fields of Definition, Methodology and Comments.
+An optional step is to revise an indicator's metadata sheet in CEPALSTAT (Definition, Methodology and Comments). The functions are in `update_metadata_fn.R`, and `run_metadata.R` shows how to use them. Each draft is one file, `Metadata/{id}_draft.md`, that goes through two stages:
 
-The script fetches existing metadata from the CEPALSTAT API and calls the Anthropic API to produce an updated draft in English. This suggested draft is then **human-reviewed** and edited, before calling the Anthropic API again to translate it into Spanish. This is then exported into a CEPALSTAT Admin-friendly format and must be updated manually in the CEPALSTAT Admin area.
+1. `start_draft()` creates an **English draft** from the published text in `Metadata/{id}.md`: AI suggestions, AI edits that follow your `instructions`, or a plain copy for small edits by hand (`ai_assist = FALSE`). New indicators need a closely related published indicator as a `gold` standard. Edit the English by hand.
+2. `finish_draft()` translates the English fields you changed into Spanish (unchanged fields keep their published Spanish, and the glossary in `Metadata/Prompts/glossary.md` is applied) and rewrites the draft in **Admin format**: each field in Spanish and English, in a code block ready to copy into the CEPALSTAT Admin area.
 
-To manage this two-step metadata revision easily, utilize the wrapper script `run_metadata.R`.
+After pasting into CEPALSTAT Admin, run `build_tables.R`: the snapshot updates, and the draft is deleted once the published text matches it. `draft_status()` lists the drafts in progress.
 
 ## Periodic Updates
 

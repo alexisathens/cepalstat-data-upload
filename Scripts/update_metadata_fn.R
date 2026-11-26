@@ -1,130 +1,80 @@
-# Generates draft metadata for CEPALSTAT indicators as Markdown (.md) files, for use in a Markdown
-# editor such as Obsidian. All files are written to a single folder.
+# Drafts revisions of CEPALSTAT indicator metadata sheets (definition, methodology, comments), with or
+# without AI assistance, as one Markdown draft per indicator for use in a Markdown editor such as Obsidian.
+#
+# Files in Metadata/:
+#   {id}.md        - snapshot of the published sheet, written by build_tables.R (read-only, tracked in git)
+#   {id}_draft.md  - your draft (local only). It goes through two stages in the same file:
+#                      stage: english draft - English only, to edit by hand
+#                      stage: admin         - Spanish and English, in CEPALSTAT Admin order, each field in a
+#                                             code block with <br> tags, ready to copy into Admin
 #
 # Workflow (see run_metadata.R):
-#   1. suggest_metadata_en()   - archives published metadata ({id}_legacy.md) and drafts English ({id}_en.md)
-#      -> human review: edit {id}_en.md
-#   2. translate_metadata_es() - translates the reviewed English draft ({id}_es.md)
-#   3. export_metadata_admin() - assembles both languages for copying into CEPALSTAT Admin ({id}_admin.md)
+#   1. start_draft()   - creates the English draft: AI suggestions, AI edits following your instructions,
+#                        or a plain copy of the published English (ai_assist = FALSE)
+#      -> edit the English in Metadata/{id}_draft.md
+#   2. finish_draft()  - translates the English fields you changed (unchanged fields keep their published
+#                        Spanish) and rewrites the draft in Admin format
+#      -> copy the fields into CEPALSTAT Admin
+#   3. build_tables.R  - updates the snapshot; a draft that now matches the published text is deleted
+#   draft_status()     - lists your drafts and their stage
 #
-# Re-running steps 1 or 2 does NOT overwrite an existing draft, so reviewed edits are never lost.
-# To regenerate a draft on purpose, pass overwrite = TRUE. Step 3 always overwrites, since the
-# admin file is generated output and is not edited by hand.
+# Everything published is read from the snapshots, so run build_tables.R first if they may be out of
+# date. Existing drafts are never overwritten unless overwrite = TRUE.
 #
-# The system prompts and the translation glossary are kept as editable files in Metadata/Prompts/:
-#   draft_en.md     - instructions for drafting the English metadata (step 1)
-#   translate_es.md - instructions for translating into Spanish (step 2)
-#   glossary.md     - required English to Spanish terms, added to the translation prompt (step 2)
+# Gold standard (gold): published indicators used as examples of style and structure. Required for new
+# indicators (no published text yet), where the draft is written by adapting a closely related indicator
+# (e.g. same data source). Optional otherwise: for an indicator that has already been revised, its own
+# text is the best reference, and `instructions` (e.g. "Update the GDP base year to 2018 dollars") is
+# usually more useful.
 #
-# New indicators have no published metadata to revise. They are detected automatically (no published
-# Definition, Methodology or Comments in CEPALSTAT), and the draft is instead written from the
-# indicator's entry in Data/indicator_metadata.xlsx (name, source, dimensions) by adapting the content
-# of the gold standard indicator(s). For these, choose a closely related published indicator (e.g.,
-# same data source) as the gold standard. To override the detection, pass new_indicator = TRUE or FALSE.
+# The system prompts and the translation glossary are editable files in Metadata/Prompts/:
+#   draft_en.md     - instructions for drafting the English metadata (start_draft)
+#   translate_es.md - instructions for translating into Spanish (finish_draft)
+#   glossary.md     - required English to Spanish terms, added to the translation prompt (finish_draft)
 
 # Development note: I experimented with attaching relevant UN and domain-specific methodological documents
 # and pointing to the indicator's R code. In the end I found the greatest success with the least amount
 # of token usage by only feeding Claude the current indicator metadata along with a "golden example" of a
 # similar CEPALSTAT indicator.
 
-# Requires utils.R to be sourced (packages, `meta` table, get_indicator_metadata(), and the AI model
-# set in config.R as ANTHROPIC_MODEL).
+# Requires utils.R to be sourced (packages, `meta` table, the snapshot helpers, and the AI model set in
+# config.R as ANTHROPIC_MODEL).
 
 # ---- settings ----
 
-METADATA_DIR    <- here::here("Metadata")           # all .md files for every indicator are written here
-PROMPTS_DIR     <- file.path(METADATA_DIR, "Prompts") # system prompts and glossary
+PROMPTS_DIR <- here::here("Metadata", "Prompts")   # system prompts and glossary
+
+# Section headers used in English drafts and in the AI's responses, by metadata field
+english_headers <- c(definition = "DEFINITION", calculation_methodology = "METHODOLOGY", comments = "COMMENTS")
 
 
 # ---- shared helpers ----
 
-# File path for one of an indicator's metadata files.
-# type is one of "legacy", "en", "es" or "admin". Sample usage: md_path(2487, "en") -> Metadata/2487_en.md
-md_path <- function(indicator_id, type) {
-  file.path(METADATA_DIR, glue("{indicator_id}_{type}.md"))
-}
-
 # TRUE if a file exists and has content. An empty file (e.g. one created by clicking an unresolved
-# link in Obsidian) is treated as missing so it does not block the overwrite check.
+# link in Obsidian) is treated as missing.
 has_content <- function(path) {
   file.exists(path) && file.size(path) > 0
 }
 
-# Strips any <br>/<br/>/<br /> tags that leaked into CEPALSTAT's published metadata (e.g. from a
-# prior admin export), so the model never sees HTML in its reference material and the admin
-# export's own <br> tags never compound on top of pre-existing ones.
+# Removes <br>/<br/>/<br /> tags (used before adding them again in to_html_breaks(), so they never
+# compound).
 strip_html_breaks <- function(text) {
   str_remove_all(text, "<br\\s*/?>")
 }
 
-# Returns one field from a get_indicator_metadata() table, or "" if the field is missing or empty.
-# Sample usage: get_field(m, "definition")
-get_field <- function(m, variable) {
-  value <- m$value[m$variable == variable]
-  if (length(value) == 0 || is.na(value[1])) return("")
-  strip_html_breaks(value[1])
-}
+# Adds <br>/<br><br> tags for CEPALSTAT's rich text field, keeping the real line breaks too so the file
+# stays readable: a blank line between paragraphs becomes <br><br>, a single line break becomes <br>.
+# The reverse conversion is clean_metadata_text() in utils.R.
+to_html_breaks <- function(text) {
+  paragraphs <- text %>%
+    coalesce("") %>%
+    strip_html_breaks() %>%
+    str_trim() %>%
+    str_split("\n{2,}") %>%
+    pluck(1) %>%
+    map_chr(~ str_replace_all(.x, "\n", "<br>\n"))
 
-# Indicator name from Data/indicator_metadata.xlsx, falling back to the CEPALSTAT API.
-get_indicator_name <- function(indicator_id) {
-  name <- meta %>% filter(id == indicator_id) %>% pull(indicator)
-  if (length(name) == 1) return(name)
-  get_indicator_metadata(indicator_id) %>% get_field("indicator_name")
-}
-
-# Formats an indicator's published fields using the same ### DEFINITION / ### METHODOLOGY /
-# ### COMMENTS headers required of the model's output.
-format_published_fields <- function(indicator_id, lang = "en") {
-  m <- get_indicator_metadata(indicator_id, lang = lang)
-  paste0(
-    "### DEFINITION\n",  get_field(m, "definition"), "\n\n",
-    "### METHODOLOGY\n", get_field(m, "calculation_methodology"), "\n\n",
-    "### COMMENTS\n",    get_field(m, "comments"), "\n"
-  )
-}
-
-# Formats gold standard indicators as labelled example blocks for the system prompt.
-get_formatted_metadata <- function(example_ids, lang = "en") {
-  example_ids %>%
-    map_chr(function(id) {
-      name <- get_indicator_metadata(id, lang = lang) %>% get_field("indicator_name")
-      paste0("--- indicator ", id, ": ", name, " ---\n\n", format_published_fields(id, lang))
-    }) %>%
-    paste(collapse = "\n\n")
-}
-
-# Lists an indicator's published metadata as "variable: value" lines for the user prompt.
-format_existing_metadata <- function(indicator_id, lang = "en") {
-  get_indicator_metadata(indicator_id, lang = lang) %>%
-    mutate(value = strip_html_breaks(value)) %>%
-    mutate(line = paste0(variable, ": ", value)) %>%
-    pull(line) %>%
-    paste(collapse = "\n")
-}
-
-# Builds the YAML front matter (Obsidian "Properties") block at the top of each file.
-# Links in `related` point only to files that already exist, so Obsidian never shows broken links.
-make_front_matter <- function(indicator_id, related_types, extra = list()) {
-  name <- str_replace_all(get_indicator_name(indicator_id), '"', '\\\\"') # escape quotes for YAML
-
-  fields <- c(
-    glue("indicator_id: {indicator_id}"),
-    glue('indicator_name: "{name}"'),
-    imap_chr(extra, ~ glue("{.y}: {.x}"))
-  )
-
-  related <- related_types %>%
-    keep(~ has_content(md_path(indicator_id, .x))) %>%
-    map_chr(~ glue('  - "[[{indicator_id}_{.x}]]"'))
-  if (length(related) > 0) fields <- c(fields, "related:", related)
-
-  paste(c("---", fields, "---", ""), collapse = "\n")
-}
-
-# Writes a .md file (front matter + body) as UTF-8, creating the metadata folder if needed.
-write_md <- function(front_matter, body, path) {
-  dir.create(dirname(path), showWarnings = FALSE, recursive = TRUE)
-  write_file(paste0(front_matter, "\n", str_trim(body), "\n"), path)
+  paste(paragraphs, collapse = "<br><br>\n\n")
 }
 
 # Reads a .md file and returns its body without the front matter.
@@ -133,31 +83,6 @@ read_md_body <- function(path) {
     str_remove_all("\r") %>%                       # normalize Windows line endings
     str_remove("^---\\n[\\s\\S]*?\\n---\\n") %>%   # drop the front matter block
     str_trim()
-}
-
-# Splits a draft into its three sections (### DEFINITION / ### METHODOLOGY / ### COMMENTS).
-parse_fields <- function(text, source_label) {
-  sections <- str_split(text, "(?=### (DEFINITION|METHODOLOGY|COMMENTS))")[[1]] %>%
-    discard(~ !nzchar(trimws(.x)))
-
-  field_map <- c(DEFINITION = "definition", METHODOLOGY = "methodology", COMMENTS = "comments")
-  out <- list(definition = NA_character_, methodology = NA_character_, comments = NA_character_)
-
-  for (sec in sections) {
-    header <- str_match(sec, "^### (\\w+)")[, 2]
-    body   <- str_remove(sec, "^### \\w+") %>% str_trim()
-    if (header %in% names(field_map)) out[[field_map[[header]]]] <- body
-  }
-
-  missing <- names(out)[map_lgl(out, is.na)]
-  if (length(missing) > 0) {
-    stop(glue(
-      "Could not find section(s) in {source_label} draft: {paste(missing, collapse = ', ')}. ",
-      "Expected headers: ### DEFINITION / ### METHODOLOGY / ### COMMENTS"
-    ))
-  }
-
-  out
 }
 
 # Reads a system prompt from Metadata/Prompts/ (without its front matter).
@@ -213,35 +138,7 @@ check_glossary <- function(english_text, spanish_text, glossary) {
     filter(!map_lgl(spanish, ~ has_term(spanish_text, .x)))
 }
 
-# TRUE if the indicator has no published Definition, Methodology or Comments in CEPALSTAT, i.e. it is a
-# new indicator. An indicator that CEPALSTAT does not recognize yet (HTTP 404) also counts as new.
-# Any other API error stops the script, so a connection problem is never mistaken for a new indicator.
-# Sample usage: is_new_indicator(5808)
-is_new_indicator <- function(indicator_id) {
-  url <- glue("https://api-cepalstat.cepal.org/cepalstat/api/v1/indicator/{indicator_id}/metadata?lang=en&format=json")
-  result <- tryCatch(fetch_cepalstat_json(url), httr2_http_404 = function(e) NULL)
-  if (is.null(result)) return(TRUE)
-
-  # A field counts as empty if it is missing, null or only whitespace/<br> tags
-  is_blank <- function(x) {
-    is.null(x) || length(x) == 0 || is.na(x[1]) || str_trim(strip_html_breaks(as.character(x[1]))) == ""
-  }
-
-  metadata <- result$body$metadata
-  c("definition", "calculation_methodology", "comments") %>%
-    map_lgl(~ is_blank(metadata[[.x]])) %>%
-    all()
-}
-
-# Uses new_indicator if it was given; otherwise detects it and reports when an indicator is treated as new.
-resolve_new_indicator <- function(indicator_id, new_indicator) {
-  if (!is.null(new_indicator)) return(new_indicator)
-  detected <- is_new_indicator(indicator_id)
-  if (detected) message(glue("🆕 No published metadata found for {indicator_id}: drafting as a new indicator."))
-  detected
-}
-
-# Calls the Anthropic API and returns the response text, starting at the first ### DEFINITION header.
+# Calls the Anthropic API and returns the response text, starting at the first ### header.
 call_claude <- function(system_prompt, user_prompt) {
   api_key <- Sys.getenv("ANTHROPIC_API_KEY")
   assert_that(nchar(api_key) > 0, msg = "ANTHROPIC_API_KEY not found. Please add it to your .Renviron file.")
@@ -266,268 +163,336 @@ call_claude <- function(system_prompt, user_prompt) {
     req_perform()
 
   resp_body_json(response)$content[[1]]$text %>%
-    str_remove("^[\\s\\S]*?(?=### DEFINITION)") %>% # strip any stray preamble before the first header
-    strip_html_breaks()                             # strip any <br> echoed from reference material
+    str_remove("^[\\s\\S]*?(?=### )") %>%   # strip any stray preamble before the first header
+    strip_html_breaks()                     # strip any <br> echoed from reference material
+}
+
+
+# ---- reading published text and drafts ----
+
+# Published text of an indicator from its snapshot: one row per field, with English (en) and Spanish
+# (es). NULL if the indicator has no snapshot.
+# Sample usage: read_published_fields(3381)
+read_published_fields <- function(indicator_id) {
+  path <- snapshot_path(indicator_id)
+  if (!file.exists(path)) return(NULL)
+  sections <- read_metadata_snapshot(path)
+  metadata_fields %>%
+    transmute(field,
+              en = sections$text[match(header_en, sections$header)],
+              es = sections$text[match(header_es, sections$header)]) %>%
+    mutate(across(c(en, es), ~ coalesce(.x, "")))
+}
+
+# TRUE if the indicator has no published text yet (no snapshot, or all fields empty)
+is_new_indicator <- function(published) {
+  is.null(published) || all(str_squish(c(published$en, published$es)) == "")
+}
+
+# Writes English fields (a named vector: definition, calculation_methodology, comments) as
+# "### DEFINITION / ### METHODOLOGY / ### COMMENTS" sections. Only the fields given are written.
+format_english_sections <- function(fields) {
+  paste0("### ", english_headers[names(fields)], "\n", fields, collapse = "\n\n")
+}
+
+# Reads "### DEFINITION / ### METHODOLOGY / ### COMMENTS" sections (from an English draft or an AI
+# response) into a named vector. Stops if one of the expected sections is missing.
+parse_english_sections <- function(text, expected = names(english_headers), source_label = "draft") {
+  sections <- parse_metadata_snapshot(paste0("\n", text))
+  fields <- set_names(sections$text[match(english_headers[expected], sections$header)], expected)
+  missing <- expected[is.na(fields)]
+  if (length(missing) > 0) {
+    stop(glue("Couldn't find the {paste(english_headers[missing], collapse = ', ')} section(s) in the {source_label}. ",
+              "Expected headers: ### DEFINITION / ### METHODOLOGY / ### COMMENTS"))
+  }
+  fields
+}
+
+# English text of a draft, in either stage, as a named vector (definition, calculation_methodology, comments)
+read_draft_english <- function(path, stage) {
+  if (identical(stage, "admin")) {
+    sections <- read_admin_draft(path)
+    set_names(sections$text[match(metadata_fields$header_en, sections$header)], metadata_fields$field)
+  } else {
+    parse_english_sections(read_md_body(path), source_label = basename(path))
+  }
+}
+
+# Name of an indicator, from Data/indicator_metadata.xlsx or else its snapshot
+indicator_label <- function(indicator_id, lang = "en") {
+  column <- if (lang == "en") "indicator" else "indicator_es"
+  name <- if (column %in% names(meta)) meta[[column]][meta$id == indicator_id] else character()
+  if (length(name) == 1 && !is.na(name)) return(name)
+  path <- snapshot_path(indicator_id)
+  if (file.exists(path)) read_front_matter(path)[[if (lang == "en") "indicator_name" else "indicator_name_es"]] else ""
+}
+
+# Gold standard indicators formatted as labelled examples for a system prompt, in English or Spanish
+format_gold_examples <- function(gold, lang = "en") {
+  gold %>%
+    map_chr(function(id) {
+      published <- read_published_fields(id)
+      if (is_new_indicator(published)) stop(glue("Gold standard {id} has no published text in Metadata/{id}.md."))
+      fields <- set_names(published[[lang]], published$field)
+      paste0("--- indicator ", id, ": ", indicator_label(id, lang), " ---\n\n", format_english_sections(fields))
+    }) %>%
+    paste(collapse = "\n\n")
+}
+
+# Writes a draft file: front matter (a named list) and body
+write_draft <- function(indicator_id, front_matter, body) {
+  quote_yaml <- function(x) paste0('"', str_replace_all(as.character(x), '"', '\\\\"'), '"')
+  lines <- c("---", imap_chr(front_matter, ~ paste0(.y, ": ", quote_yaml(.x))), "---")
+  write_file(paste0(paste(lines, collapse = "\n"), "\n", str_trim(body), "\n"), draft_path(indicator_id))
+}
+
+# Runs one step for several indicators, reporting a failure without stopping the others
+for_each_indicator <- function(indicator_ids, step, step_name) {
+  walk(indicator_ids, function(id) {
+    tryCatch(step(id), error = function(e) message(glue("❌ {step_name} failed for {id}: {conditionMessage(e)}")))
+  })
 }
 
 
 # ---- step 1: English draft ----
 
-suggest_metadata_en <- function(indicator_id, gold = c(2487),
-                                new_indicator = NULL, overwrite = FALSE) {
-  # gold: ID(s) of published indicators used as examples, e.g. gold = c(2487, 4174).
-  # new_indicator = NULL (default) detects new indicators automatically; TRUE or FALSE overrides it.
+# Creates Metadata/{id}_draft.md with the English metadata to edit. Accepts one indicator or several.
+#   ai_assist = TRUE  - the AI suggests a revision of the published English (or, with `instructions`,
+#                       makes only the changes you describe)
+#   ai_assist = FALSE - the published English is copied as it is, for small edits by hand
+# New indicators (no published text) always use the AI, and need a gold standard.
+# Sample usage: start_draft(4183, instructions = "Update the GDP base year to 2018 dollars")
+start_draft <- function(indicator_ids, gold = NULL, instructions = NULL, ai_assist = TRUE, overwrite = FALSE) {
+  for_each_indicator(indicator_ids, step_name = "start_draft", function(indicator_id) {
 
-  ## skip if a draft already exists, to protect reviewed edits
-  draft_path <- md_path(indicator_id, "en")
-  if (has_content(draft_path) && !overwrite) {
-    message(glue("⏭️ Skipped {indicator_id}: {basename(draft_path)} already exists (use overwrite = TRUE to regenerate)"))
-    return(invisible(NULL))
-  }
+    path <- draft_path(indicator_id)
+    if (has_content(path) && !overwrite) {
+      message(glue("⏭️ Skipped {indicator_id}: {basename(path)} already exists (use overwrite = TRUE to start over)"))
+      return(invisible(NULL))
+    }
 
-  message(glue("Processing metadata for indicator {indicator_id}..."))
-  new_indicator <- resolve_new_indicator(indicator_id, new_indicator)
+    published <- read_published_fields(indicator_id)
+    new_indicator <- is_new_indicator(published)
+    if (new_indicator && is.null(gold)) {
+      stop("it has no published text yet, so a gold standard is needed: start_draft(id, gold = <closely related indicator>)")
+    }
+    if (new_indicator && !ai_assist) stop("it has no published text to copy, so it needs ai_assist = TRUE and a gold standard")
 
-  ## system prompt
-  # Edit Metadata/Prompts/draft_en.md and the user prompts below to refine what the model generates.
+    if (!ai_assist) {
+      # Plain copy of the published English
+      english <- set_names(published$en, published$field)
+      message(glue("Copied the published English for {indicator_id}"))
 
-  system_prompt <- paste(
-    read_prompt("draft_en"),
-    "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:\n\n",
-    get_formatted_metadata(gold),
-    sep = "\n\n"
-  )
+    } else {
+      message(glue("Drafting English for {indicator_id}{if (new_indicator) ' (new indicator)' else ''}..."))
 
-  ## user prompt
+      # System prompt: drafting instructions (Metadata/Prompts/draft_en.md), plus gold examples if given
+      system_prompt <- read_prompt("draft_en")
+      if (!is.null(gold)) {
+        system_prompt <- paste(
+          system_prompt,
+          "The following are examples of high-quality CEPALSTAT metadata to use as a reference for style, structure, and level of detail:",
+          format_gold_examples(gold, "en"),
+          sep = "\n\n"
+        )
+      }
 
-  if (!new_indicator) {
-    # Existing indicator: revise its published metadata
-    user_prompt <- paste0(
-      "CURRENT METADATA FOR THIS INDICATOR (indicator_id ", indicator_id, "):\n",
-      format_existing_metadata(indicator_id),
-      "\n\nPlease revise the metadata fields (definition, calculation_methodology, comments) ",
-      "based on the available inputs. Keep other metadata elements exactly as-is.",
-      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
-      "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
-      "Respond with only the three ### sections, nothing else."
+      response_rules <- paste0(
+        "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
+        "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
+        "Respond with only the three ### sections, nothing else."
+      )
+
+      if (new_indicator) {
+        # New indicator: draft from its entry in the metadata table, adapting the gold standard(s)
+        meta_row <- meta %>% filter(id == indicator_id)
+        assert_that(nrow(meta_row) == 1,
+                    msg = glue("Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Add it before drafting metadata."))
+        user_prompt <- paste0(
+          "NEW INDICATOR (no published metadata yet):\n",
+          "indicator_id: ", indicator_id, "\n",
+          "indicator_name: ", meta_row$indicator, "\n",
+          "source: ", meta_row$source, "\n",
+          "unit: ", if ("unit" %in% names(meta_row)) coalesce(meta_row$unit, "not specified") else "not specified", "\n",
+          "dimensions: ", coalesce(meta_row$dimensions, "none beyond country and year"), "\n",
+          "classification: ", paste(na.omit(c(meta_row$cat1, meta_row$cat2, meta_row$cat3)), collapse = " > "),
+          "\n\nThe reference indicator(s) above are closely related to this new indicator and share its data ",
+          "source and general context. Draft the metadata fields (definition, methodology, comments) ",
+          "for the new indicator by adapting their content: keep what applies (source description, coverage, ",
+          "context, links) and change what differs, as indicated by the new indicator's name and dimensions. ",
+          "Do not carry over details that are specific to the reference indicator(s).",
+          if (!is.null(instructions)) paste0("\n\nAlso follow these instructions: ", instructions) else "",
+          response_rules
+        )
+
+      } else {
+        # Existing indicator: revise its published English, or make only the requested changes
+        snapshot_meta <- read_front_matter(snapshot_path(indicator_id))
+        task <- if (is.null(instructions)) {
+          "Please revise the metadata fields (definition, methodology, comments) based on the available inputs."
+        } else {
+          paste0("Make only the following changes, and keep everything else exactly as it is: ", instructions)
+        }
+        user_prompt <- paste0(
+          "CURRENT METADATA FOR THIS INDICATOR (indicator_id ", indicator_id, "):\n",
+          "indicator_name: ", indicator_label(indicator_id), "\n",
+          "unit: ", coalesce(snapshot_meta$unit, ""), "\n\n",
+          format_english_sections(set_names(published$en, published$field)),
+          "\n\n", task,
+          response_rules
+        )
+      }
+
+      english <- parse_english_sections(call_claude(system_prompt, user_prompt), source_label = "AI response")
+    }
+
+    front_matter <- list(
+      indicator_id   = indicator_id,
+      indicator_name = indicator_label(indicator_id),
+      stage          = "english draft",
+      based_on       = snapshot_fingerprint(indicator_id),
+      started        = format(Sys.Date()),
+      ai_assist      = ai_assist,
+      gold           = paste(gold, collapse = ", "),
+      instructions   = coalesce(instructions, "")
     )
-
-  } else {
-    # New indicator: no published metadata yet, so draft from its entry in the metadata table
-    # and adapt the content of the closely related gold standard indicator(s)
-    meta_row <- meta %>% filter(id == indicator_id)
-    assert_that(
-      nrow(meta_row) == 1,
-      msg = glue("Indicator {indicator_id} not found in Data/indicator_metadata.xlsx. Add it before drafting metadata.")
-    )
-
-    user_prompt <- paste0(
-      "NEW INDICATOR (no published metadata yet):\n",
-      "indicator_id: ", indicator_id, "\n",
-      "indicator_name: ", meta_row$indicator, "\n",
-      "source: ", meta_row$source, "\n",
-      "dimensions: ", coalesce(meta_row$dimensions, "none beyond country and year"), "\n", # blank = country x year only
-      "classification: ", paste(na.omit(c(meta_row$cat1, meta_row$cat2, meta_row$cat3)), collapse = " > "),
-      "\n\nThe reference indicator(s) above are closely related to this new indicator and share its data ",
-      "source and general context. Draft the metadata fields (definition, calculation_methodology, comments) ",
-      "for the new indicator by adapting their content: keep what applies (source description, coverage, ",
-      "context, links) and change what differs, as indicated by the new indicator's name and dimensions. ",
-      "Do not carry over details that are specific to the reference indicator(s).",
-      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
-      "— no introductory sentence, no preamble, no markdown bold headers, no closing remarks. ",
-      "Respond with only the three ### sections, nothing else."
-    )
-  }
-
-  ## archive published (pre-AI) metadata, once per indicator (existing indicators only)
-  legacy_path <- md_path(indicator_id, "legacy")
-  if (!new_indicator && !has_content(legacy_path)) {
-    legacy_body <- paste0(
-      "> Snapshot of the published CEPALSTAT metadata before any AI-assisted revision. Do not edit.\n\n",
-      "## English\n\n", format_published_fields(indicator_id, "en"), "\n",
-      "## Spanish\n\n", format_published_fields(indicator_id, "es")
-    )
-    front_matter <- make_front_matter(indicator_id, related_types = character(),
-                                      extra = list(retrieved = format(Sys.Date())))
-    write_md(front_matter, legacy_body, legacy_path)
-  }
-
-  ## generate English draft
-  # Review and edit Metadata/{indicator_id}_en.md before translating.
-  english_text <- call_claude(system_prompt, user_prompt)
-
-  front_matter <- make_front_matter(
-    indicator_id,
-    related_types = "legacy",
-    extra = list(
-      gold_standard = paste0("[", paste(gold, collapse = ", "), "]"),
-      generated     = format(Sys.Date())
-    )
-  )
-  write_md(front_matter, english_text, draft_path)
-
-  message(glue("✅ Exported (en) metadata for {indicator_id}: {basename(draft_path)}"))
-  invisible(english_text)
+    note <- glue("> English draft. Edit the text below, then run finish_draft({indicator_id}) to translate it and format it for CEPALSTAT Admin.")
+    write_draft(indicator_id, front_matter, paste0(note, "\n\n", format_english_sections(english)))
+    message(glue("✅ English draft saved: Metadata/{basename(path)}"))
+  })
 }
 
 
-# ---- step 2: Spanish translation ----
+# ---- step 2: Spanish translation and Admin format ----
 
-translate_metadata_es <- function(indicator_id, gold = c(2487),
-                                  new_indicator = NULL, overwrite = FALSE) {
-  # Reads the reviewed English draft and translates it to Spanish, using this indicator's own
-  # existing Spanish metadata as a terminology reference.
-  # gold: ID(s) of published indicators used as examples, e.g. gold = c(2487, 4174).
-  # new_indicator = NULL (default) detects new indicators automatically; TRUE or FALSE overrides it.
-
-  ## check inputs, and skip if a translation already exists
-  en_path <- md_path(indicator_id, "en")
-  es_path <- md_path(indicator_id, "es")
-
-  assert_that(
-    has_content(en_path),
-    msg = glue("English draft not found: {en_path}\nRun suggest_metadata_en() first.")
-  )
-
-  if (has_content(es_path) && !overwrite) {
-    message(glue("⏭️ Skipped {indicator_id}: {basename(es_path)} already exists (use overwrite = TRUE to re-translate)"))
-    return(invisible(NULL))
-  }
-
-  message(glue("Processing metadata translation for indicator {indicator_id}..."))
-  new_indicator <- resolve_new_indicator(indicator_id, new_indicator)
-
-  ## system prompt
-  # Edit Metadata/Prompts/translate_es.md and glossary.md to refine the translation.
-
+# Translates the English fields that differ from the published English, keeps the published Spanish for
+# the others, and rewrites Metadata/{id}_draft.md in CEPALSTAT Admin format. Accepts one indicator or
+# several. A draft already in Admin format is skipped unless overwrite = TRUE (which re-translates from
+# the English in it, e.g. after editing it there).
+# Sample usage: finish_draft(c(4183, 4185))
+finish_draft <- function(indicator_ids, overwrite = FALSE) {
   glossary <- read_glossary()
 
-  system_prompt <- paste(
-    read_prompt("translate_es"),
-    format_glossary(glossary),
-    "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style, structure, and terminology:\n\n",
-    get_formatted_metadata(gold, lang = "es"),
-    sep = "\n\n"
-  )
+  for_each_indicator(indicator_ids, step_name = "finish_draft", function(indicator_id) {
 
-  ## user prompt (reviewed English draft, without its front matter)
+    path <- draft_path(indicator_id)
+    assert_that(has_content(path), msg = glue("no draft found at {path}. Run start_draft({indicator_id}) first."))
+    front_matter <- read_front_matter(path)
+    if (identical(front_matter$stage, "admin") && !overwrite) {
+      message(glue("⏭️ Skipped {indicator_id}: the draft is already in Admin format (use overwrite = TRUE to translate again)"))
+      return(invisible(NULL))
+    }
 
-  english_text <- read_md_body(en_path)
+    english   <- read_draft_english(path, front_matter$stage)
+    published <- read_published_fields(indicator_id)
+    if (is.null(published)) published <- tibble(field = names(english_headers), en = "", es = "")
 
-  if (!new_indicator) {
-    # Existing indicator: ground terminology in its own published Spanish metadata
-    user_prompt <- paste0(
-      "ENGLISH TEXT TO TRANSLATE:\n", english_text,
-      "\n\nEXISTING SPANISH METADATA FOR THIS INDICATOR (written by a human, not authoritative — prefer ",
-      "its phrasing unless the glossary or a more internationally accepted Spanish term says otherwise):\n",
-      format_existing_metadata(indicator_id, lang = "es"),
-      "\n\nTranslate the English text above into Spanish, following the glossary and terminology guidance above.",
-      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
-      "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
-      "sections (headers left untranslated), nothing else."
-    )
+    # Fields whose English differs from the published English are translated; the others keep the
+    # published Spanish, so wording that hasn't changed isn't re-translated
+    changed <- names(english)[str_squish(english) != str_squish(published$en[match(names(english), published$field)])]
+    spanish <- set_names(published$es, published$field)[names(english)]
 
-  } else {
-    # New indicator: no existing Spanish metadata, so rely on the Spanish reference examples
-    user_prompt <- paste0(
-      "ENGLISH TEXT TO TRANSLATE:\n", english_text,
-      "\n\nThis is a new indicator with no existing Spanish metadata. Always use the glossary terms above. ",
-      "Otherwise, use the Spanish reference examples for terminology, preferring internationally (UN) ",
-      "accepted Spanish terms where they differ.",
-      "\n\nYour response must begin immediately with '### DEFINITION' as its very first characters ",
-      "— no introductory sentence, no preamble, no closing remarks. Respond with only the three ### ",
-      "sections (headers left untranslated), nothing else."
-    )
-  }
+    if (length(changed) == 0) {
+      message(glue("ℹ️ {indicator_id}: the English is the same as the published text, so the published Spanish is kept"))
+    } else {
+      message(glue("Translating {indicator_id} ({paste(english_headers[changed], collapse = ', ')})..."))
 
-  ## generate Spanish translation
-  spanish_text <- call_claude(system_prompt, user_prompt)
+      gold <- str_split(coalesce(front_matter$gold, ""), ",\\s*")[[1]] %>% discard(~ .x == "")
+      system_prompt <- paste(read_prompt("translate_es"), format_glossary(glossary), sep = "\n\n")
+      if (length(gold) > 0) {
+        system_prompt <- paste(
+          system_prompt,
+          "The following are examples of high-quality CEPALSTAT metadata in Spanish to use as a reference for style, structure, and terminology:",
+          format_gold_examples(gold, "es"),
+          sep = "\n\n"
+        )
+      }
 
-  ## flag any glossary terms that were not followed, for manual review
-  missed <- check_glossary(english_text, spanish_text, glossary)
-  if (nrow(missed) > 0) {
-    message(glue("⚠️ Glossary check for {indicator_id}: expected Spanish term(s) not found. Please review {basename(es_path)}:"))
-    message(paste0("   ", missed$english, " -> ", missed$spanish, collapse = "\n"))
-  }
+      existing_spanish <- spanish[changed]
+      reference <- if (all(str_squish(existing_spanish) == "")) {
+        "\n\nThis text has no published Spanish yet. Always use the glossary terms above; otherwise prefer internationally (UN) accepted Spanish terms."
+      } else {
+        paste0("\n\nPUBLISHED SPANISH FOR THESE SECTIONS (written by a human, not authoritative — prefer its phrasing ",
+               "unless the glossary or a more internationally accepted Spanish term says otherwise):\n",
+               format_english_sections(existing_spanish))
+      }
 
-  front_matter <- make_front_matter(
-    indicator_id,
-    related_types = c("legacy", "en"),
-    extra = list(generated = format(Sys.Date()))
-  )
-  write_md(front_matter, spanish_text, es_path)
+      user_prompt <- paste0(
+        "ENGLISH TEXT TO TRANSLATE:\n", format_english_sections(english[changed]),
+        reference,
+        "\n\nTranslate the English text above into Spanish, following the glossary and terminology guidance above.",
+        "\n\nYour response must begin immediately with the first ### header as its very first characters ",
+        "— no introductory sentence, no preamble, no closing remarks. Respond with only the ### ",
+        "sections given (headers left untranslated), nothing else."
+      )
 
-  message(glue("✅ Exported (es) metadata for {indicator_id}: {basename(es_path)}"))
-  invisible(spanish_text)
+      translated <- parse_english_sections(call_claude(system_prompt, user_prompt), expected = changed, source_label = "AI response")
+      spanish[changed] <- translated
+
+      # Flag glossary terms that weren't followed, for manual review
+      missed <- check_glossary(paste(english[changed], collapse = "\n"), paste(translated, collapse = "\n"), glossary)
+      if (nrow(missed) > 0) {
+        message(glue("⚠️ Glossary check for {indicator_id}: expected Spanish term(s) not found. Please review the draft:"))
+        message(paste0("   ", missed$english, " -> ", missed$spanish, collapse = "\n"))
+      }
+    }
+
+    # Admin format: each field in Spanish then English, in a code block with <br> tags
+    admin_block <- function(header, text) {
+      if (str_detect(text, "```")) stop(glue("the {header} text contains ``` and can't be placed in a code block"))
+      paste0("### ", header, "\n```html\n", to_html_breaks(text), "\n```\n")
+    }
+    blocks <- metadata_fields %>%
+      pmap_chr(function(field, header_es, header_en) {
+        paste0(admin_block(header_es, spanish[[field]]), "\n", admin_block(header_en, english[[field]]))
+      })
+
+    front_matter$stage      <- "admin"
+    front_matter$translated <- if (length(changed) > 0) paste(english_headers[changed], collapse = ", ") else "none"
+    front_matter$finished   <- format(Sys.Date())
+    note <- glue("> Ready for CEPALSTAT Admin: copy each block with the copy button in its corner. After publishing, ",
+                 "run build_tables.R; this draft is deleted once the published text matches it.")
+    write_draft(indicator_id, front_matter, paste0(note, "\n\n", paste(blocks, collapse = "\n")))
+    message(glue("✅ Draft ready for CEPALSTAT Admin: Metadata/{basename(path)}"))
+  })
 }
 
 
-# ---- step 3: CEPALSTAT Admin export ----
+# ---- draft overview ----
 
-export_metadata_admin <- function(indicator_id) {
-  # Assembles the English and Spanish drafts into the order used in CEPALSTAT Admin. Each field
-  # is placed in a code block so Obsidian shows the <br> tags as-is and adds a copy button.
-  # Always overwrites, since this file is generated output and is not edited by hand.
-
-  ## functions
-
-  to_html_breaks <- function(text) {
-    # Adds <br>/<br><br> tags for CEPALSTAT's rich text field, keeping the real line breaks too
-    # so the file stays readable. Paragraph breaks (blank line between) get <br><br>; single
-    # breaks (e.g. within a formula or list) get <br>. Strips any existing <br> first, so the
-    # tags never compound.
-    paragraphs <- text %>%
-      strip_html_breaks() %>%
-      str_trim() %>%
-      str_split("\n{2,}") %>%
-      pluck(1) %>%
-      map_chr(~ str_replace_all(.x, "\n", "<br>\n"))
-
-    paste(paragraphs, collapse = "<br><br>\n\n")
+# Lists the drafts in Metadata/: stage, whether the published text changed since the draft was
+# started, and which English fields differ from the published text.
+# Sample usage: draft_status()
+draft_status <- function() {
+  paths <- list.files(here("Metadata"), pattern = "^[0-9]+_draft\\.md$", full.names = TRUE)
+  if (length(paths) == 0) {
+    message("No drafts in Metadata/")
+    return(invisible(tibble()))
   }
 
-  admin_block <- function(header, text) {
-    # One field as a header plus a fenced code block. Stops if the text contains ``` itself,
-    # since that would end the code block early.
-    if (str_detect(text, "```")) {
-      stop(glue("Field '{header}' for indicator {indicator_id} contains ``` and cannot be placed in a code block."))
+  status <- map_dfr(paths, function(path) {
+    front_matter <- read_front_matter(path)
+    id <- as.integer(str_extract(basename(path), "^[0-9]+"))
+    published <- read_published_fields(id)
+    english <- tryCatch(read_draft_english(path, front_matter$stage), error = function(e) NULL)
+    changed <- if (is.null(english) || is.null(published)) NA_character_ else {
+      fields <- names(english)[str_squish(english) != str_squish(published$en[match(names(english), published$field)])]
+      if (length(fields) == 0) "none" else paste(english_headers[fields], collapse = ", ")
     }
-    paste0("### ", header, "\n```html\n", to_html_breaks(text), "\n```\n")
+    tibble(
+      id                      = id,
+      indicator               = str_trunc(indicator_label(id), 45),
+      stage                   = coalesce(front_matter$stage, ""),
+      started                 = coalesce(front_matter$started, ""),
+      english_changed         = changed,
+      published_changed_since = !identical(front_matter$based_on, snapshot_fingerprint(id))
+    )
+  })
+
+  print(as.data.frame(status), row.names = FALSE)
+  if (any(status$published_changed_since)) {
+    message("⚠️ The published text changed after some drafts were started (published_changed_since = TRUE). ",
+            "Check them against Metadata/{id}.md before pasting into CEPALSTAT Admin.")
   }
-
-  ## read drafts
-
-  en_path <- md_path(indicator_id, "en")
-  es_path <- md_path(indicator_id, "es")
-
-  assert_that(has_content(en_path), msg = glue("English draft not found: {en_path}\nRun suggest_metadata_en() first."))
-  assert_that(has_content(es_path), msg = glue("Spanish draft not found: {es_path}\nRun translate_metadata_es() first."))
-
-  en_fields <- read_md_body(en_path) %>% parse_fields("English")
-  es_fields <- read_md_body(es_path) %>% parse_fields("Spanish")
-
-  ## assemble in CEPALSTAT Admin order
-
-  admin_body <- paste(
-    "> Generated file for copying into CEPALSTAT Admin. Do not edit: changes are overwritten on the next export. Use the copy button in the corner of each block.\n",
-    admin_block("DEFINICIÓN - ESPAÑOL",  es_fields$definition),
-    admin_block("DEFINICIÓN - INGLÉS",   en_fields$definition),
-    admin_block("METODOLOGÍA - ESPAÑOL", es_fields$methodology),
-    admin_block("METODOLOGÍA - INGLÉS",  en_fields$methodology),
-    admin_block("COMENTARIOS - ESPAÑOL", es_fields$comments),
-    admin_block("COMENTARIOS - INGLÉS",  en_fields$comments),
-    sep = "\n"
-  )
-
-  front_matter <- make_front_matter(
-    indicator_id,
-    related_types = c("en", "es"),
-    extra = list(generated = format(Sys.Date()))
-  )
-
-  admin_path <- md_path(indicator_id, "admin")
-  write_md(front_matter, admin_body, admin_path)
-  message(glue("✅ Exported CEPALSTAT Admin metadata for {indicator_id}: {basename(admin_path)}"))
-
-  invisible(admin_body)
+  invisible(status)
 }

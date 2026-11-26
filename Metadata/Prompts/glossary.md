@@ -1,5 +1,5 @@
 ---
-description: Required English to Spanish terminology for translate_metadata_es. Only the table rows are sent to the model.
+description: Required English to Spanish terminology for finish_draft() in update_metadata_fn.R. Only the table rows are sent to the model.
 ---
 # Translation glossary
 

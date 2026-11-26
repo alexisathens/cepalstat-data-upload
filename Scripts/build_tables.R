@@ -670,6 +670,37 @@ if (n_new + n_changed + n_removed > 0) {
   message("✅ Metadata snapshots unchanged")
 }
 
+## Drafts (Metadata/{id}_draft.md, from update_metadata_fn.R) ----
+# A draft in Admin format whose text now matches the published snapshot has been published, so it's
+# deleted (the same text is in the snapshot). Drafts whose published text changed after they were started
+# are listed, so they can be checked before pasting into CEPALSTAT Admin.
+published_drafts <- character()
+outdated_drafts  <- character()
+for (path in list.files(paths$snapshots, pattern = "^[0-9]+_draft\\.md$", full.names = TRUE)) {
+  id <- str_extract(basename(path), "^[0-9]+")
+  if (!file.exists(snapshot_path(id))) next
+  front_matter <- read_front_matter(path)
+
+  if (identical(front_matter$stage, "admin")) {
+    compared <- inner_join(read_admin_draft(path), read_metadata_snapshot(snapshot_path(id)),
+                           by = "header", suffix = c("_draft", "_published"))
+    if (nrow(compared) == nrow(metadata_fields) * 2 &&
+        all(str_squish(compared$text_draft) == str_squish(compared$text_published))) {
+      file.remove(path)
+      published_drafts <- c(published_drafts, id)
+      next
+    }
+  }
+  if (!identical(front_matter$based_on, snapshot_fingerprint(id))) outdated_drafts <- c(outdated_drafts, id)
+}
+if (length(published_drafts) > 0) {
+  message(glue("🗑️ Drafts deleted because the published text now matches them: {paste(published_drafts, collapse = ', ')}"))
+}
+if (length(outdated_drafts) > 0) {
+  message(glue("⚠️ The published text changed after these drafts were started; check them against ",
+               "Metadata/{{id}}.md before pasting into CEPALSTAT Admin: {paste(outdated_drafts, collapse = ', ')}"))
+}
+
 ## Metadata table: updated without asking unless indicators are missing ----
 needs_review <- any(lengths(review) > 0)
 

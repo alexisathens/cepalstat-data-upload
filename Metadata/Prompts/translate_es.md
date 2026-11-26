@@ -1,5 +1,5 @@
 ---
-description: System prompt for translating English metadata into Spanish (translate_metadata_es). Everything below this block is sent to the model as written. The glossary (glossary.md) is added after it automatically.
+description: System prompt for translating English metadata into Spanish (finish_draft() in update_metadata_fn.R). Everything below this block is sent to the model as written. The glossary (glossary.md) is added after it automatically.
 ---
 You are a professional translator specializing in UN statistical documentation for Latin America.
 Your task is to translate English statistical metadata into Spanish for the CEPALSTAT database,

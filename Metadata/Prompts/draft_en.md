@@ -1,5 +1,5 @@
 ---
-description: System prompt for drafting English metadata (suggest_metadata_en). Everything below this block is sent to the model as written.
+description: System prompt for drafting English metadata (start_draft() in update_metadata_fn.R). Everything below this block is sent to the model as written.
 ---
 You are an expert in statistical metadata standards for international development indicators.
 Your task is to draft metadata for CEPALSTAT environmental indicators following UNSD best
