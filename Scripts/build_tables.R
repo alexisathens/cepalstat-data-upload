@@ -575,8 +575,8 @@ changelog_rows <- bind_rows(
 # Indicators created or deprecated: logged only when the metadata table is updated (part D), since a
 # missing indicator is only dropped from it after confirmation
 changelog_rows_created <- bind_rows(
-  added   %>% transmute(indicator_id = id, indicator_name = indicator, change_type = "created",    new_value = indicator),
-  removed %>% transmute(indicator_id = id, indicator_name = indicator, change_type = "deprecated", old_value = indicator)
+  added   %>% transmute(indicator_id = id, indicator_name = indicator, change_type = "created"),
+  removed %>% transmute(indicator_id = id, indicator_name = indicator, change_type = "deprecated")
 )
 
 # Country (ISO) table: compared with the saved version. Changes are rare, so each one is listed in full.
