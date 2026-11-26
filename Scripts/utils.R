@@ -775,10 +775,10 @@ ask_yes_no <- function(question) {
 
 # Columns of Data/indicator_changelog.xlsx, in order. reason and notes are filled in by hand.
 changelog_columns <- c("entry_id", "date", "indicator_id", "indicator_name", "dimension_id", "affected_indicators",
-                       "change_type", "field", "old_value", "new_value", "detected_by", "reason", "notes")
+                       "change_type", "old_value", "new_value", "detected_by", "reason", "notes")
 
 # Adds new rows to the indicator changelog and returns how many were added. Rows already in the
-# changelog (same indicator, dimension, change type, field, old and new value) are skipped, so a change
+# changelog (same indicator, dimension, change type, old and new value) are skipped, so a change
 # detected on two runs is only logged once. New rows get the next entry_id (e.g. c084), today's date and
 # detected_by = "build_tables". If the file can't be written (e.g. it's open in Excel), the new rows are
 # saved to a separate dated file instead.
@@ -793,7 +793,7 @@ append_changelog <- function(new_rows, path, affected_lookup = NULL) {
            across(any_of("date"), as.Date))
 
   # Columns that identify a change, compared as text
-  key_cols <- c("indicator_id", "dimension_id", "change_type", "field", "old_value", "new_value")
+  key_cols <- c("indicator_id", "dimension_id", "change_type", "old_value", "new_value")
   as_keys  <- function(df) {
     for (col in setdiff(key_cols, names(df))) df[[col]] <- NA
     df %>% transmute(across(all_of(key_cols), as.character))
@@ -826,7 +826,7 @@ append_changelog <- function(new_rows, path, affected_lookup = NULL) {
 
   all_rows <- bind_rows(existing, new_rows)
   for (col in setdiff(changelog_columns, names(all_rows))) all_rows[[col]] <- NA   # e.g. notes, if never used
-  all_rows <- all_rows %>% select(all_of(changelog_columns), everything())
+  all_rows <- all_rows %>% select(all_of(changelog_columns), everything(), -any_of("field"))   # field: an older column, no longer used
 
   saved <- tryCatch({
     write_xlsx(list(changelog = all_rows), path)
