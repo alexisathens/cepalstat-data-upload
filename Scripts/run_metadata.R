@@ -5,6 +5,7 @@
 # the current snapshots (Metadata/{id}.md). Each draft is saved as Metadata/{id}_draft.md.
 
 library(here)
+#source(here("Scripts/build_tables.R")) # refresh tables if metadata has changed
 source(here("Scripts/utils.R"))
 source(here("Scripts/update_metadata_fn.R"))
 
